@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import formbody from '@fastify/formbody';
 import pg from 'pg';
 import dotenv from 'dotenv';
-import Redis from 'ioredis';
+import { Redis } from '@upstash/redis';
 
 dotenv.config();
 const { Pool } = pg;
@@ -14,7 +14,6 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-// -------------------- Redis Setup --------------------
 const redis = new Redis({
   url: 'https://delicate-mosquito-32342.upstash.io',
   token: 'AX5WAAIncDI5ODNkYzBkOTlhZmQ0NzU5YmIxNThlYWUxM2E0ZTUyN3AyMzIzNDI',
