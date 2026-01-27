@@ -1,148 +1,2219 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>THREADS'26 Backend Test</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    form { margin-bottom: 30px; padding: 10px; border: 1px solid #ccc; }
-    input, select, textarea { width: 100%; margin: 5px 0; padding: 5px; }
-    button { padding: 10px 20px; }
-    h2 { color: #2c3e50; }
-    pre { background: #f4f4f4; padding: 10px; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>THREADS'26 – Weaving the Future of Technology</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Bootstrap 5 CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    
+    <!-- AOS (Animate On Scroll) -->
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+    
+    <!-- SweetAlert2 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+    
+    <!-- Vanta.js Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r121/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.net.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.dots.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.waves.min.js"></script>
+    
+    <style>
+        :root {
+            --color-bg: #0b0f1a;
+            --color-card: #12182b;
+            --color-primary: #4fd1c5;
+            --color-secondary: #667eea;
+            --color-accent: #9f7aea;
+            --color-text: #e6e9f0;
+            --color-muted: #9aa4bf;
+            --transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            overflow-x: hidden;
+            line-height: 1.6;
+            font-weight: 400;
+        }
+        
+        h1, h2, h3, h4, h5, h6 {
+            font-weight: 700;
+            margin-bottom: 1rem;
+            letter-spacing: -0.02em;
+        }
+        
+        h1 {
+            font-weight: 800;
+            letter-spacing: -0.03em;
+        }
+        
+        a {
+            text-decoration: none;
+            color: inherit;
+            transition: var(--transition);
+        }
+        
+        a:hover {
+            color: var(--color-primary);
+        }
+        
+        .section-title {
+            position: relative;
+            margin-bottom: 4rem;
+            text-align: center;
+        }
+        
+        .section-title h2 {
+            font-size: 3rem;
+            display: inline-block;
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary), var(--color-accent));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            font-weight: 800;
+        }
+        
+        .section-title::after {
+            content: '';
+            position: absolute;
+            width: 100px;
+            height: 5px;
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+            bottom: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-radius: 5px;
+        }
+        
+        /* Page Transition */
+        .page-section {
+            min-height: 100vh;
+            position: relative;
+            overflow: hidden;
+            padding: 6rem 0;
+        }
+        
+        .vanta-section-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.15;
+        }
+        
+        /* Navbar */
+        .navbar {
+            background-color: rgba(11, 15, 26, 0.98);
+            backdrop-filter: blur(20px);
+            padding: 1.2rem 0;
+            transition: var(--transition);
+            border-bottom: 1px solid rgba(79, 209, 197, 0.1);
+            z-index: 1000;
+        }
+        
+        .navbar-brand {
+            font-weight: 800;
+            font-size: 2rem;
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: -0.03em;
+        }
+        
+        .nav-link {
+            color: var(--color-text) !important;
+            font-weight: 500;
+            margin: 0 0.75rem;
+            position: relative;
+            padding: 0.5rem 0 !important;
+        }
+        
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            width: 0;
+            height: 3px;
+            background: var(--color-primary);
+            left: 0;
+            bottom: 0;
+            transition: var(--transition);
+            border-radius: 3px;
+        }
+        
+        .nav-link:hover::after,
+        .nav-link.active::after {
+            width: 100%;
+        }
+        
+        .navbar-toggler {
+            border: none;
+            color: var(--color-text);
+            font-size: 1.5rem;
+        }
+        
+        .navbar-toggler:focus {
+            box-shadow: 0 0 0 2px var(--color-primary);
+        }
+        
+        /* Hero Section */
+        #hero {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .hero-vanta-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+        
+        .hero-content {
+            z-index: 1;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        .hero-title {
+            font-size: 5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary), var(--color-accent));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            line-height: 1;
+            letter-spacing: -0.04em;
+        }
+        
+        .hero-subtitle {
+            font-size: 1.8rem;
+            color: var(--color-muted);
+            margin-bottom: 2.5rem;
+            font-weight: 300;
+        }
+        
+        .hero-date {
+            font-size: 1.3rem;
+            background: var(--color-card);
+            display: inline-block;
+            padding: 0.8rem 2rem;
+            border-radius: 50px;
+            margin-bottom: 3rem;
+            border-left: 5px solid var(--color-primary);
+            font-weight: 500;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+        
+        .btn-primary-custom {
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+            color: white;
+            border: none;
+            padding: 1rem 2.5rem;
+            border-radius: 50px;
+            font-weight: 600;
+            transition: var(--transition);
+            margin-right: 1rem;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+            box-shadow: 0 5px 15px rgba(79, 209, 197, 0.3);
+        }
+        
+        .btn-primary-custom:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(79, 209, 197, 0.4);
+            color: white;
+        }
+        
+        .btn-outline-custom {
+            background: transparent;
+            color: var(--color-text);
+            border: 2px solid var(--color-primary);
+            padding: 1rem 2.5rem;
+            border-radius: 50px;
+            font-weight: 600;
+            transition: var(--transition);
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+        }
+        
+        .btn-outline-custom:hover {
+            background: var(--color-primary);
+            color: var(--color-bg);
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(79, 209, 197, 0.3);
+        }
+        
+        /* About Section */
+        #about {
+            position: relative;
+        }
+        
+        .about-card {
+            background-color: rgba(18, 24, 43, 0.8);
+            border-radius: 20px;
+            padding: 3rem;
+            height: 100%;
+            transition: var(--transition);
+            border: 1px solid rgba(79, 209, 197, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        
+        .about-card:hover {
+            transform: translateY(-15px);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+            border-color: rgba(79, 209, 197, 0.3);
+        }
+        
+        .about-icon {
+            font-size: 3.5rem;
+            color: var(--color-primary);
+            margin-bottom: 2rem;
+        }
+        
+        .about-card h3 {
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        /* Events Page Styling */
+        #events-page {
+            padding-top: 8rem;
+        }
+        
+        .events-hero {
+            padding: 8rem 0 5rem;
+            text-align: center;
+            position: relative;
+        }
+        
+        .events-hero h1 {
+            font-size: 4.5rem;
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary), var(--color-accent));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 1.5rem;
+        }
+        
+        .category-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 4rem;
+            flex-wrap: wrap;
+        }
+        
+        .category-tab {
+            background: var(--color-card);
+            border: 2px solid transparent;
+            padding: 0.8rem 2rem;
+            border-radius: 50px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        
+        .category-tab:hover,
+        .category-tab.active {
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+            color: white;
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(79, 209, 197, 0.3);
+        }
+        
+        .events-section {
+            margin-bottom: 6rem;
+            display: none;
+        }
+        
+        .events-section.active {
+            display: block;
+            animation: fadeIn 0.8s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        
+        .section-header h2 {
+            font-size: 2.5rem;
+            margin-bottom: 0;
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        
+        .register-btn {
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+            color: white;
+            border: none;
+            padding: 0.8rem 2rem;
+            border-radius: 50px;
+            font-weight: 600;
+            transition: var(--transition);
+        }
+        
+        .register-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(79, 209, 197, 0.4);
+            color: white;
+        }
+        
+        .event-card {
+            background-color: rgba(18, 24, 43, 0.8);
+            border-radius: 20px;
+            overflow: hidden;
+            height: 100%;
+            transition: var(--transition);
+            border: 1px solid rgba(79, 209, 197, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        
+        .event-card:hover {
+            transform: translateY(-15px);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+            border-color: rgba(79, 209, 197, 0.3);
+        }
+        
+        .event-header {
+            padding: 2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .event-badge {
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+            color: white;
+            font-size: 0.9rem;
+            padding: 0.4rem 1rem;
+            border-radius: 50px;
+            font-weight: 600;
+        }
+        
+        .seat-badge {
+            font-size: 0.9rem;
+            padding: 0.4rem 1rem;
+            border-radius: 50px;
+            font-weight: 600;
+        }
+        
+        .limited {
+            background-color: rgba(220, 53, 69, 0.3);
+            color: #f8d7da;
+            border: 1px solid rgba(220, 53, 69, 0.5);
+        }
+        
+        .open {
+            background-color: rgba(40, 167, 69, 0.3);
+            color: #d4edda;
+            border: 1px solid rgba(40, 167, 69, 0.5);
+        }
+        
+        .event-body {
+            padding: 2rem;
+        }
+        
+        .event-fee {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: var(--color-primary);
+        }
+        
+        .event-category {
+            color: var(--color-muted);
+            font-size: 0.95rem;
+            margin-bottom: 0.8rem;
+        }
+        
+        /* Registration Section */
+        #registration {
+            position: relative;
+        }
+        
+        .registration-form {
+            background-color: rgba(18, 24, 43, 0.8);
+            border-radius: 20px;
+            padding: 3rem;
+            border: 1px solid rgba(79, 209, 197, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        
+        .form-control, .form-select {
+            background-color: rgba(11, 15, 26, 0.7);
+            border: 1px solid rgba(79, 209, 197, 0.2);
+            color: var(--color-text);
+            padding: 0.9rem 1.2rem;
+            border-radius: 12px;
+            font-family: 'Outfit', sans-serif;
+            transition: var(--transition);
+        }
+        
+        .form-control:focus, .form-select:focus {
+            background-color: rgba(11, 15, 26, 0.9);
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 0.25rem rgba(79, 209, 197, 0.25);
+            color: var(--color-text);
+        }
+        
+        .form-label {
+            color: var(--color-muted);
+            font-weight: 500;
+            margin-bottom: 0.7rem;
+        }
+        
+        .form-check-input:checked {
+            background-color: var(--color-primary);
+            border-color: var(--color-primary);
+        }
+        
+        .fee-display {
+            background-color: rgba(11, 15, 26, 0.7);
+            padding: 2rem;
+            border-radius: 15px;
+            border: 1px solid rgba(79, 209, 197, 0.2);
+            margin-top: 2.5rem;
+        }
+        
+        .total-fee {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--color-primary);
+        }
+        
+        /* Why Attend Section */
+        #why-attend {
+            position: relative;
+        }
+        
+        .highlight-card {
+            background-color: rgba(18, 24, 43, 0.8);
+            border-radius: 20px;
+            padding: 2.5rem;
+            text-align: center;
+            height: 100%;
+            transition: var(--transition);
+            border: 1px solid rgba(79, 209, 197, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        
+        .highlight-card:hover {
+            transform: translateY(-15px);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+            border-color: rgba(79, 209, 197, 0.3);
+        }
+        
+        .highlight-icon {
+            font-size: 3rem;
+            color: var(--color-primary);
+            margin-bottom: 1.8rem;
+        }
+        
+        /* Gallery Section */
+        #gallery {
+            position: relative;
+        }
+        
+        .gallery-item {
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+            margin-bottom: 1.5rem;
+            cursor: pointer;
+            height: 300px;
+        }
+        
+        .gallery-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: var(--transition);
+        }
+        
+        .gallery-item:hover .gallery-img {
+            transform: scale(1.1);
+        }
+        
+        .gallery-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to top, rgba(11, 15, 26, 0.9), transparent);
+            display: flex;
+            align-items: flex-end;
+            padding: 2rem;
+            opacity: 0;
+            transition: var(--transition);
+        }
+        
+        .gallery-item:hover .gallery-overlay {
+            opacity: 1;
+        }
+        
+        /* Contact Section */
+        #contact {
+            position: relative;
+        }
+        
+        .contact-card {
+            background-color: rgba(18, 24, 43, 0.8);
+            border-radius: 20px;
+            padding: 2.5rem;
+            height: 100%;
+            border: 1px solid rgba(79, 209, 197, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        
+        .contact-icon {
+            font-size: 1.8rem;
+            color: var(--color-primary);
+            margin-right: 1.2rem;
+        }
+        
+        .map-container {
+            border-radius: 15px;
+            overflow: hidden;
+            height: 350px;
+            margin-top: 2.5rem;
+            border: 1px solid rgba(79, 209, 197, 0.1);
+        }
+        
+        /* Footer */
+        footer {
+            padding: 4rem 0 2rem;
+            background-color: var(--color-card);
+            border-top: 1px solid rgba(79, 209, 197, 0.1);
+        }
+        
+        .social-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 45px;
+            height: 45px;
+            background-color: rgba(11, 15, 26, 0.7);
+            border-radius: 50%;
+            margin-right: 1rem;
+            transition: var(--transition);
+            font-size: 1.2rem;
+        }
+        
+        .social-icon:hover {
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+            transform: translateY(-5px);
+            color: white;
+        }
+        
+        /* Lightbox */
+        .lightbox {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(11, 15, 26, 0.98);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.4s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .lightbox.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .lightbox-content {
+            max-width: 90%;
+            max-height: 90%;
+        }
+        
+        .lightbox-img {
+            max-width: 100%;
+            max-height: 90vh;
+            border-radius: 10px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        
+        .lightbox-close {
+            position: absolute;
+            top: 2rem;
+            right: 2rem;
+            font-size: 2.5rem;
+            color: white;
+            cursor: pointer;
+            background: none;
+            border: none;
+            transition: var(--transition);
+        }
+        
+        .lightbox-close:hover {
+            color: var(--color-primary);
+            transform: rotate(90deg);
+        }
+        
+        /* Page Navigation */
+        .page-nav {
+            position: fixed;
+            right: 2rem;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 100;
+            display: none;
+        }
+        
+        .page-dot {
+            width: 12px;
+            height: 12px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            margin: 1rem 0;
+            cursor: pointer;
+            transition: var(--transition);
+            position: relative;
+        }
+        
+        .page-dot.active {
+            background-color: var(--color-primary);
+            transform: scale(1.3);
+        }
+        
+        .page-dot::after {
+            content: attr(data-title);
+            position: absolute;
+            right: 25px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: var(--color-card);
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            opacity: 0;
+            transition: var(--transition);
+            pointer-events: none;
+        }
+        
+        .page-dot:hover::after {
+            opacity: 1;
+        }
+        
+        /* Responsive */
+        @media (max-width: 992px) {
+            .hero-title {
+                font-size: 4rem;
+            }
+            
+            .events-hero h1 {
+                font-size: 3.5rem;
+            }
+            
+            .section-title h2 {
+                font-size: 2.5rem;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .hero-title {
+                font-size: 3rem;
+            }
+            
+            .hero-subtitle {
+                font-size: 1.4rem;
+            }
+            
+            .events-hero h1 {
+                font-size: 2.8rem;
+            }
+            
+            .section-title h2 {
+                font-size: 2.2rem;
+            }
+            
+            .page-nav {
+                display: none;
+            }
+            
+            .registration-form {
+                padding: 2rem;
+            }
+        }
+        
+        @media (max-width: 576px) {
+            .hero-title {
+                font-size: 2.5rem;
+            }
+            
+            .hero-subtitle {
+                font-size: 1.2rem;
+            }
+            
+            .events-hero h1 {
+                font-size: 2.2rem;
+            }
+            
+            .btn-primary-custom,
+            .btn-outline-custom {
+                display: block;
+                width: 100%;
+                margin-right: 0;
+            }
+        }
+    </style>
 </head>
 <body>
+    <!-- Navigation Dots -->
+    <div class="page-nav">
+        <div class="page-dot active" data-title="Home" data-target="hero"></div>
+        <div class="page-dot" data-title="About" data-target="about"></div>
+        <div class="page-dot" data-title="Events" data-target="events-page"></div>
+        <div class="page-dot" data-title="Register" data-target="registration"></div>
+        <div class="page-dot" data-title="Gallery" data-target="gallery"></div>
+        <div class="page-dot" data-title="Contact" data-target="contact"></div>
+    </div>
 
-<h1>THREADS'26 Backend Test</h1>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="#hero">THREADS'26</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <i class="bi bi-list"></i>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#hero">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#about">About</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#events-page">Events</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#registration">Register</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#gallery">Gallery</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#contact">Contact</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
 
-<!-- 1️⃣ Register Participant + Event Selection -->
-<h2>1️⃣ Register Participant</h2>
-<form id="registerForm">
-  <input type="text" name="full_name" placeholder="Full Name" required>
-  <input type="email" name="email" placeholder="Email" required>
-  <input type="text" name="phone" placeholder="Phone" required>
-  <input type="text" name="college_name" placeholder="College Name">
-  <input type="text" name="department" placeholder="Department">
-  <input type="text" name="year_of_study" placeholder="Year">
-  <input type="text" name="city" placeholder="City">
-  <input type="text" name="state" placeholder="State">
-  <label>Accommodation Required?</label>
-  <select name="accommodation_required">
-    <option value="false">No</option>
-    <option value="true">Yes</option>
-  </select>
-  <label>Event IDs (comma separated)</label>
-  <input type="text" name="event_ids" placeholder="e.g., 1,2,3">
-  <button type="submit">Register</button>
-</form>
-<pre id="registerResult"></pre>
+    <!-- Hero Section -->
+    <section id="hero" class="page-section">
+        <div class="hero-vanta-bg" id="vanta-hero"></div>
+        <div class="container">
+            <div class="hero-content text-center">
+                <h1 class="hero-title" data-aos="fade-up" data-aos-duration="1000">THREADS'26</h1>
+                <p class="hero-subtitle" data-aos="fade-up" data-aos-duration="1000" data-aos-delay="200">Weaving the Future of Technology</p>
+                <div class="hero-date" data-aos="fade-up" data-aos-duration="1000" data-aos-delay="400">
+                    <i class="bi bi-calendar-event me-2"></i>April 15-16, 2026
+                </div>
+                <div data-aos="fade-up" data-aos-duration="1000" data-aos-delay="600">
+                    <a href="#registration" class="btn btn-primary-custom">Register Now</a>
+                    <a href="#events-page" class="btn btn-outline-custom">Explore Events</a>
+                </div>
+            </div>
+        </div>
+    </section>
 
-<!-- 2️⃣ One-Time Payment -->
-<h2>2️⃣ One-Time Payment</h2>
-<form id="paymentForm">
-  <input type="number" name="participant_id" placeholder="Participant ID" required>
-  <label>Registration IDs (comma separated)</label>
-  <input type="text" name="registration_ids" placeholder="e.g., THREADS26EVENT0001,THREADS26WORKSHOP0002" required>
-  <select name="payment_method">
-    <option value="UPI">UPI</option>
-    <option value="Card">Card</option>
-    <option value="NetBanking">NetBanking</option>
-  </select>
-  <input type="number" step="0.01" name="amount" placeholder="Total Amount" required>
-  <button type="submit">Submit Payment</button>
-</form>
-<pre id="paymentResult"></pre>
+    <!-- About Section -->
+    <section id="about" class="page-section">
+        <div class="vanta-section-bg" id="vanta-about"></div>
+        <div class="container">
+            <div class="section-title" data-aos="fade-up">
+                <h2>About THREADS'26</h2>
+            </div>
+            <div class="row">
+                <div class="col-md-10 mx-auto text-center mb-5" data-aos="fade-up" data-aos-delay="200">
+                    <p class="lead fs-4">THREADS'26 is a premier national-level technical symposium that converges innovation, expertise, and creativity. Join us for two transformative days of cutting-edge workshops, competitive events, and networking with industry pioneers.</p>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-lg-6 mb-4" data-aos="fade-up" data-aos-delay="300">
+                    <div class="about-card">
+                        <div class="about-icon">
+                            <i class="bi bi-laptop"></i>
+                        </div>
+                        <h3>Day 1 – Intensive Workshops</h3>
+                        <p class="mb-4">Dive deep into specialized workshops conducted by industry leaders and academic experts. Gain hands-on experience with emerging technologies and earn industry-recognized certifications.</p>
+                        <ul class="list-unstyled">
+                            <li class="mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>Full-day immersive technical sessions</li>
+                            <li class="mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>Industry-standard certifications</li>
+                            <li class="mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>Practical projects & resource kits</li>
+                            <li><i class="bi bi-check-circle-fill text-primary me-2"></i>Direct mentorship from experts</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="col-lg-6 mb-4" data-aos="fade-up" data-aos-delay="500">
+                    <div class="about-card">
+                        <div class="about-icon">
+                            <i class="bi bi-trophy"></i>
+                        </div>
+                        <h3>Day 2 – Competitions & Networking</h3>
+                        <p class="mb-4">Participate in exhilarating technical and non-technical competitions, showcase your innovations, and connect with like-minded peers and industry professionals.</p>
+                        <ul class="list-unstyled">
+                            <li class="mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>National-level hackathons & coding challenges</li>
+                            <li class="mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>Research paper presentations & project expo</li>
+                            <li class="mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>Technical quizzes, gaming, and cultural events</li>
+                            <li><i class="bi bi-check-circle-fill text-primary me-2"></i>Networking with recruiters and startups</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 
-<!-- 3️⃣ Gallery Upload -->
-<h2>3️⃣ Upload Gallery Image</h2>
-<form id="galleryForm">
-  <input type="text" name="album_name" placeholder="Album Name" required>
-  <input type="text" name="image_url" placeholder="Image URL" required>
-  <button type="submit">Upload</button>
-</form>
-<pre id="galleryResult"></pre>
+    <!-- Events Page -->
+    <section id="events-page" class="page-section">
+        <div class="vanta-section-bg" id="vanta-events"></div>
+        <div class="container">
+            <div class="events-hero" data-aos="fade-up">
+                <h1>Events & Competitions</h1>
+                <p class="lead fs-4">Explore our diverse range of technical workshops, competitive events, and networking opportunities</p>
+                
+                <div class="category-tabs">
+                    <div class="category-tab active" data-category="workshops">Workshops</div>
+                    <div class="category-tab" data-category="technical">Technical Events</div>
+                    <div class="category-tab" data-category="non-technical">Non-Technical Events</div>
+                </div>
+            </div>
 
-<!-- 4️⃣ Fetch Events -->
-<h2>4️⃣ Fetch Events</h2>
+            <!-- Workshops Section -->
+            <div class="events-section active" id="workshops-section">
+                <div class="section-header" data-aos="fade-up">
+                    <h2>Technical Workshops</h2>
+                    <button class="register-btn" onclick="scrollToRegistration()">
+                        <i class="bi bi-calendar-check me-2"></i>Register for Workshops
+                    </button>
+                </div>
+                <div class="row" id="workshops-container">
+                    <!-- Workshops will be loaded from backend -->
+                </div>
+            </div>
 
+            <!-- Technical Events Section -->
+            <div class="events-section" id="technical-section">
+                <div class="section-header" data-aos="fade-up">
+                    <h2>Technical Competitions</h2>
+                    <button class="register-btn" onclick="scrollToRegistration()">
+                        <i class="bi bi-calendar-check me-2"></i>Register for Events
+                    </button>
+                </div>
+                <div class="row" id="technical-container">
+                    <!-- Technical events will be loaded from backend -->
+                </div>
+            </div>
 
-<button id="fetchEvents">Fetch Events</button>
-<pre id="eventsResult"></pre>
+            <!-- Non-Technical Events Section -->
+            <div class="events-section" id="non-technical-section">
+                <div class="section-header" data-aos="fade-up">
+                    <h2>Non-Technical Events</h2>
+                    <button class="register-btn" onclick="scrollToRegistration()">
+                        <i class="bi bi-calendar-check me-2"></i>Register for Events
+                    </button>
+                </div>
+                <div class="row" id="non-technical-container">
+                    <!-- Non-technical events will be loaded from backend -->
+                </div>
+            </div>
+        </div>
+    </section>
 
-<script>
-const API_URL = 'https://vimalraj45.github.io/threads26';
+    <!-- Registration Section -->
+    <section id="registration" class="page-section">
+        <div class="vanta-section-bg" id="vanta-registration"></div>
+        <div class="container">
+            <div class="section-title" data-aos="fade-up">
+                <h2>Register Now</h2>
+            </div>
+            <div class="row justify-content-center">
+                <div class="col-lg-10">
+                    <div class="registration-form" data-aos="fade-up" data-aos-delay="200">
+                        <form id="symposiumForm">
+                            <div class="row">
+                                <div class="col-md-6 mb-4">
+                                    <label for="name" class="form-label">Full Name</label>
+                                    <input type="text" class="form-control" id="name" required>
+                                </div>
+                                <div class="col-md-6 mb-4">
+                                    <label for="email" class="form-label">Email Address</label>
+                                    <input type="email" class="form-control" id="email" required>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-4">
+                                    <label for="mobile" class="form-label">Mobile Number</label>
+                                    <input type="tel" class="form-control" id="mobile" required>
+                                </div>
+                                <div class="col-md-6 mb-4">
+                                    <label for="college" class="form-label">College Name</label>
+                                    <input type="text" class="form-control" id="college" required>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-4">
+                                    <label for="department" class="form-label">Department</label>
+                                    <select class="form-select" id="department" required>
+                                        <option value="">Select Department</option>
+                                        <option value="CSE">Computer Science & Engineering</option>
+                                        <option value="IT">Information Technology</option>
+                                        <option value="ECE">Electronics & Communication</option>
+                                        <option value="EEE">Electrical & Electronics</option>
+                                        <option value="MECH">Mechanical Engineering</option>
+                                        <option value="OTHERS">Others</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-4">
+                                    <label for="year" class="form-label">Year of Study</label>
+                                    <select class="form-select" id="year" required>
+                                        <option value="">Select Year</option>
+                                        <option value="1">First Year</option>
+                                        <option value="2">Second Year</option>
+                                        <option value="3">Third Year</option>
+                                        <option value="4">Fourth Year</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-4">
+                                    <label for="city" class="form-label">City</label>
+                                    <input type="text" class="form-control" id="city" required>
+                                </div>
+                                <div class="col-md-6 mb-4">
+                                    <label for="state" class="form-label">State</label>
+                                    <input type="text" class="form-control" id="state" required>
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <label class="form-label">Accommodation Required?</label>
+                                    <select class="form-select" id="accommodation">
+                                        <option value="false">No</option>
+                                        <option value="true">Yes</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <hr class="my-5" style="border-color: rgba(255,255,255,0.1);">
+                            
+                            <div class="row">
+                                <div class="col-md-6 mb-4">
+                                    <label for="workshop" class="form-label">Day 1 Workshop (Select One)</label>
+                                    <select class="form-select" id="workshop">
+                                        <option value="0" selected>No Workshop</option>
+                                        <!-- Workshops will be populated from backend -->
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-4">
+                                    <label class="form-label">Day 2 Events (Select Multiple)</label>
+                                    <div id="events-checkbox-container">
+                                        <!-- Events will be populated from backend -->
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="fee-display" data-aos="fade-up">
+                                <div class="row align-items-center">
+                                    <div class="col-md-8">
+                                        <h4>Total Registration Fee</h4>
+                                        <p class="text-muted mb-0">Includes selected workshop and events</p>
+                                    </div>
+                                    <div class="col-md-4 text-end">
+                                        <div class="total-fee">₹ <span id="totalFee">0</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="text-center mt-5">
+                                <button type="button" class="btn btn-primary-custom btn-lg px-5 py-3" id="proceedBtn">
+                                    Proceed to Payment <i class="bi bi-arrow-right ms-2"></i>
+                                </button>
+                                <p class="text-muted mt-3">Secure payment gateway • Confirmation email sent instantly</p>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 
-// 1️⃣ Register Participant
-document.getElementById('registerForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const event_ids = form.event_ids.value.split(',').map(x => parseInt(x.trim()));
-  const body = {
-    full_name: form.full_name.value,
-    email: form.email.value,
-    phone: form.phone.value,
-    college_name: form.college_name.value,
-    department: form.department.value,
-    year_of_study: form.year_of_study.value,
-    city: form.city.value,
-    state: form.state.value,
-    accommodation_required: form.accommodation_required.value === 'true',
-    event_ids
-  };
-  const res = await fetch(`${API_URL}/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  const data = await res.json();
-  document.getElementById('registerResult').textContent = JSON.stringify(data, null, 2);
-});
+    <!-- Gallery Section -->
+    <section id="gallery" class="page-section">
+        <div class="vanta-section-bg" id="vanta-gallery"></div>
+        <div class="container">
+            <div class="section-title" data-aos="fade-up">
+                <h2>Gallery</h2>
+            </div>
+            <div class="row" id="gallery-container">
+                <!-- Gallery images will be loaded from backend -->
+            </div>
+            <!-- Gallery Upload Form (Admin only - hidden by default) -->
+            <div id="gallery-upload-form" style="display: none; margin-top: 50px;">
+                <h4 class="text-center mb-4">Upload Gallery Image</h4>
+                <div class="registration-form">
+                    <form id="galleryForm">
+                        <div class="row">
+                            <div class="col-md-6 mb-4">
+                                <label for="album_name" class="form-label">Album Name</label>
+                                <input type="text" class="form-control" id="album_name" required>
+                            </div>
+                            <div class="col-md-6 mb-4">
+                                <label for="image_url" class="form-label">Image URL</label>
+                                <input type="text" class="form-control" id="image_url" required>
+                            </div>
+                        </div>
+                        <div class="text-center">
+                            <button type="submit" class="btn btn-primary-custom">Upload Image</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </section>
 
-// 2️⃣ One-Time Payment
-document.getElementById('paymentForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const registration_ids = form.registration_ids.value.split(',').map(x => x.trim());
-  const body = {
-    participant_id: parseInt(form.participant_id.value),
-    payment_method: form.payment_method.value,
-    amount: parseFloat(form.amount.value),
-    registration_ids
-  };
-  const res = await fetch(`${API_URL}/payment`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  const data = await res.json();
-  document.getElementById('paymentResult').textContent = JSON.stringify(data, null, 2);
-});
+    <!-- Contact Section -->
+    <section id="contact" class="page-section">
+        <div class="vanta-section-bg" id="vanta-contact"></div>
+        <div class="container">
+            <div class="section-title" data-aos="fade-up">
+                <h2>Contact Us</h2>
+            </div>
+            <div class="row">
+                <div class="col-lg-6 mb-4" data-aos="fade-up" data-aos-delay="200">
+                    <div class="contact-card">
+                        <h4 class="mb-4">Student Coordinators</h4>
+                        <div class="d-flex align-items-center mb-4">
+                            <i class="contact-icon bi bi-person-circle"></i>
+                            <div>
+                                <h5 class="mb-1">Arjun Sharma</h5>
+                                <p class="text-muted mb-0">+91 98765 43210</p>
+                                <p class="text-muted mb-0">arjun.sharma@threads26.edu</p>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center mb-4">
+                            <i class="contact-icon bi bi-person-circle"></i>
+                            <div>
+                                <h5 class="mb-1">Priya Patel</h5>
+                                <p class="text-muted mb-0">+91 87654 32109</p>
+                                <p class="text-muted mb-0">priya.patel@threads26.edu</p>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <i class="contact-icon bi bi-envelope"></i>
+                            <div>
+                                <h5 class="mb-1">General Enquiries</h5>
+                                <p class="text-muted mb-0">info@threads26.edu</p>
+                                <p class="text-muted mb-0">registration@threads26.edu</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6 mb-4" data-aos="fade-up" data-aos-delay="400">
+                    <div class="contact-card">
+                        <h4 class="mb-4">Faculty Coordinators</h4>
+                        <div class="d-flex align-items-center mb-4">
+                            <i class="contact-icon bi bi-person-circle"></i>
+                            <div>
+                                <h5 class="mb-1">Dr. Rajesh Kumar</h5>
+                                <p class="text-muted mb-0">Professor, CSE Department</p>
+                                <p class="text-muted mb-0">+91 76543 21098</p>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center mb-4">
+                            <i class="contact-icon bi bi-person-circle"></i>
+                            <div>
+                                <h5 class="mb-1">Dr. Anjali Mehta</h5>
+                                <p class="text-muted mb-0">Professor, IT Department</p>
+                                <p class="text-muted mb-0">+91 65432 10987</p>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <i class="contact-icon bi bi-geo-alt"></i>
+                            <div>
+                                <h5 class="mb-1">Venue</h5>
+                                <p class="text-muted mb-0">University Main Campus, Tech Block Auditorium</p>
+                                <p class="text-muted mb-0">Chennai - 600025, Tamil Nadu, India</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="map-container" data-aos="fade-up" data-aos-delay="600">
+                <iframe 
+                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3887.269179614786!2d80.23366197571763!3d13.010344987299365!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3a52679f30f10d2d%3A0x1a3566f2d3c096c6!2sAnna%20University%2C%20Guindy%2C%20Chennai%2C%20Tamil%20Nadu%20600025!5e0!3m2!1sen!2sin!4v1683899335396!5m2!1sen!2sin" 
+                    width="100%" 
+                    height="100%" 
+                    style="border:0;" 
+                    allowfullscreen="" 
+                    loading="lazy" 
+                    referrerpolicy="no-referrer-when-downgrade">
+                </iframe>
+            </div>
+        </div>
+    </section>
 
-// 3️⃣ Gallery Upload
-document.getElementById('galleryForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const body = {
-    album_name: form.album_name.value,
-    image_url: form.image_url.value
-  };
-  const res = await fetch(`${API_URL}/gallery`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  const data = await res.json();
-  document.getElementById('galleryResult').textContent = JSON.stringify(data, null, 2);
-});
+    <!-- Footer -->
+    <footer data-aos="fade-up">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-4 text-center text-md-start mb-4 mb-md-0">
+                    <h3 class="navbar-brand mb-2">THREADS'26</h3>
+                    <p class="text-muted">Weaving the Future of Technology</p>
+                    <p class="text-muted mt-3">April 15-16, 2026</p>
+                </div>
+                <div class="col-md-4 text-center mb-4 mb-md-0">
+                    <div class="social-icons">
+                        <a href="#" class="social-icon">
+                            <i class="bi bi-facebook"></i>
+                        </a>
+                        <a href="#" class="social-icon">
+                            <i class="bi bi-twitter-x"></i>
+                        </a>
+                        <a href="#" class="social-icon">
+                            <i class="bi bi-instagram"></i>
+                        </a>
+                        <a href="#" class="social-icon">
+                            <i class="bi bi-linkedin"></i>
+                        </a>
+                        <a href="#" class="social-icon">
+                            <i class="bi bi-youtube"></i>
+                        </a>
+                    </div>
+                </div>
+                <div class="col-md-4 text-center text-md-end">
+                    <p class="text-muted mb-2">&copy; 2026 THREADS'26. All Rights Reserved.</p>
+                    <p class="text-muted">Designed with <i class="bi bi-heart-fill text-danger"></i> for the tech community</p>
+                    <p class="text-muted mt-3"><a href="#" class="text-decoration-underline">Privacy Policy</a> • <a href="#" class="text-decoration-underline">Terms of Service</a></p>
+                </div>
+            </div>
+        </div>
+    </footer>
 
-// 4️⃣ Fetch Events
-document.getElementById('fetchEvents').addEventListener('click', async () => {
-  const res = await fetch(`${API_URL}/events`);
-  const data = await res.json();
-  document.getElementById('eventsResult').textContent = JSON.stringify(data, null, 2);
-});
-</script>
+    <!-- Lightbox -->
+    <div class="lightbox" id="lightbox">
+        <button class="lightbox-close" id="lightboxClose">
+            <i class="bi bi-x-lg"></i>
+        </button>
+        <div class="lightbox-content">
+            <img src="" class="lightbox-img" id="lightboxImg" alt="">
+        </div>
+    </div>
 
+    <!-- Payment Modal -->
+    <div class="modal fade" id="paymentModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="background-color: var(--color-card); color: var(--color-text);">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title">Complete Payment</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="paymentForm">
+                        <div class="mb-3">
+                            <label for="participant_id" class="form-label">Participant ID</label>
+                            <input type="text" class="form-control" id="participant_id" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label for="registration_ids" class="form-label">Registration IDs</label>
+                            <input type="text" class="form-control" id="registration_ids" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label for="payment_method" class="form-label">Payment Method</label>
+                            <select class="form-select" id="payment_method" required>
+                                <option value="UPI">UPI</option>
+                                <option value="Card">Card</option>
+                                <option value="NetBanking">NetBanking</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="payment_amount" class="form-label">Amount (₹)</label>
+                            <input type="number" class="form-control" id="payment_amount" step="0.01" required>
+                        </div>
+                        <div class="text-center mt-4">
+                            <button type="submit" class="btn btn-primary-custom">Submit Payment</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- AOS (Animate On Scroll) -->
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <!-- Main JavaScript -->
+    <script>
+        // API Configuration
+        const API_URL = 'https://threads26-2.onrender.com';
+        let currentParticipantId = null;
+        let currentRegistrationIds = [];
+        let eventsData = [];
+        let selectedEvents = [];
+
+        // Initialize AOS
+        AOS.init({
+            duration: 1000,
+            offset: 100,
+            once: true,
+            easing: 'ease-out-cubic'
+        });
+        
+        // Vanta.js Backgrounds
+        let vantaEffects = {};
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize Vanta.js backgrounds
+            initializeVantaEffects();
+            
+            // Load data from backend
+            loadEvents();
+            loadGallery();
+            
+            // Show page navigation on scroll
+            showPageNav();
+        });
+        
+        function initializeVantaEffects() {
+            // Hero section - NET effect
+            vantaEffects.hero = VANTA.NET({
+                el: "#vanta-hero",
+                mouseControls: true,
+                touchControls: true,
+                gyroControls: false,
+                minHeight: 200.00,
+                minWidth: 200.00,
+                scale: 1.00,
+                scaleMobile: 1.00,
+                color: 0x4fd1c5,
+                backgroundColor: 0xb0f1a,
+                points: 15.00,
+                maxDistance: 25.00,
+                spacing: 20.00
+            });
+            
+            // About section - DOTS effect
+            vantaEffects.about = VANTA.DOTS({
+                el: "#vanta-about",
+                mouseControls: true,
+                touchControls: true,
+                gyroControls: false,
+                minHeight: 200.00,
+                minWidth: 200.00,
+                scale: 1.00,
+                scaleMobile: 1.00,
+                color: 0x667eea,
+                color2: 0x4fd1c5,
+                backgroundColor: 0x0b0f1a,
+                size: 3.00,
+                spacing: 40.00
+            });
+            
+            // Events section - WAVES effect
+            vantaEffects.events = VANTA.WAVES({
+                el: "#vanta-events",
+                mouseControls: true,
+                touchControls: true,
+                gyroControls: false,
+                minHeight: 200.00,
+                minWidth: 200.00,
+                scale: 1.00,
+                scaleMobile: 1.00,
+                color: 0x4fd1c5,
+                shininess: 50.00,
+                waveHeight: 15.00,
+                waveSpeed: 0.80,
+                zoom: 0.85
+            });
+            
+            // Registration section - NET effect with different color
+            vantaEffects.registration = VANTA.NET({
+                el: "#vanta-registration",
+                mouseControls: true,
+                touchControls: true,
+                gyroControls: false,
+                minHeight: 200.00,
+                minWidth: 200.00,
+                scale: 1.00,
+                scaleMobile: 1.00,
+                color: 0x9f7aea,
+                backgroundColor: 0x0b0f1a,
+                points: 12.00,
+                maxDistance: 20.00,
+                spacing: 18.00
+            });
+            
+            // Gallery section - WAVES effect
+            vantaEffects.gallery = VANTA.WAVES({
+                el: "#vanta-gallery",
+                mouseControls: true,
+                touchControls: true,
+                gyroControls: false,
+                minHeight: 200.00,
+                minWidth: 200.00,
+                scale: 1.00,
+                scaleMobile: 1.00,
+                color: 0x667eea,
+                shininess: 40.00,
+                waveHeight: 12.00,
+                waveSpeed: 0.70,
+                zoom: 0.90
+            });
+            
+            // Contact section - NET effect
+            vantaEffects.contact = VANTA.NET({
+                el: "#vanta-contact",
+                mouseControls: true,
+                touchControls: true,
+                gyroControls: false,
+                minHeight: 200.00,
+                minWidth: 200.00,
+                scale: 1.00,
+                scaleMobile: 1.00,
+                color: 0x667eea,
+                backgroundColor: 0x0b0f1a,
+                points: 10.00,
+                maxDistance: 22.00,
+                spacing: 25.00
+            });
+        }
+        
+        // Navbar scroll effect
+        window.addEventListener('scroll', function() {
+            const navbar = document.querySelector('.navbar');
+            if (window.scrollY > 100) {
+                navbar.style.backgroundColor = 'rgba(11, 15, 26, 0.99)';
+                navbar.style.padding = '0.8rem 0';
+                navbar.style.backdropFilter = 'blur(25px)';
+            } else {
+                navbar.style.backgroundColor = 'rgba(11, 15, 26, 0.98)';
+                navbar.style.padding = '1.2rem 0';
+                navbar.style.backdropFilter = 'blur(20px)';
+            }
+            
+            // Update page navigation dots
+            updatePageNav();
+        });
+        
+        // Smooth scrolling for navbar links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                const targetId = this.getAttribute('href');
+                if (targetId === '#') return;
+                
+                const targetElement = document.querySelector(targetId);
+                if (targetElement) {
+                    window.scrollTo({
+                        top: targetElement.offsetTop - 80,
+                        behavior: 'smooth'
+                    });
+                    
+                    // Update active nav link
+                    document.querySelectorAll('.nav-link').forEach(link => {
+                        link.classList.remove('active');
+                    });
+                    this.classList.add('active');
+                }
+            });
+        });
+        
+        // Page Navigation Dots
+        function showPageNav() {
+            const pageNav = document.querySelector('.page-nav');
+            if (window.innerWidth > 768) {
+                pageNav.style.display = 'block';
+            }
+        }
+        
+        function updatePageNav() {
+            const sections = document.querySelectorAll('.page-section');
+            const pageDots = document.querySelectorAll('.page-dot');
+            
+            let currentSection = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop - 150;
+                const sectionBottom = sectionTop + section.offsetHeight;
+                
+                if (window.scrollY >= sectionTop && window.scrollY < sectionBottom) {
+                    currentSection = section.id;
+                }
+            });
+            
+            pageDots.forEach(dot => {
+                dot.classList.remove('active');
+                if (dot.getAttribute('data-target') === currentSection) {
+                    dot.classList.add('active');
+                }
+            });
+        }
+        
+        // Page dot navigation
+        document.querySelectorAll('.page-dot').forEach(dot => {
+            dot.addEventListener('click', function() {
+                const targetId = this.getAttribute('data-target');
+                const targetElement = document.getElementById(targetId);
+                
+                if (targetElement) {
+                    window.scrollTo({
+                        top: targetElement.offsetTop - 80,
+                        behavior: 'smooth'
+                    });
+                    
+                    // Update active nav link
+                    document.querySelectorAll('.nav-link').forEach(link => {
+                        link.classList.remove('active');
+                        if (link.getAttribute('href') === `#${targetId}`) {
+                            link.classList.add('active');
+                        }
+                    });
+                }
+            });
+        });
+        
+        // Events Category Tabs
+        const categoryTabs = document.querySelectorAll('.category-tab');
+        const eventSections = document.querySelectorAll('.events-section');
+        
+        categoryTabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                const category = this.getAttribute('data-category');
+                
+                // Update active tab
+                categoryTabs.forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Show corresponding section
+                eventSections.forEach(section => {
+                    section.classList.remove('active');
+                    if (section.id === `${category}-section`) {
+                        section.classList.add('active');
+                    }
+                });
+                
+                // SweetAlert notification
+                Swal.fire({
+                    title: `${category.charAt(0).toUpperCase() + category.slice(1)} Events`,
+                    text: `Now viewing ${category} events. Click on any event to see details.`,
+                    icon: 'info',
+                    timer: 2000,
+                    showConfirmButton: false,
+                    background: 'var(--color-card)',
+                    color: 'var(--color-text)'
+                });
+            });
+        });
+      async function loadEvents() {
+    try {
+        const response = await fetch(`${API_URL}/events`);
+        const data = await response.json();
+        
+        // Check if the response has the expected structure
+        if (data.success && Array.isArray(data.events)) {
+            // Transform the data to match expected format
+            eventsData = data.events.map(event => ({
+                id: event.event_id,
+                name: event.event_name,
+                // Map event_type to category
+                category: mapEventTypeToCategory(event.event_type),
+                type: event.event_type,
+                description: event.description,
+                fee: event.fee || 0, // Use actual fee or default to 0
+                seats_available: event.seats_available || 50, // Default value
+                date: event.date || 'TBA',
+                duration: event.duration || 'TBA',
+                venue: event.venue || 'Main Auditorium',
+                instructor: event.instructor || 'Expert Faculty'
+            }));
+            
+            console.log('Transformed events data:', eventsData);
+        } else {
+            throw new Error('Invalid data format from server');
+        }
+        
+        // Populate events in UI
+        populateEventsUI();
+        populateRegistrationForm();
+    } catch (error) {
+        console.error('Error loading events:', error);
+        Swal.fire({
+            title: 'Error',
+            text: 'Failed to load events. Please try again later.',
+            icon: 'error',
+            background: 'var(--color-card)',
+            color: 'var(--color-text)'
+        });
+    }
+}
+
+function mapEventTypeToCategory(eventType) {
+    // Map your backend event_type to frontend category
+    const typeMap = {
+        'Workshop': 'workshop',
+        'Technical': 'technical',
+        'Non-Technical': 'non-technical'
+    };
+    return typeMap[eventType] || 'non-technical';
+}
+
+function populateEventsUI() {
+    const workshopsContainer = document.getElementById('workshops-container');
+    const technicalContainer = document.getElementById('technical-container');
+    const nonTechnicalContainer = document.getElementById('non-technical-container');
+    
+    // Clear existing content
+    workshopsContainer.innerHTML = '';
+    technicalContainer.innerHTML = '';
+    nonTechnicalContainer.innerHTML = '';
+    
+    // Check if eventsData exists and is an array
+    if (!eventsData || !Array.isArray(eventsData)) {
+        console.error('eventsData is not an array:', eventsData);
+        return;
+    }
+    
+    eventsData.forEach(event => {
+        const eventCard = createEventCard(event);
+        
+        // Categorize events based on mapped category
+        if (event.category === 'workshop') {
+            workshopsContainer.innerHTML += eventCard;
+        } else if (event.category === 'technical') {
+            technicalContainer.innerHTML += eventCard;
+        } else if (event.category === 'non-technical') {
+            nonTechnicalContainer.innerHTML += eventCard;
+        }
+    });
+}
+
+function createEventCard(event) {
+    // Make sure event has all required properties
+    const safeEvent = {
+        id: event.id || 0,
+        name: event.name || 'Unnamed Event',
+        category: event.category || 'non-technical',
+        type: event.type || 'General',
+        description: event.description || 'No description available.',
+        fee: event.fee || 0,
+        seats_available: event.seats_available || 50
+    };
+    
+    // Safely get first character of category
+    const categoryDisplay = safeEvent.category.charAt(0).toUpperCase() + safeEvent.category.slice(1);
+    
+    return `
+        <div class="col-lg-4 col-md-6 mb-4" data-aos="fade-up" data-aos-delay="200">
+            <div class="event-card">
+                <div class="event-header">
+                    <span class="event-badge">${categoryDisplay}</span>
+                    <span class="seat-badge ${safeEvent.seats_available < 10 ? 'limited' : 'open'}">
+                        ${safeEvent.seats_available < 10 ? 'Limited Seats' : 'Open Registration'}
+                    </span>
+                </div>
+                <div class="event-body">
+                    <div class="event-category">
+                        <i class="bi ${getEventIcon(safeEvent.category)} me-2"></i> ${safeEvent.type}
+                    </div>
+                    <h4>${safeEvent.name}</h4>
+                    <p>${safeEvent.description}</p>
+                    <div class="d-flex justify-content-between align-items-center mt-4">
+                        <div class="event-fee">₹ ${safeEvent.fee}</div>
+                        <button class="btn btn-outline-custom btn-sm" onclick="showEventDetails(${safeEvent.id})">
+                            View Details
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+        
+        function getEventIcon(category) {
+            const icons = {
+                'workshop': 'bi-laptop',
+                'technical': 'bi-cpu',
+                'non-technical': 'bi-people'
+            };
+            return icons[category] || 'bi-calendar-event';
+        }
+        
+        function populateRegistrationForm() {
+            const workshopSelect = document.getElementById('workshop');
+            const eventsContainer = document.getElementById('events-checkbox-container');
+            
+            // Clear existing options
+            workshopSelect.innerHTML = '<option value="0" selected>No Workshop</option>';
+            eventsContainer.innerHTML = '';
+            
+            eventsData.forEach(event => {
+                // Add to workshop dropdown if it's a workshop
+                if (event.category === 'workshop') {
+                    const option = document.createElement('option');
+                    option.value = event.id;
+                    option.textContent = `${event.name} - ₹${event.fee}`;
+                    workshopSelect.appendChild(option);
+                }
+                
+                // Add to events checklist if it's not a workshop
+                if (event.category !== 'workshop') {
+                    const checkboxDiv = document.createElement('div');
+                    checkboxDiv.className = 'form-check mb-3';
+                    checkboxDiv.innerHTML = `
+                        <input class="form-check-input event-checkbox" type="checkbox" 
+                               value="${event.id}" data-fee="${event.fee}" id="event-${event.id}">
+                        <label class="form-check-label" for="event-${event.id}">
+                            ${event.name} - ₹${event.fee}
+                        </label>
+                    `;
+                    eventsContainer.appendChild(checkboxDiv);
+                }
+            });
+            
+            // Add event listeners for fee calculation
+            workshopSelect.addEventListener('change', calculateTotalFee);
+            document.querySelectorAll('.event-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', calculateTotalFee);
+            });
+        }
+        
+        // Show Event Details
+        async function showEventDetails(eventId) {
+            const event = eventsData.find(e => e.id === eventId);
+            
+            if (!event) return;
+            
+            Swal.fire({
+                title: event.name,
+                html: `
+                    <div class="text-start">
+                        <p class="mb-3">${event.description}</p>
+                        <h6 class="mt-4 mb-2">Event Details:</h6>
+                        <ul class="list-unstyled">
+                            <li class="mb-2"><i class="bi bi-calendar text-primary me-2"></i>Date: ${event.date || 'TBA'}</li>
+                            <li class="mb-2"><i class="bi bi-clock text-primary me-2"></i>Duration: ${event.duration || 'TBA'}</li>
+                            <li class="mb-2"><i class="bi bi-people text-primary me-2"></i>Seats Available: ${event.seats_available}</li>
+                            <li class="mb-2"><i class="bi bi-geo-alt text-primary me-2"></i>Venue: ${event.venue || 'Main Auditorium'}</li>
+                            <li><i class="bi bi-person text-primary me-2"></i>Instructor: ${event.instructor || 'Expert Faculty'}</li>
+                        </ul>
+                        <div class="row mt-4">
+                            <div class="col-6">
+                                <h6>Registration Fee:</h6>
+                                <p class="fs-5 text-primary fw-bold">₹${event.fee}</p>
+                            </div>
+                            <div class="col-6">
+                                <h6>Seats Availability:</h6>
+                                <p class="fs-5 ${event.seats_available < 10 ? 'text-warning' : 'text-success'} fw-bold">
+                                    ${event.seats_available < 10 ? 'Limited' : 'Open'}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `,
+                icon: 'info',
+                showCancelButton: true,
+                confirmButtonText: 'Register Now',
+                cancelButtonText: 'Close',
+                background: 'var(--color-card)',
+                color: 'var(--color-text)',
+                confirmButtonColor: 'var(--color-primary)',
+                cancelButtonColor: 'var(--color-muted)'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    scrollToRegistration();
+                    
+                    // Pre-select the event in registration form
+                    if (event.category === 'workshop') {
+                        document.getElementById('workshop').value = event.id;
+                    } else {
+                        const checkbox = document.getElementById(`event-${event.id}`);
+                        if (checkbox) checkbox.checked = true;
+                    }
+                    
+                    calculateTotalFee();
+                    
+                    Swal.fire({
+                        title: 'Event Selected',
+                        text: `${event.name} has been added to your registration.`,
+                        icon: 'success',
+                        timer: 1500,
+                        showConfirmButton: false,
+                        background: 'var(--color-card)',
+                        color: 'var(--color-text)'
+                    });
+                }
+            });
+        }
+        
+        // Fee Calculation
+        function calculateTotalFee() {
+            let total = 0;
+            
+            // Workshop fee
+            const workshopSelect = document.getElementById('workshop');
+            const selectedWorkshop = eventsData.find(e => e.id === parseInt(workshopSelect.value));
+            if (selectedWorkshop) {
+                total += selectedWorkshop.fee;
+            }
+            
+            // Event fees
+            document.querySelectorAll('.event-checkbox:checked').forEach(checkbox => {
+                const eventId = parseInt(checkbox.value);
+                const event = eventsData.find(e => e.id === eventId);
+                if (event) {
+                    total += event.fee;
+                }
+            });
+            
+            document.getElementById('totalFee').textContent = total;
+        }
+        
+        // Load gallery from backend
+        async function loadGallery() {
+            try {
+                const response = await fetch(`${API_URL}/gallery`);
+                const galleryData = await response.json();
+                populateGallery(galleryData);
+            } catch (error) {
+                console.error('Error loading gallery:', error);
+                // Load default gallery images
+                loadDefaultGallery();
+            }
+        }
+        
+        function populateGallery(galleryData) {
+            const galleryContainer = document.getElementById('gallery-container');
+            galleryContainer.innerHTML = '';
+            
+            galleryData.forEach((image, index) => {
+                const galleryItem = `
+                    <div class="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="${(index % 3 + 1) * 200}">
+                        <div class="gallery-item">
+                            <img src="${image.image_url}" class="gallery-img" alt="${image.album_name}">
+                            <div class="gallery-overlay">
+                                <h5 class="text-white">${image.album_name}</h5>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                galleryContainer.innerHTML += galleryItem;
+            });
+            
+            // Add click event to gallery items
+            document.querySelectorAll('.gallery-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    const imgSrc = this.querySelector('img').src;
+                    const lightboxImg = document.getElementById('lightboxImg');
+                    const lightbox = document.getElementById('lightbox');
+                    
+                    lightboxImg.src = imgSrc;
+                    lightbox.classList.add('active');
+                    document.body.style.overflow = 'hidden';
+                });
+            });
+        }
+        
+        function loadDefaultGallery() {
+            const defaultImages = [
+                'https://images.unsplash.com/photo-1540575467063-178a50c2df87?ixlib=rb-4.0.3&auto=format&fit=crop&w=1170&q=80',
+                'https://images.unsplash.com/photo-1535223289827-42f1e9919769?ixlib=rb-4.0.3&auto=format&fit=crop&w=1170&q=80',
+                'https://images.unsplash.com/photo-1573164713714-d95e436ab4d6?ixlib=rb-4.0.3&auto=format&fit=crop&w=1169&q=80',
+                'https://images.unsplash.com/photo-1515187029135-18ee286d815b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1170&q=80',
+                'https://images.unsplash.com/photo-1542744095-fcf48d80b0fd?ixlib=rb-4.0.3&auto=format&fit=crop&w=1176&q=80',
+                'https://images.unsplash.com/photo-1587825140708-dfaf72ae4b04?ixlib=rb-4.0.3&auto=format&fit=crop&w=1170&q=80'
+            ];
+            
+            const galleryContainer = document.getElementById('gallery-container');
+            const captions = ['Workshop Session', '24-Hour Hackathon', 'Guest Lecture', 'Project Expo', 'Cultural Event', 'Prize Distribution'];
+            
+            defaultImages.forEach((src, index) => {
+                const galleryItem = `
+                    <div class="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="${(index % 3 + 1) * 200}">
+                        <div class="gallery-item">
+                            <img src="${src}" class="gallery-img" alt="${captions[index]}">
+                            <div class="gallery-overlay">
+                                <h5 class="text-white">${captions[index]}</h5>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                galleryContainer.innerHTML += galleryItem;
+            });
+            
+            // Add click event to gallery items
+            document.querySelectorAll('.gallery-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    const imgSrc = this.querySelector('img').src;
+                    const lightboxImg = document.getElementById('lightboxImg');
+                    const lightbox = document.getElementById('lightbox');
+                    
+                    lightboxImg.src = imgSrc;
+                    lightbox.classList.add('active');
+                    document.body.style.overflow = 'hidden';
+                });
+            });
+        }
+        
+        // Lightbox functionality
+        const lightboxClose = document.getElementById('lightboxClose');
+        const lightbox = document.getElementById('lightbox');
+        
+        lightboxClose.addEventListener('click', function() {
+            lightbox.classList.remove('active');
+            document.body.style.overflow = 'auto';
+        });
+        
+        lightbox.addEventListener('click', function(e) {
+            if (e.target === lightbox) {
+                lightbox.classList.remove('active');
+                document.body.style.overflow = 'auto';
+            }
+        });
+        
+        // Proceed to Registration (Backend Integration)
+        document.getElementById('proceedBtn').addEventListener('click', async function() {
+            const form = document.getElementById('symposiumForm');
+            const totalFee = document.getElementById('totalFee').textContent;
+            
+            if (form.checkValidity()) {
+                // Gather selected events
+                selectedEvents = [];
+                const workshopSelect = document.getElementById('workshop');
+                if (workshopSelect.value !== '0') {
+                    selectedEvents.push(parseInt(workshopSelect.value));
+                }
+                
+                document.querySelectorAll('.event-checkbox:checked').forEach(checkbox => {
+                    selectedEvents.push(parseInt(checkbox.value));
+                });
+                
+                if (selectedEvents.length === 0) {
+                    Swal.fire({
+                        title: 'No Events Selected',
+                        text: 'Please select at least one workshop or event to proceed.',
+                        icon: 'warning',
+                        background: 'var(--color-card)',
+                        color: 'var(--color-text)'
+                    });
+                    return;
+                }
+                
+                // Prepare registration data
+                const registrationData = {
+                    full_name: document.getElementById('name').value,
+                    email: document.getElementById('email').value,
+                    phone: document.getElementById('mobile').value,
+                    college_name: document.getElementById('college').value,
+                    department: document.getElementById('department').value,
+                    year_of_study: document.getElementById('year').value,
+                    city: document.getElementById('city').value,
+                    state: document.getElementById('state').value,
+                    accommodation_required: document.getElementById('accommodation').value === 'true',
+                    event_ids: selectedEvents
+                };
+                
+                try {
+                    // Register participant
+                    Swal.fire({
+                        title: 'Processing Registration',
+                        text: 'Please wait while we register you...',
+                        icon: 'info',
+                        showConfirmButton: false,
+                        allowOutsideClick: false,
+                        background: 'var(--color-card)',
+                        color: 'var(--color-text)',
+                        didOpen: () => {
+                            Swal.showLoading();
+                        }
+                    });
+                    
+                    const registerResponse = await fetch(`${API_URL}/register`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(registrationData)
+                    });
+                    
+                    const registerResult = await registerResponse.json();
+                    
+                    if (registerResult.success) {
+                        currentParticipantId = registerResult.participant_id;
+                        currentRegistrationIds = registerResult.registration_ids || [];
+                        
+                        Swal.close();
+                        
+                        // Show payment modal
+                        document.getElementById('participant_id').value = currentParticipantId;
+                        document.getElementById('registration_ids').value = currentRegistrationIds.join(', ');
+                        document.getElementById('payment_amount').value = totalFee;
+                        
+                        const paymentModal = new bootstrap.Modal(document.getElementById('paymentModal'));
+                        paymentModal.show();
+                    } else {
+                        throw new Error(registerResult.message || 'Registration failed');
+                    }
+                } catch (error) {
+                    Swal.fire({
+                        title: 'Registration Failed',
+                        text: error.message,
+                        icon: 'error',
+                        background: 'var(--color-card)',
+                        color: 'var(--color-text)'
+                    });
+                }
+            } else {
+                form.reportValidity();
+                Swal.fire({
+                    title: 'Incomplete Form',
+                    text: 'Please fill in all required fields before proceeding.',
+                    icon: 'warning',
+                    timer: 2000,
+                    showConfirmButton: false,
+                    background: 'var(--color-card)',
+                    color: 'var(--color-text)'
+                });
+            }
+        });
+        
+        // Handle payment form submission
+        document.getElementById('paymentForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const paymentData = {
+                participant_id: parseInt(document.getElementById('participant_id').value),
+                payment_method: document.getElementById('payment_method').value,
+                amount: parseFloat(document.getElementById('payment_amount').value),
+                registration_ids: document.getElementById('registration_ids').value.split(',').map(id => id.trim())
+            };
+            
+            try {
+                Swal.fire({
+                    title: 'Processing Payment',
+                    text: 'Please wait while we process your payment...',
+                    icon: 'info',
+                    showConfirmButton: false,
+                    allowOutsideClick: false,
+                    background: 'var(--color-card)',
+                    color: 'var(--color-text)',
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
+                
+                const paymentResponse = await fetch(`${API_URL}/payment`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(paymentData)
+                });
+                
+                const paymentResult = await paymentResponse.json();
+                
+                if (paymentResult.success) {
+                    // Close payment modal
+                    bootstrap.Modal.getInstance(document.getElementById('paymentModal')).hide();
+                    
+                    // Show success message
+                    Swal.fire({
+                        title: 'Registration Successful!',
+                        html: `
+                            <div class="text-center">
+                                <i class="bi bi-check-circle-fill text-success display-4 mb-3"></i>
+                                <p class="mb-3">Your registration for THREADS'26 has been confirmed!</p>
+                                <div class="alert alert-dark mb-3">
+                                    <strong>Registration ID:</strong> ${paymentResult.transaction_id || `THREADS-${Math.floor(100000 + Math.random() * 900000)}`}
+                                </div>
+                                <p class="text-muted small">A confirmation email has been sent to ${document.getElementById('email').value}</p>
+                            </div>
+                        `,
+                        icon: 'success',
+                        confirmButtonText: 'Download Receipt',
+                        background: 'var(--color-card)',
+                        color: 'var(--color-text)',
+                        confirmButtonColor: 'var(--color-primary)'
+                    }).then(() => {
+                        // Reset form
+                        document.getElementById('symposiumForm').reset();
+                        calculateTotalFee();
+                        selectedEvents = [];
+                        currentParticipantId = null;
+                        currentRegistrationIds = [];
+                        
+                        Swal.fire({
+                            title: 'Receipt Downloaded',
+                            text: 'Your receipt has been downloaded. Check your email for details.',
+                            icon: 'success',
+                            timer: 2000,
+                            showConfirmButton: false,
+                            background: 'var(--color-card)',
+                            color: 'var(--color-text)'
+                        });
+                    });
+                } else {
+                    throw new Error(paymentResult.message || 'Payment failed');
+                }
+            } catch (error) {
+                Swal.fire({
+                    title: 'Payment Failed',
+                    text: error.message,
+                    icon: 'error',
+                    background: 'var(--color-card)',
+                    color: 'var(--color-text)'
+                });
+            }
+        });
+        
+        // Gallery upload form (for admin use)
+        document.getElementById('galleryForm')?.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const galleryData = {
+                album_name: document.getElementById('album_name').value,
+                image_url: document.getElementById('image_url').value
+            };
+            
+            try {
+                const response = await fetch(`${API_URL}/gallery`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(galleryData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    Swal.fire({
+                        title: 'Image Uploaded',
+                        text: 'Gallery image has been uploaded successfully.',
+                        icon: 'success',
+                        background: 'var(--color-card)',
+                        color: 'var(--color-text)'
+                    });
+                    
+                    // Reset form
+                    document.getElementById('galleryForm').reset();
+                    
+                    // Reload gallery
+                    loadGallery();
+                } else {
+                    throw new Error(result.message || 'Upload failed');
+                }
+            } catch (error) {
+                Swal.fire({
+                    title: 'Upload Failed',
+                    text: error.message,
+                    icon: 'error',
+                    background: 'var(--color-card)',
+                    color: 'var(--color-text)'
+                });
+            }
+        });
+        
+        // Scroll to registration function
+        function scrollToRegistration() {
+            const registrationSection = document.getElementById('registration');
+            window.scrollTo({
+                top: registrationSection.offsetTop - 80,
+                behavior: 'smooth'
+            });
+            
+            // Update active nav link
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === '#registration') {
+                    link.classList.add('active');
+                }
+            });
+        }
+        
+        // Handle responsive adjustments for Vanta.js
+        window.addEventListener('resize', function() {
+            Object.values(vantaEffects).forEach(effect => {
+                if (effect && typeof effect.resize === 'function') {
+                    effect.resize();
+                }
+            });
+            
+            // Show/hide page navigation based on screen size
+            const pageNav = document.querySelector('.page-nav');
+            if (window.innerWidth > 768) {
+                pageNav.style.display = 'block';
+            } else {
+                pageNav.style.display = 'none';
+            }
+        });
+        
+        // Welcome notification
+        setTimeout(() => {
+            Swal.fire({
+                title: 'Welcome to THREADS\'26',
+                text: 'Weaving the Future of Technology - April 15-16, 2026',
+                icon: 'info',
+                timer: 3000,
+                showConfirmButton: false,
+                background: 'var(--color-card)',
+                color: 'var(--color-text)'
+            });
+        }, 1000);
+        
+        // Initialize fee calculation
+        calculateTotalFee();
+    </script>
 </body>
 </html>
