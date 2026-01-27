@@ -219,8 +219,14 @@ fastify.get('/events', async (request, reply) => {
 // -------------------- START SERVER --------------------
 const start = async () => {
   try {
-    await fastify.listen({ port: 3000 });
-    console.log('Server running on http://localhost:3000');
+    const port = process.env.PORT || 3000;
+
+    await fastify.listen({
+      port,
+      host: '0.0.0.0', // 🔥 REQUIRED for Render
+    });
+
+    console.log(`Server running on port ${port}`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
@@ -228,3 +234,4 @@ const start = async () => {
 };
 
 start();
+
