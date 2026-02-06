@@ -108,9 +108,13 @@ function stopScanner() {
 async function onScanSuccess(decodedText) {
     stopScanner();
 
-    document.getElementById('scanResult').innerHTML = `
-        <p style="color:blue;">Processing attendance...</p>
-    `;
+    const scanDiv = document.getElementById('scanResult');
+    scanDiv.innerHTML = ''; // clear previous logs
+
+    // Display raw QR content
+    const rawP = document.createElement('p');
+    rawP.innerHTML = `<b>📸 QR Scanned:</b> <code>${decodedText}</code>`;
+    scanDiv.appendChild(rawP);
 
     // Split multiple IDs
     const scannedIds = decodedText
@@ -118,19 +122,37 @@ async function onScanSuccess(decodedText) {
         .map(id => id.trim())
         .filter(Boolean);
 
-    // Filter for current event if needed
+    const parsedP = document.createElement('p');
+    parsedP.innerHTML = `<b>🔹 Parsed IDs:</b> ${scannedIds.join(', ')}`;
+    scanDiv.appendChild(parsedP);
+
+    // Filter for current event
     const validIds = scannedIds.filter(id => id.endsWith(eventId));
+    const invalidIds = scannedIds.filter(id => !id.endsWith(eventId));
+
+    const validP = document.createElement('p');
+    validP.innerHTML = `<b>✅ Valid IDs for this event:</b> ${validIds.join(', ') || 'None'}`;
+    scanDiv.appendChild(validP);
+
+    const invalidP = document.createElement('p');
+    invalidP.innerHTML = `<b>❌ Invalid IDs:</b> ${invalidIds.join(', ') || 'None'}`;
+    scanDiv.appendChild(invalidP);
 
     if (validIds.length === 0) {
-        document.getElementById('scanResult').innerHTML +=
-            `<p style="color:red;">❌ No valid registrations for this event</p>`;
+        const errP = document.createElement('p');
+        errP.style.color = 'red';
+        errP.textContent = '❌ No valid registrations for this event';
+        scanDiv.appendChild(errP);
         setTimeout(startScanner, 1500);
         return;
     }
 
     try {
-        // Loop over each valid ID
         for (let id of validIds) {
+            const statusP = document.createElement('p');
+            statusP.innerHTML = `📡 Sending attendance request for <b>${id}</b>...`;
+            scanDiv.appendChild(statusP);
+
             const res = await fetch(`${BASE_URL}/api/scan-attendance`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -138,32 +160,34 @@ async function onScanSuccess(decodedText) {
             });
             const data = await res.json();
 
+            const respP = document.createElement('p');
             if (data.success) {
-                document.getElementById('scanResult').innerHTML += `
-                    <p style="color:green;">✅ ${id} - ${data.message}</p>
-                `;
-                // Update local registration list
+                respP.style.color = 'green';
+                respP.innerHTML = `✅ ${id} - ${data.message}`;
+                // update local list
                 const r = allRegistrations.find(x => x.registration_unique_id === id);
                 if (r) r.attendance_status = 'ATTENDED';
             } else {
-                document.getElementById('scanResult').innerHTML += `
-                    <p style="color:red;">❌ ${id} - ${data.message}</p>
-                `;
+                respP.style.color = 'red';
+                respP.innerHTML = `❌ ${id} - ${data.message}`;
             }
+            scanDiv.appendChild(respP);
         }
 
         updateStats();
         displayRegistrations(allRegistrations);
 
+        // Auto-clear after delay
         setTimeout(() => {
-            document.getElementById('scanResult').innerHTML = '';
+            scanDiv.innerHTML = '';
             startScanner();
-        }, 1500);
+        }, 4000);
 
     } catch (err) {
-        console.error("❌ Network Error:", err);
-        document.getElementById('scanResult').innerHTML +=
-            `<p style="color:red;">❌ Network error</p>`;
+        const errP = document.createElement('p');
+        errP.style.color = 'red';
+        errP.textContent = `❌ Network error: ${err}`;
+        scanDiv.appendChild(errP);
         startScanner();
     }
 }
