@@ -1568,6 +1568,53 @@ fastify.get('/api/admin/check-registration-status', async (request) => {
   };
 });
 
+fastify.post('/api/scan-attendance', async (request, reply) => {
+  try {
+    const { registration_id } = request.body;
+
+    if (!registration_id) {
+      return reply.code(400).send({ success: false, message: 'registration_id is required' });
+    }
+
+    // Get registration
+    const result = await pool.query(
+      `SELECT registration_unique_id, admin_verified, attendance_status
+       FROM registrations
+       WHERE registration_unique_id = $1`,
+      [registration_id]
+    );
+
+    if (result.rows.length === 0) {
+      return reply.send({ success: false, message: 'Invalid Registration ID' });
+    }
+
+    const reg = result.rows[0];
+
+    if (!reg.admin_verified) {
+      return reply.send({ success: false, message: 'Not Admin Verified' });
+    }
+
+    if (reg.attendance_status === 'ATTENDED') {
+      return reply.send({ success: true, message: 'Already Marked', already: true });
+    }
+
+    // Mark attendance
+    await pool.query(
+      `UPDATE registrations
+       SET attendance_status = 'ATTENDED', attendance_time = NOW()
+       WHERE registration_unique_id = $1`,
+      [registration_id]
+    );
+
+    return reply.send({ success: true, message: 'Attendance Marked' });
+
+  } catch (err) {
+    fastify.log.error(err);
+    return reply.code(500).send({ success: false, message: 'Server Error' });
+  }
+});
+
+
 // -------------------- Database Setup with All Fields --------------------
 fastify.get('/api/setup-db', async (request, reply) => {
   try {
