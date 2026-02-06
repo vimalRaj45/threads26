@@ -107,28 +107,33 @@ function stopScanner() {
 
 async function onScanSuccess(decodedText) {
     stopScanner();
-
     const scanDiv = document.getElementById('scanResult');
-    scanDiv.innerHTML = ''; // clear previous logs
+    scanDiv.innerHTML = ''; // clear previous
 
-    // Display raw QR content
+    let scannedIds = [];
+    let eventNameInQR = '';
+
+    try {
+        const qrData = JSON.parse(decodedText); // <-- Parse JSON
+        scannedIds = qrData.registration_ids || [];
+        eventNameInQR = qrData.event || '';
+    } catch (e) {
+        // If QR is just plain text fallback
+        scannedIds = decodedText.split(/[\n, ]+/).map(id => id.trim()).filter(Boolean);
+    }
+
+    // Display scanned JSON / IDs
     const rawP = document.createElement('p');
     rawP.innerHTML = `<b>📸 QR Scanned:</b> <code>${decodedText}</code>`;
     scanDiv.appendChild(rawP);
 
-    // Split multiple IDs
-    const scannedIds = decodedText
-        .split(/[\n, ]+/)
-        .map(id => id.trim())
-        .filter(Boolean);
-
     const parsedP = document.createElement('p');
-    parsedP.innerHTML = `<b>🔹 Parsed IDs:</b> ${scannedIds.join(', ')}`;
+    parsedP.innerHTML = `<b>🔹 Parsed IDs:</b> ${JSON.stringify(scannedIds)}`;
     scanDiv.appendChild(parsedP);
 
-    // Filter for current event
-    const validIds = scannedIds.filter(id => id.endsWith(eventId));
-    const invalidIds = scannedIds.filter(id => !id.endsWith(eventId));
+    // Filter for current event using `eventId`
+    const validIds = scannedIds.filter(id => id.includes(eventId)); // use includes for safety
+    const invalidIds = scannedIds.filter(id => !id.includes(eventId));
 
     const validP = document.createElement('p');
     validP.innerHTML = `<b>✅ Valid IDs for this event:</b> ${validIds.join(', ') || 'None'}`;
@@ -147,12 +152,9 @@ async function onScanSuccess(decodedText) {
         return;
     }
 
+    // ✅ Mark attendance for valid IDs
     try {
         for (let id of validIds) {
-            const statusP = document.createElement('p');
-            statusP.innerHTML = `📡 Sending attendance request for <b>${id}</b>...`;
-            scanDiv.appendChild(statusP);
-
             const res = await fetch(`${BASE_URL}/api/scan-attendance`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -177,7 +179,6 @@ async function onScanSuccess(decodedText) {
         updateStats();
         displayRegistrations(allRegistrations);
 
-        // Auto-clear after delay
         setTimeout(() => {
             scanDiv.innerHTML = '';
             startScanner();
@@ -191,7 +192,6 @@ async function onScanSuccess(decodedText) {
         startScanner();
     }
 }
-
 
 /* ---------------- DATA ---------------- */
 async function loadEventRegistrations() {
