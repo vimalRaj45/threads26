@@ -108,25 +108,38 @@ function stopScanner() {
 async function onScanSuccess(decodedText) {
     stopScanner();
 
+    // ✅ SHOW RAW QR CONTENT
+    console.log("📸 QR SCANNED:", decodedText);
+
+    document.getElementById('scanResult').innerHTML = `
+        <p style="color:#333;">
+            <b>Scanned QR Content:</b><br>
+            <code style="word-break:break-all;">${decodedText}</code>
+        </p>
+        <p style="color:blue;">Processing attendance...</p>
+    `;
+
     // Split multiple IDs (comma / newline / space)
     const scannedIds = decodedText
         .split(/[\n, ]+/)
         .map(id => id.trim())
         .filter(Boolean);
 
+    console.log("✅ Parsed IDs:", scannedIds);
+
     // Allow only current event IDs
     const validIds = scannedIds.filter(id => id.endsWith(eventId));
     const invalidIds = scannedIds.filter(id => !id.endsWith(eventId));
 
+    console.log("🟢 Valid IDs:", validIds);
+    console.log("🔴 Invalid IDs:", invalidIds);
+
     if (validIds.length === 0) {
-        document.getElementById('scanResult').innerHTML =
+        document.getElementById('scanResult').innerHTML +=
             `<p style="color:red;">❌ No valid registrations for this event</p>`;
-        setTimeout(startScanner, 1200);
+        setTimeout(startScanner, 1500);
         return;
     }
-
-    document.getElementById('scanResult').innerHTML =
-        `<p style="color:blue;">Processing ${validIds.length} ID(s)...</p>`;
 
     try {
         const res = await fetch(`${BASE_URL}/api/admin/attendance`, {
@@ -143,14 +156,16 @@ async function onScanSuccess(decodedText) {
 
         const data = await res.json();
 
+        console.log("📡 API Response:", data);
+
         if (!res.ok) {
-            document.getElementById('scanResult').innerHTML =
+            document.getElementById('scanResult').innerHTML +=
                 `<p style="color:red;">❌ ${data.error}</p>`;
             startScanner();
             return;
         }
 
-        // Update UI
+        // Update UI state
         validIds.forEach(id => {
             const r = allRegistrations.find(x =>
                 x.registration_unique_id === id
@@ -158,13 +173,9 @@ async function onScanSuccess(decodedText) {
             if (r) r.attendance_status = 'ATTENDED';
         });
 
-        let msg = `✅ ${validIds.length} marked present`;
-        if (invalidIds.length) {
-            msg += `<br><small>⚠ Ignored ${invalidIds.length} other-event ID(s)</small>`;
-        }
-
-        document.getElementById('scanResult').innerHTML =
-            `<p style="color:green;">${msg}</p>`;
+        document.getElementById('scanResult').innerHTML += `
+            <p style="color:green;">✅ Attendance marked successfully</p>
+        `;
 
         updateStats();
         displayRegistrations(allRegistrations);
@@ -175,7 +186,8 @@ async function onScanSuccess(decodedText) {
         }, 1500);
 
     } catch (err) {
-        document.getElementById('scanResult').innerHTML =
+        console.error("❌ Network Error:", err);
+        document.getElementById('scanResult').innerHTML +=
             `<p style="color:red;">❌ Network error</p>`;
         startScanner();
     }
