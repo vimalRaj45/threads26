@@ -1583,12 +1583,14 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
     const { rows } = await client.query(
       `SELECT 
          p.participant_id,
-         p.verified_by_admin,
          r.registration_unique_id,
          r.attendance_status,
-         r.event_id
-       FROM participants p
-       JOIN registrations r ON r.participant_id = p.participant_id
+         r.event_id,
+         pv.verified_by_admin
+       FROM registrations r
+       JOIN participants p ON r.participant_id = p.participant_id
+       LEFT JOIN payment_verifications pv 
+         ON pv.participant_id = p.participant_id
        WHERE r.registration_unique_id = $1`,
       [registration_id]
     );
@@ -1599,7 +1601,7 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
 
     const reg = rows[0];
 
-    // 2️⃣ Check if participant is verified by admin
+    // 2️⃣ Check if participant's payment is verified by admin
     if (!reg.verified_by_admin) {
       return reply.code(403).send({
         success: false,
@@ -1619,7 +1621,7 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
       });
     }
 
-    // 4️⃣ Mark attendance since verified
+    // 4️⃣ Mark attendance
     const result = await client.query(
       `UPDATE registrations
        SET attendance_status = 'ATTENDED',
@@ -1643,6 +1645,7 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
     client.release();
   }
 });
+
 
 
 // -------------------- Database Setup with All Fields --------------------
