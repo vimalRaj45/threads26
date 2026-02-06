@@ -113,16 +113,16 @@ async function onScanSuccess(decodedText) {
     let scannedIds = [];
     let eventNameInQR = '';
 
+    // Parse QR data
     try {
-        const qrData = JSON.parse(decodedText); // <-- Parse JSON
+        const qrData = JSON.parse(decodedText);
         scannedIds = qrData.registration_ids || [];
         eventNameInQR = qrData.event || '';
     } catch (e) {
-        // If QR is just plain text fallback
         scannedIds = decodedText.split(/[\n, ]+/).map(id => id.trim()).filter(Boolean);
     }
 
-    // Display scanned JSON / IDs
+    // Show scanned raw QR
     const rawP = document.createElement('p');
     rawP.innerHTML = `<b>📸 QR Scanned:</b> <code>${decodedText}</code>`;
     scanDiv.appendChild(rawP);
@@ -131,8 +131,8 @@ async function onScanSuccess(decodedText) {
     parsedP.innerHTML = `<b>🔹 Parsed IDs:</b> ${JSON.stringify(scannedIds)}`;
     scanDiv.appendChild(parsedP);
 
-    // Filter for current event using `eventId`
-    const validIds = scannedIds.filter(id => id.includes(eventId)); // use includes for safety
+    // Filter valid/invalid IDs
+    const validIds = scannedIds.filter(id => id.includes(eventId));
     const invalidIds = scannedIds.filter(id => !id.includes(eventId));
 
     const validP = document.createElement('p');
@@ -152,7 +152,7 @@ async function onScanSuccess(decodedText) {
         return;
     }
 
-    // ✅ Mark attendance for valid IDs
+    // Mark attendance for valid IDs
     try {
         for (let id of validIds) {
             const res = await fetch(`${BASE_URL}/api/scan-attendance`, {
@@ -160,22 +160,25 @@ async function onScanSuccess(decodedText) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ registration_id: id })
             });
-            const data = await res.json();
 
+            const data = await res.json();
             const respP = document.createElement('p');
+
             if (data.success) {
                 respP.style.color = 'green';
                 respP.innerHTML = `✅ ${id} - ${data.message}`;
-                // update local list
+                // Update local registration list
                 const r = allRegistrations.find(x => x.registration_unique_id === id);
                 if (r) r.attendance_status = 'ATTENDED';
             } else {
                 respP.style.color = 'red';
                 respP.innerHTML = `❌ ${id} - ${data.message}`;
             }
+
             scanDiv.appendChild(respP);
         }
 
+        // Refresh UI
         updateStats();
         displayRegistrations(allRegistrations);
 
