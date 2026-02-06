@@ -108,31 +108,18 @@ function stopScanner() {
 async function onScanSuccess(decodedText) {
     stopScanner();
 
-    // ✅ SHOW RAW QR CONTENT
-    console.log("📸 QR SCANNED:", decodedText);
-
     document.getElementById('scanResult').innerHTML = `
-        <p style="color:#333;">
-            <b>Scanned QR Content:</b><br>
-            <code style="word-break:break-all;">${decodedText}</code>
-        </p>
         <p style="color:blue;">Processing attendance...</p>
     `;
 
-    // Split multiple IDs (comma / newline / space)
+    // Split multiple IDs
     const scannedIds = decodedText
         .split(/[\n, ]+/)
         .map(id => id.trim())
         .filter(Boolean);
 
-    console.log("✅ Parsed IDs:", scannedIds);
-
-    // Allow only current event IDs
+    // Filter for current event if needed
     const validIds = scannedIds.filter(id => id.endsWith(eventId));
-    const invalidIds = scannedIds.filter(id => !id.endsWith(eventId));
-
-    console.log("🟢 Valid IDs:", validIds);
-    console.log("🔴 Invalid IDs:", invalidIds);
 
     if (validIds.length === 0) {
         document.getElementById('scanResult').innerHTML +=
@@ -142,40 +129,28 @@ async function onScanSuccess(decodedText) {
     }
 
     try {
-        const res = await fetch(`${BASE_URL}/api/admin/attendance`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-admin-token': token
-            },
-            body: JSON.stringify({
-                registration_ids: validIds,
-                attendance_status: 'ATTENDED'
-            })
-        });
+        // Loop over each valid ID
+        for (let id of validIds) {
+            const res = await fetch(`${BASE_URL}/api/scan-attendance`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ registration_id: id })
+            });
+            const data = await res.json();
 
-        const data = await res.json();
-
-        console.log("📡 API Response:", data);
-
-        if (!res.ok) {
-            document.getElementById('scanResult').innerHTML +=
-                `<p style="color:red;">❌ ${data.error}</p>`;
-            startScanner();
-            return;
+            if (data.success) {
+                document.getElementById('scanResult').innerHTML += `
+                    <p style="color:green;">✅ ${id} - ${data.message}</p>
+                `;
+                // Update local registration list
+                const r = allRegistrations.find(x => x.registration_unique_id === id);
+                if (r) r.attendance_status = 'ATTENDED';
+            } else {
+                document.getElementById('scanResult').innerHTML += `
+                    <p style="color:red;">❌ ${id} - ${data.message}</p>
+                `;
+            }
         }
-
-        // Update UI state
-        validIds.forEach(id => {
-            const r = allRegistrations.find(x =>
-                x.registration_unique_id === id
-            );
-            if (r) r.attendance_status = 'ATTENDED';
-        });
-
-        document.getElementById('scanResult').innerHTML += `
-            <p style="color:green;">✅ Attendance marked successfully</p>
-        `;
 
         updateStats();
         displayRegistrations(allRegistrations);
@@ -192,6 +167,7 @@ async function onScanSuccess(decodedText) {
         startScanner();
     }
 }
+
 
 /* ---------------- DATA ---------------- */
 async function loadEventRegistrations() {
