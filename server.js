@@ -1569,6 +1569,7 @@ fastify.get('/api/admin/check-registration-status', async (request) => {
 });
 
 // -------------------- Scan QR & Mark Attendance by Registration --------------------
+// -------------------- Scan QR & Mark Attendance by Registration --------------------
 fastify.post('/api/scan-attendance', async (request, reply) => {
   const client = await pool.connect();
 
@@ -1579,18 +1580,30 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
       return reply.code(400).send({ error: 'registration_id is required' });
     }
 
-    // 1️⃣ Get participant and registration details
+    // 1️⃣ Get registration, participant, and payment details
     const { rows } = await client.query(
       `SELECT 
-         p.participant_id,
-         r.registration_unique_id,
-         r.attendance_status,
-         r.event_id,
-         pv.verified_by_admin
+          r.registration_unique_id,
+          r.attendance_status,
+          r.event_id,
+          r.participant_id,
+
+          p.full_name,
+          p.email,
+          p.college_name,
+          p.department,
+
+          py.verified_by_admin
+
        FROM registrations r
        JOIN participants p ON r.participant_id = p.participant_id
-       LEFT JOIN payment_verifications pv 
-         ON pv.participant_id = p.participant_id
+       LEFT JOIN payments py
+         ON r.participant_id = py.participant_id
+         AND py.created_at = (
+           SELECT MAX(created_at)
+           FROM payments
+           WHERE participant_id = r.participant_id
+         )
        WHERE r.registration_unique_id = $1`,
       [registration_id]
     );
@@ -1601,7 +1614,7 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
 
     const reg = rows[0];
 
-    // 2️⃣ Check if participant's payment is verified by admin
+    // 2️⃣ Check if payment is verified by admin
     if (!reg.verified_by_admin) {
       return reply.code(403).send({
         success: false,
@@ -1645,7 +1658,6 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
     client.release();
   }
 });
-
 
 
 // -------------------- Database Setup with All Fields --------------------
