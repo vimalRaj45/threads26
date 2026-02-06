@@ -100,62 +100,7 @@ const sendWhatsApp = async (phone, message) => {
   return true;
 };
 
-const generateConfirmationPDF = async (participantId) => {
-  // Get participant and registration data
-  const participant = await pool.query(
-    `SELECT * FROM participants WHERE participant_id = $1`,
-    [participantId]
-  );
-  
-  const registrations = await pool.query(
-    `SELECT r.*, e.event_name, e.event_type, e.day, e.fee 
-     FROM registrations r
-     JOIN events e ON r.event_id = e.event_id
-     WHERE r.participant_id = $1 AND r.payment_status = 'Success'`,
-    [participantId]
-  );
-  
-  // Create PDF
-  const doc = new PDFDocument();
-  const pdfPath = path.join(__dirname, 'public', 'certificates', `confirmation_${participantId}.pdf`);
-  
-  // Ensure directory exists
-  await fs.promises.mkdir(path.dirname(pdfPath), { recursive: true });
-  
-  const writeStream = fs.createWriteStream(pdfPath);
-  doc.pipe(writeStream);
-  
-  // PDF content
-  doc.fontSize(25).text('THREADS\'26', { align: 'center' });
-  doc.moveDown();
-  doc.fontSize(18).text('Registration Confirmation', { align: 'center' });
-  doc.moveDown(2);
-  
-  // Participant details
-  doc.fontSize(12).text(`Name: ${participant.rows[0].full_name}`);
-  doc.text(`Email: ${participant.rows[0].email}`);
-  doc.text(`Phone: ${participant.rows[0].phone}`);
-  doc.text(`College: ${participant.rows[0].college_name}`);
-  doc.text(`Department: ${participant.rows[0].department}`);
-  doc.moveDown();
-  
-  // Registrations
-  doc.fontSize(14).text('Registered Events:');
-  registrations.rows.forEach(reg => {
-    doc.fontSize(10).text(`• ${reg.event_name} - ${reg.registration_unique_id} - ₹${reg.fee}`);
-  });
-  
-  doc.moveDown();
-  doc.fontSize(10).text(`Generated on: ${new Date().toLocaleDateString()}`, { align: 'right' });
-  
-  doc.end();
-  
-  return new Promise((resolve) => {
-    writeStream.on('finish', () => {
-      resolve(`/public/certificates/confirmation_${participantId}.pdf`);
-    });
-  });
-};
+
 
 // -------------------- Plugin Registration --------------------
 await fastify.register(cors, { origin: '*' });
@@ -1564,11 +1509,7 @@ fastify.get('/api/participant/:id/certificate', async (request, reply) => {
     }
     
     const pdfPath = path.join(__dirname, 'public', 'certificates', `confirmation_${id}.pdf`);
-    
-    // Generate if not exists
-    if (!fs.existsSync(pdfPath)) {
-      await generateConfirmationPDF(id);
-    }
+
     
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `attachment; filename="THREADS26_Confirmation_${id}.pdf"`);
@@ -1772,27 +1713,16 @@ fastify.get('/api/setup-db', async (request, reply) => {
   }
 });
 
-// -------------------- Start Server --------------------
+const PORT = process.env.PORT || 3000;
+
 const start = async () => {
   try {
-    // Test database connection
-    await pool.query('SELECT 1');
-    fastify.log.info('Database connected successfully');
-    
-    await fastify.listen({ 
-      port: process.env.PORT || 3000, 
-      host: '0.0.0.0' 
+    await fastify.listen({
+      port: PORT,
+      host: '0.0.0.0' // REQUIRED for deployment
     });
-    
-    fastify.log.info(`Server listening on ${fastify.server.address().port}`);
-    fastify.log.info('THREADS\'26 Backend API Ready!');
-    fastify.log.info('✓ Registration with CSV-based payment verification');
-    fastify.log.info('✓ Separate CSE seat allocation');
-    fastify.log.info('✓ Auto-close registration on event day');
-    fastify.log.info('✓ WhatsApp + Email notifications');
-    fastify.log.info('✓ PDF confirmation download');
-    fastify.log.info('✓ Complete admin panel');
-    
+
+    console.log(`🚀 Server running on port ${PORT}`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
