@@ -1568,43 +1568,80 @@ fastify.get('/api/admin/check-registration-status', async (request) => {
   };
 });
 
-// POST /api/scan-attendance
-fastify.post('/api/scan-attendance', async (req, res) => {
-    const { registration_id } = req.body;
+// -------------------- Scan QR & Mark Attendance by Registration --------------------
+fastify.post('/api/scan-attendance', async (request, reply) => {
+  const client = await pool.connect();
 
-    try {
-        // 1️⃣ Find participant by registration_id
-        const participantResult = await pool.query(
-            `SELECT p.participant_id, p.verified_by_admin, r.registration_unique_id
-             FROM participants p
-             JOIN registrations r ON r.participant_id = p.participant_id
-             WHERE r.registration_unique_id = $1`,
-            [registration_id]
-        );
+  try {
+    const { registration_id } = request.body;
 
-        if (participantResult.rowCount === 0) {
-            return res.json({ success: false, message: "Registration ID not found" });
-        }
-
-        const participant = participantResult.rows[0];
-
-        // 2️⃣ Check payment verification
-        if (!participant.verified_by_admin) {
-            return res.json({ success: false, message: "Payment not verified by admin" });
-        }
-
-        // 3️⃣ Mark attendance
-        await pool.query(
-            `UPDATE registrations SET attendance_status = 'ATTENDED' WHERE registration_unique_id = $1`,
-            [registration_id]
-        );
-
-        return res.json({ success: true, message: "Attendance marked successfully" });
-
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, message: "Server error" });
+    if (!registration_id) {
+      return reply.code(400).send({ error: 'registration_id is required' });
     }
+
+    // 1️⃣ Get participant and registration details
+    const { rows } = await client.query(
+      `SELECT 
+         p.participant_id,
+         p.verified_by_admin,
+         r.registration_unique_id,
+         r.attendance_status,
+         r.event_id
+       FROM participants p
+       JOIN registrations r ON r.participant_id = p.participant_id
+       WHERE r.registration_unique_id = $1`,
+      [registration_id]
+    );
+
+    if (rows.length === 0) {
+      return reply.code(404).send({ error: 'Registration not found' });
+    }
+
+    const reg = rows[0];
+
+    // 2️⃣ Check if participant is verified by admin
+    if (!reg.verified_by_admin) {
+      return reply.code(403).send({
+        success: false,
+        message: 'Participant payment not verified by admin. Attendance cannot be marked.',
+        registration_id: reg.registration_unique_id,
+        participant_id: reg.participant_id
+      });
+    }
+
+    // 3️⃣ Check if attendance is already marked
+    if (reg.attendance_status === 'ATTENDED') {
+      return reply.send({
+        success: true,
+        message: 'Attendance already marked',
+        registration_id: reg.registration_unique_id,
+        participant_id: reg.participant_id
+      });
+    }
+
+    // 4️⃣ Mark attendance since verified
+    const result = await client.query(
+      `UPDATE registrations
+       SET attendance_status = 'ATTENDED',
+           attended_at = NOW()
+       WHERE registration_unique_id = $1
+       RETURNING registration_unique_id, attendance_status, event_id`,
+      [registration_id]
+    );
+
+    return reply.send({
+      success: true,
+      message: 'Attendance marked successfully',
+      registration: result.rows[0],
+      scanned_at: new Date().toISOString()
+    });
+
+  } catch (error) {
+    fastify.log.error(error);
+    return reply.code(500).send({ error: 'Failed to mark attendance' });
+  } finally {
+    client.release();
+  }
 });
 
 
