@@ -1568,50 +1568,43 @@ fastify.get('/api/admin/check-registration-status', async (request) => {
   };
 });
 
-fastify.post('/api/scan-attendance', async (request, reply) => {
-  try {
-    const { registration_id } = request.body;
+// POST /api/scan-attendance
+app.post('/api/scan-attendance', async (req, res) => {
+    const { registration_id } = req.body;
 
-    if (!registration_id) {
-      return reply.code(400).send({ success: false, message: 'registration_id is required' });
+    try {
+        // 1️⃣ Find participant by registration_id
+        const participantResult = await pool.query(
+            `SELECT p.participant_id, p.verified_by_admin, r.registration_unique_id
+             FROM participants p
+             JOIN registrations r ON r.participant_id = p.participant_id
+             WHERE r.registration_unique_id = $1`,
+            [registration_id]
+        );
+
+        if (participantResult.rowCount === 0) {
+            return res.json({ success: false, message: "Registration ID not found" });
+        }
+
+        const participant = participantResult.rows[0];
+
+        // 2️⃣ Check payment verification
+        if (!participant.verified_by_admin) {
+            return res.json({ success: false, message: "Payment not verified by admin" });
+        }
+
+        // 3️⃣ Mark attendance
+        await pool.query(
+            `UPDATE registrations SET attendance_status = 'ATTENDED' WHERE registration_unique_id = $1`,
+            [registration_id]
+        );
+
+        return res.json({ success: true, message: "Attendance marked successfully" });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Server error" });
     }
-
-    // Get registration
-    const result = await pool.query(
-      `SELECT registration_unique_id, admin_verified, attendance_status
-       FROM registrations
-       WHERE registration_unique_id = $1`,
-      [registration_id]
-    );
-
-    if (result.rows.length === 0) {
-      return reply.send({ success: false, message: 'Invalid Registration ID' });
-    }
-
-    const reg = result.rows[0];
-
-    if (!reg.admin_verified) {
-      return reply.send({ success: false, message: 'Not Admin Verified' });
-    }
-
-    if (reg.attendance_status === 'ATTENDED') {
-      return reply.send({ success: true, message: 'Already Marked', already: true });
-    }
-
-    // Mark attendance
-    await pool.query(
-      `UPDATE registrations
-       SET attendance_status = 'ATTENDED', attendance_time = NOW()
-       WHERE registration_unique_id = $1`,
-      [registration_id]
-    );
-
-    return reply.send({ success: true, message: 'Attendance Marked' });
-
-  } catch (err) {
-    fastify.log.error(err);
-    return reply.code(500).send({ success: false, message: 'Server Error' });
-  }
 });
 
 
