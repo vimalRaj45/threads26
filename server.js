@@ -1569,7 +1569,7 @@ fastify.get('/api/admin/check-registration-status', async (request) => {
 });
 
 // POST /api/scan-attendance
-app.post('/api/scan-attendance', async (req, res) => {
+fastify.post('/api/scan-attendance', async (req, res) => {
     const { registration_id } = req.body;
 
     try {
