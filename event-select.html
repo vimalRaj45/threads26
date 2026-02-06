@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>THREADS'26 - Event Coordinator Login</title>
+</head>
+<body>
+    <h1>Event Coordinator Portal</h1>
+    
+    <div id="loginSection">
+        <h2>Login</h2>
+        <input type="text" id="username" placeholder="Username" value="admin">
+        <input type="password" id="password" placeholder="Password" value="threads26">
+        <button onclick="login()">Login</button>
+    </div>
+    
+    <div id="eventsSection" style="display:none;">
+        <h2>Select Your Event</h2>
+        <div id="eventsList"></div>
+        <button onclick="logout()">Logout</button>
+    </div>
+    
+    <script>
+        const BASE_URL = 'https://threads26-1.onrender.com';
+        let token = '';
+        
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/api/admin/login`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({username, password})
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    token = data.token;
+                    document.getElementById('loginSection').style.display = 'none';
+                    document.getElementById('eventsSection').style.display = 'block';
+                    loadEvents();
+                } else {
+                    alert('Login failed');
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+        
+        async function loadEvents() {
+            try {
+                const response = await fetch(`${BASE_URL}/api/events`);
+                const data = await response.json();
+                
+                let html = '<table border="1" cellpadding="10" style="width:100%;">';
+                html += '<tr><th>Event</th><th>Type</th><th>Day</th><th>Seats</th><th>Action</th></tr>';
+                
+                data.events.forEach(event => {
+                    html += `
+                    <tr>
+                        <td><strong>${event.event_name}</strong></td>
+                        <td>${event.event_type}</td>
+                        <td>Day ${event.day}</td>
+                        <td>${event.available_seats}/${event.total_seats}</td>
+                        <td>
+                            <button onclick="openAttendancePortal(${event.event_id}, '${event.event_name}')">
+                                Open Attendance Portal
+                            </button>
+                        </td>
+                    </tr>`;
+                });
+                
+                html += '</table>';
+                document.getElementById('eventsList').innerHTML = html;
+            } catch (error) {
+                console.error('Error loading events:', error);
+            }
+        }
+        
+        function openAttendancePortal(eventId, eventName) {
+            // Store in localStorage for the next page
+            localStorage.setItem('coordinatorToken', token);
+            localStorage.setItem('currentEventId', eventId);
+            localStorage.setItem('currentEventName', eventName);
+            
+            // Open attendance portal in new tab
+            window.open('event-attendance-portal.html', '_blank');
+        }
+        
+        function logout() {
+            token = '';
+            document.getElementById('eventsSection').style.display = 'none';
+            document.getElementById('loginSection').style.display = 'block';
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+        }
+    </script>
+</body>
+</html>
