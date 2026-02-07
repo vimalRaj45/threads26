@@ -515,6 +515,8 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
       return reply.code(400).send({ error: "payments array required" });
     }
 
+    console.log('CSV Payments received:', csvPayments); // DEBUG
+
     // 1. Fetch minimal data
     const allDbPayments = await client.query(
       `SELECT 
@@ -530,13 +532,7 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
        AND p.payment_status = 'Success'`
     );
 
-    // 2. Create lookup map
-    const csvLookup = new Set();
-    for (const csv of csvPayments) {
-      if (csv.transaction_id && csv.amount != null) {
-        csvLookup.add(`${csv.transaction_id}:${csv.amount}`);
-      }
-    }
+    console.log('Database payments:', allDbPayments.rows); // DEBUG
 
     const verified = [];
     const failed = [];
@@ -547,11 +543,56 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
     const paymentIdsToVerify = [];
     const participantIdsToUpdate = [];
 
-    // 3. Process payments
+    // 3. Process each database payment
     for (const dbPayment of allDbPayments.rows) {
-      const key = `${dbPayment.transaction_id}:${dbPayment.amount}`;
+      console.log('\nChecking DB payment:', {
+        transaction_id: dbPayment.transaction_id,
+        amount: dbPayment.amount,
+        type: typeof dbPayment.amount
+      });
       
-      if (csvLookup.has(key)) {
+      let found = false;
+      let matchingCsv = null;
+      
+      // Try to find matching CSV payment
+      for (const csv of csvPayments) {
+        console.log('Comparing with CSV:', {
+          csv_transaction_id: csv.transaction_id,
+          csv_amount: csv.amount,
+          csv_type: typeof csv.amount
+        });
+        
+        if (!csv.transaction_id || csv.amount == null) continue;
+        
+        // Clean transaction IDs (remove spaces, trim)
+        const cleanCsvId = String(csv.transaction_id).trim();
+        const cleanDbId = String(dbPayment.transaction_id).trim();
+        
+        // Convert amounts to numbers
+        const csvAmount = parseFloat(csv.amount);
+        const dbAmount = parseFloat(dbPayment.amount);
+        
+        console.log('Cleaned comparison:', {
+          cleanCsvId,
+          cleanDbId,
+          csvAmount,
+          dbAmount,
+          idMatch: cleanCsvId === cleanDbId,
+          amountDiff: Math.abs(csvAmount - dbAmount)
+        });
+        
+        // Check exact match
+        if (cleanCsvId === cleanDbId && Math.abs(csvAmount - dbAmount) < 0.01) {
+          console.log('MATCH FOUND!');
+          found = true;
+          matchingCsv = csv;
+          break;
+        }
+      }
+      
+      if (found) {
+        console.log(`Verifying payment ${dbPayment.transaction_id}`);
+        
         // Add to batch update
         paymentIdsToVerify.push(dbPayment.payment_id);
         participantIdsToUpdate.push(dbPayment.participant_id);
@@ -559,6 +600,8 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
         // Verified: Only transaction_id
         verified.push(dbPayment.transaction_id);
       } else {
+        console.log(`Payment ${dbPayment.transaction_id} NOT found in CSV`);
+        
         // Failed: transaction_id, participant_id, name, phone
         failed.push({
           transaction_id: dbPayment.transaction_id,
@@ -571,6 +614,8 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
 
     // 4. Batch updates
     if (paymentIdsToVerify.length > 0) {
+      console.log(`Updating ${paymentIdsToVerify.length} payments`);
+      
       await client.query(
         `UPDATE payments 
          SET verified_by_admin = true,
@@ -589,6 +634,8 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
 
     await client.query('COMMIT');
 
+    console.log('Final result:', { verified, failed });
+
     return {
       success: true,
       summary: {
@@ -597,8 +644,8 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
         verified: verified.length,
         failed: failed.length
       },
-      verified,  // Just transaction IDs
-      failed     // Object with transaction_id, participant_id, name, phone
+      verified,
+      failed
     };
 
   } catch (err) {
