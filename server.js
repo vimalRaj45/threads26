@@ -515,10 +515,19 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
       return reply.code(400).send({ error: "payments array required" });
     }
 
-    console.log('CSV Payments received:', csvPayments); // DEBUG
+    await client.query('BEGIN');
 
-    // 1. Fetch minimal data
-    const allDbPayments = await client.query(
+    // 1. Get ALL verified payments in one query (inside transaction)
+    const allVerifiedQuery = await client.query(
+      `SELECT transaction_id 
+       FROM payments 
+       WHERE verified_by_admin = true
+       AND payment_status = 'Success'
+       ORDER BY verified_at DESC`
+    );
+
+    // 2. Get pending payments
+    const pendingPayments = await client.query(
       `SELECT 
         p.payment_id,
         p.participant_id,
@@ -532,77 +541,34 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
        AND p.payment_status = 'Success'`
     );
 
-    console.log('Database payments:', allDbPayments.rows); // DEBUG
-
-    const verified = [];
+    const newlyVerified = [];
     const failed = [];
-
-    await client.query('BEGIN');
-
-    // Batch update arrays
     const paymentIdsToVerify = [];
     const participantIdsToUpdate = [];
 
-    // 3. Process each database payment
-    for (const dbPayment of allDbPayments.rows) {
-      console.log('\nChecking DB payment:', {
-        transaction_id: dbPayment.transaction_id,
-        amount: dbPayment.amount,
-        type: typeof dbPayment.amount
-      });
-      
+    // 3. Process pending payments
+    for (const dbPayment of pendingPayments.rows) {
       let found = false;
-      let matchingCsv = null;
       
-      // Try to find matching CSV payment
       for (const csv of csvPayments) {
-        console.log('Comparing with CSV:', {
-          csv_transaction_id: csv.transaction_id,
-          csv_amount: csv.amount,
-          csv_type: typeof csv.amount
-        });
-        
         if (!csv.transaction_id || csv.amount == null) continue;
         
-        // Clean transaction IDs (remove spaces, trim)
         const cleanCsvId = String(csv.transaction_id).trim();
         const cleanDbId = String(dbPayment.transaction_id).trim();
-        
-        // Convert amounts to numbers
         const csvAmount = parseFloat(csv.amount);
         const dbAmount = parseFloat(dbPayment.amount);
         
-        console.log('Cleaned comparison:', {
-          cleanCsvId,
-          cleanDbId,
-          csvAmount,
-          dbAmount,
-          idMatch: cleanCsvId === cleanDbId,
-          amountDiff: Math.abs(csvAmount - dbAmount)
-        });
-        
-        // Check exact match
         if (cleanCsvId === cleanDbId && Math.abs(csvAmount - dbAmount) < 0.01) {
-          console.log('MATCH FOUND!');
           found = true;
-          matchingCsv = csv;
           break;
         }
       }
       
       if (found) {
-        console.log(`Verifying payment ${dbPayment.transaction_id}`);
-        
-        // Add to batch update
         paymentIdsToVerify.push(dbPayment.payment_id);
         participantIdsToUpdate.push(dbPayment.participant_id);
-        
-        // Verified: Only transaction_id
-        verified.push(dbPayment.transaction_id);
+        newlyVerified.push(dbPayment.transaction_id);
       } else {
-        console.log(`Payment ${dbPayment.transaction_id} NOT found in CSV`);
-        
-        // Failed: transaction_id, participant_id, name, phone
         failed.push({
           transaction_id: dbPayment.transaction_id,
           participant_id: dbPayment.participant_id,
@@ -614,8 +580,6 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
 
     // 4. Batch updates
     if (paymentIdsToVerify.length > 0) {
-      console.log(`Updating ${paymentIdsToVerify.length} payments`);
-      
       await client.query(
         `UPDATE payments 
          SET verified_by_admin = true,
@@ -624,27 +588,36 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
         [paymentIdsToVerify]
       );
 
-      await client.query(
-        `UPDATE registrations 
-         SET payment_status = 'Success'
-         WHERE participant_id = ANY($1)`,
-        [participantIdsToUpdate]
-      );
+      const uniqueParticipantIds = [...new Set(participantIdsToUpdate)];
+      
+      if (uniqueParticipantIds.length > 0) {
+        await client.query(
+          `UPDATE registrations 
+           SET payment_status = 'Success'
+           WHERE participant_id = ANY($1)`,
+          [uniqueParticipantIds]
+        );
+      }
     }
 
     await client.query('COMMIT');
 
-    console.log('Final result:', { verified, failed });
+    // 5. Combine results
+    const allVerified = [
+      ...allVerifiedQuery.rows.map(p => p.transaction_id),
+      ...newlyVerified
+    ];
 
     return {
       success: true,
       summary: {
-        total_pending: allDbPayments.rowCount,
+        total_pending_before: pendingPayments.rowCount,
         csv_uploaded: csvPayments.length,
-        verified: verified.length,
-        failed: failed.length
+        newly_verified: newlyVerified.length,
+        failed: failed.length,
+        total_verified_now: allVerified.length
       },
-      verified,
+      verified: allVerified,
       failed
     };
 
