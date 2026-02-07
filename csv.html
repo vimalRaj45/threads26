@@ -2,54 +2,25 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Verify Payments by CSV/XLS</title>
+<title>Verify Payments by CSV/XLS/XLSX</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
-  body {
-    font-family: Arial, sans-serif;
-    background: #f4f6f8;
-    padding: 40px;
-  }
-  .box {
-    max-width: 600px;
-    background: #fff;
-    padding: 25px;
-    margin: auto;
-    border-radius: 8px;
-    box-shadow: 0 10px 20px rgba(0,0,0,.1);
-  }
+  body { font-family: Arial, sans-serif; background: #f4f6f8; padding: 40px; }
+  .box { max-width: 600px; background: #fff; padding: 25px; margin: auto; border-radius: 8px; box-shadow: 0 10px 20px rgba(0,0,0,.1); }
   h2 { margin-bottom: 15px; }
-  input, button {
-    width: 100%;
-    padding: 10px;
-    margin-top: 12px;
-  }
-  button {
-    background: #0b3c5d;
-    color: #fff;
-    border: none;
-    cursor: pointer;
-  }
+  input, button { width: 100%; padding: 10px; margin-top: 12px; }
+  button { background: #0b3c5d; color: #fff; border: none; cursor: pointer; }
   button:hover { background: #09324c; }
-  pre {
-    background: #eee;
-    padding: 10px;
-    margin-top: 15px;
-    max-height: 250px;
-    overflow: auto;
-  }
+  pre { background: #eee; padding: 10px; margin-top: 15px; max-height: 250px; overflow: auto; }
 </style>
 </head>
 
 <body>
-
 <div class="box">
   <h2>Payment Verification (CSV / XLS / XLSX)</h2>
-
   <input type="file" id="fileInput" accept=".csv, .xls, .xlsx">
   <button onclick="processFile()">Verify Payments</button>
-
   <pre id="result"></pre>
 </div>
 
@@ -61,55 +32,36 @@ async function processFile() {
   const fileInput = document.getElementById("fileInput");
   const resultBox = document.getElementById("result");
 
-  if (!fileInput.files.length) {
-    alert("Please select a file");
-    return;
-  }
+  if (!fileInput.files.length) { alert("Please select a file"); return; }
 
   const file = fileInput.files[0];
   const reader = new FileReader();
 
   reader.onload = async function(e) {
     let payments = [];
-
     try {
       if (file.name.endsWith(".csv")) {
         const text = e.target.result.trim();
         const lines = text.split("\n");
-
-        // CSV header: transaction_id,amount
         for (let i = 1; i < lines.length; i++) {
           const [transaction_id, amount] = lines[i].split(",");
-          if (transaction_id && amount) {
-            payments.push({
-              transaction_id: transaction_id.trim(),
-              amount: Number(amount.trim())
-            });
-          }
+          if (transaction_id && amount) payments.push({ transaction_id: transaction_id.trim(), amount: Number(amount.trim()) });
         }
-      } else {
-        // XLS/XLSX
+      } else {  // XLS/XLSX
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: "array" });
-
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
         const rows = XLSX.utils.sheet_to_json(sheet);
 
         rows.forEach(row => {
           if (row.transaction_id && row.amount !== undefined) {
-            payments.push({
-              transaction_id: String(row.transaction_id).trim(),
-              amount: Number(row.amount)
-            });
+            payments.push({ transaction_id: String(row.transaction_id).trim(), amount: Number(row.amount) });
           }
         });
       }
 
-      if (payments.length === 0) {
-        alert("No valid rows found");
-        return;
-      }
+      if (payments.length === 0) { alert("No valid rows found"); return; }
 
       resultBox.textContent = "Verifying...";
 
@@ -127,13 +79,9 @@ async function processFile() {
     }
   };
 
-  if (file.name.endsWith(".csv")) {
-    reader.readAsText(file);
-  } else {
-    reader.readAsArrayBuffer(file);
-  }
+  if (file.name.endsWith(".csv")) reader.readAsText(file);
+  else reader.readAsArrayBuffer(file);
 }
 </script>
-
 </body>
 </html>
