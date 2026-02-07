@@ -523,38 +523,55 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
     for (const row of payments) {
       const { transaction_id, amount } = row;
 
-      if (!transaction_id || amount == null) {
+      if (!transaction_id || typeof amount !== "number") {
         failed.push({ transaction_id, reason: "Invalid data" });
         continue;
       }
 
+      // 🔎 Match existing payment
       const result = await client.query(
-        `UPDATE payments
-         SET verified_by_admin = true,
-             verified_at = NOW(),
-             payment_status = 'Success'
-         WHERE transaction_id = $1
-           AND amount = $2
-         RETURNING payment_id`,
+        `
+        UPDATE payments
+        SET verified_by_admin = true,
+            verified_at = NOW(),
+            payment_status = 'Success'
+        WHERE transaction_id = $1
+          AND amount = $2
+          AND payment_status <> 'Success'
+        RETURNING payment_id, participant_id
+        `,
         [transaction_id, amount]
       );
 
-      if (result.rowCount > 0) {
-        verified.push(transaction_id);
-      } else {
-        failed.push({ transaction_id, reason: "No match found" });
+      if (result.rowCount === 0) {
+        failed.push({ transaction_id, reason: "No matching payment found" });
+        continue;
       }
+
+      const { participant_id } = result.rows[0];
+
+      // ✅ Update registration ONLY for matched participant
+      await client.query(
+        `
+        UPDATE registrations
+        SET payment_status = 'Success'
+        WHERE participant_id = $1
+        `,
+        [participant_id]
+      );
+
+      verified.push(transaction_id);
     }
 
     await client.query("COMMIT");
 
-    return {
+    return reply.send({
       success: true,
       verified_count: verified.length,
       failed_count: failed.length,
       verified,
       failed
-    };
+    });
 
   } catch (err) {
     await client.query("ROLLBACK");
