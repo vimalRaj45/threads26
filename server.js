@@ -507,80 +507,108 @@ fastify.post('/api/register', async (request, reply) => {
 
 fastify.post("/api/admin/verify-payments", async (request, reply) => {
   const client = await pool.connect();
-
+  
   try {
-    const { payments } = request.body;
+    const { payments: csvPayments } = request.body;
 
-    if (!Array.isArray(payments) || payments.length === 0) {
+    if (!Array.isArray(csvPayments) || csvPayments.length === 0) {
       return reply.code(400).send({ error: "payments array required" });
+    }
+
+    // 1. Fetch minimal data
+    const allDbPayments = await client.query(
+      `SELECT 
+        p.payment_id,
+        p.participant_id,
+        p.transaction_id,
+        p.amount,
+        pt.full_name,
+        pt.phone
+       FROM payments p
+       JOIN participants pt ON p.participant_id = pt.participant_id
+       WHERE p.verified_by_admin = false
+       AND p.payment_status = 'Success'`
+    );
+
+    // 2. Create lookup map
+    const csvLookup = new Set();
+    for (const csv of csvPayments) {
+      if (csv.transaction_id && csv.amount != null) {
+        csvLookup.add(`${csv.transaction_id}:${csv.amount}`);
+      }
     }
 
     const verified = [];
     const failed = [];
 
-    await client.query("BEGIN");
+    await client.query('BEGIN');
 
-    for (const row of payments) {
-      const { transaction_id, amount } = row;
+    // Batch update arrays
+    const paymentIdsToVerify = [];
+    const participantIdsToUpdate = [];
 
-      if (!transaction_id || typeof amount !== "number") {
-        failed.push({ transaction_id, reason: "Invalid data" });
-        continue;
+    // 3. Process payments
+    for (const dbPayment of allDbPayments.rows) {
+      const key = `${dbPayment.transaction_id}:${dbPayment.amount}`;
+      
+      if (csvLookup.has(key)) {
+        // Add to batch update
+        paymentIdsToVerify.push(dbPayment.payment_id);
+        participantIdsToUpdate.push(dbPayment.participant_id);
+        
+        // Verified: Only transaction_id
+        verified.push(dbPayment.transaction_id);
+      } else {
+        // Failed: transaction_id, name, phone
+        failed.push({
+          transaction_id: dbPayment.transaction_id,
+          name: dbPayment.full_name,
+          phone: dbPayment.phone
+        });
       }
-
-      // 🔎 Match existing payment
-      const result = await client.query(
-        `
-        UPDATE payments
-        SET verified_by_admin = true,
-            verified_at = NOW(),
-            payment_status = 'Success'
-        WHERE transaction_id = $1
-          AND amount = $2
-          AND payment_status <> 'Success'
-        RETURNING payment_id, participant_id
-        `,
-        [transaction_id, amount]
-      );
-
-      if (result.rowCount === 0) {
-        failed.push({ transaction_id, reason: "No matching payment found" });
-        continue;
-      }
-
-      const { participant_id } = result.rows[0];
-
-      // ✅ Update registration ONLY for matched participant
-      await client.query(
-        `
-        UPDATE registrations
-        SET payment_status = 'Success'
-        WHERE participant_id = $1
-        `,
-        [participant_id]
-      );
-
-      verified.push(transaction_id);
     }
 
-    await client.query("COMMIT");
+    // 4. Batch updates
+    if (paymentIdsToVerify.length > 0) {
+      await client.query(
+        `UPDATE payments 
+         SET verified_by_admin = true,
+             verified_at = NOW()
+         WHERE payment_id = ANY($1)`,
+        [paymentIdsToVerify]
+      );
 
-    return reply.send({
+      await client.query(
+        `UPDATE registrations 
+         SET payment_status = 'Success'
+         WHERE participant_id = ANY($1)`,
+        [participantIdsToUpdate]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    return {
       success: true,
-      verified_count: verified.length,
-      failed_count: failed.length,
-      verified,
-      failed
-    });
+      summary: {
+        total_pending: allDbPayments.rowCount,
+        csv_uploaded: csvPayments.length,
+        verified: verified.length,
+        failed: failed.length
+      },
+      verified,  // Just transaction IDs
+      failed     // Object with transaction_id, name, phone
+    };
 
   } catch (err) {
-    await client.query("ROLLBACK");
+    await client.query('ROLLBACK');
     fastify.log.error(err);
     return reply.code(500).send({ error: "Verification failed" });
   } finally {
     client.release();
   }
 });
+
 
 
 fastify.post('/api/verify-payment', async (request, reply) => {
