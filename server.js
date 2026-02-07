@@ -20,42 +20,23 @@ const __dirname = path.dirname(__filename);
 dotenv.config();
 
 const { Pool } = pg;
+const fastify = Fastify({ 
+  logger: true,
+  bodyLimit: 10485760
+});
 
-// ==================== STRESS & CONCURRENCY OPTIMIZATIONS ====================
 
-// 1. Enhanced Connection Pool with connection reuse
+// -------------------- PostgreSQL Setup --------------------
+
+// -------------------- PostgreSQL Setup --------------------
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_AfPar8WIF1jl@ep-late-unit-aili6pkq-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require',
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 100, // Increased for concurrency
-  min: 20, // Keep minimum connections ready
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
 });
 
-// 2. Fastify with concurrency optimizations
-const fastify = Fastify({ 
-  logger: {
-    level: 'info',
-    serializers: {
-      req(request) {
-        return {
-          method: request.method,
-          url: request.url,
-          hostname: request.hostname,
-          remoteAddress: request.ip,
-        };
-      }
-    }
-  },
-  bodyLimit: 10485760,
-  connectionTimeout: 10000, // Connection timeout
-  keepAliveTimeout: 5000,   // Keep-alive timeout
-  maxRequestsPerSocket: 100, // Limit requests per connection
-  disableRequestLogging: true, // Disable for performance
-});
 
-// 3. Redis with connection pooling
+
+
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
@@ -68,181 +49,36 @@ redis.ping().then(() => {
   console.error('❌ Redis connection failed:', err.message);
 });
 
-// 4. Rate Limiting Middleware
-const rateLimitStore = new Map();
-const RATE_LIMIT = {
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 100 // Max requests per IP
-};
 
-// Add rate limiting hook
-fastify.addHook('onRequest', async (request, reply) => {
-  // Skip rate limiting for health checks
-  if (request.url === '/api/health') return;
-  
-  const ip = request.ip;
-  const now = Date.now();
-  const windowStart = now - RATE_LIMIT.windowMs;
-  
-  if (!rateLimitStore.has(ip)) {
-    rateLimitStore.set(ip, []);
-  }
-  
-  const requests = rateLimitStore.get(ip).filter(time => time > windowStart);
-  
-  if (requests.length >= RATE_LIMIT.maxRequests) {
-    reply.code(429).send({
-      error: 'Too many requests',
-      retryAfter: Math.ceil((requests[0] + RATE_LIMIT.windowMs - now) / 1000)
-    });
-    return;
-  }
-  
-  requests.push(now);
-  rateLimitStore.set(ip, requests);
-});
 
-// 5. Request Queue for High Traffic Endpoints
-const requestQueue = {
-  registrations: [],
-  payments: [],
-  isProcessing: false
-};
-
-const processQueue = async (queueType) => {
-  if (requestQueue.isProcessing) return;
-  
-  requestQueue.isProcessing = true;
-  const queue = requestQueue[queueType];
-  
-  while (queue.length > 0) {
-    const { request, reply, handler } = queue.shift();
-    try {
-      await handler(request, reply);
-    } catch (error) {
-      console.error('Queue processing error:', error);
-    }
-  }
-  
-  requestQueue.isProcessing = false;
-};
-
-// 6. Database Connection Pool Monitor
-let dbConnectionErrors = 0;
-const MAX_DB_ERRORS = 10;
-
-pool.on('error', (err) => {
-  console.error('Unexpected database error:', err);
-  dbConnectionErrors++;
-  
-  if (dbConnectionErrors > MAX_DB_ERRORS) {
-    console.error('High database error rate. Consider restarting.');
-  }
-});
-
-pool.on('connect', () => {
-  dbConnectionErrors = Math.max(0, dbConnectionErrors - 1);
-});
-
-// 7. CACHE FUNCTIONS (ADD THIS)
-const cacheWithTTL = async (key, data, ttl = 60) => {
-  try {
-    await redis.setex(key, ttl, JSON.stringify(data));
-  } catch (error) {
-    console.error('Cache set error:', error);
-  }
-};
-
-const getCached = async (key) => {
-  try {
-    const cached = await redis.get(key);
-    return cached ? JSON.parse(cached) : null;
-  } catch (error) {
-    console.error('Cache get error:', error);
-    return null;
-  }
-};
-
-const invalidateCache = async (pattern) => {
-  try {
-    const keys = await redis.keys(pattern);
-    if (keys.length > 0) {
-      await redis.del(...keys);
-    }
-  } catch (err) {
-    console.error('Error invalidating cache:', err);
-  }
-};
-
-const invalidateParticipantCache = async (participantId) => {
-  await redis.del(`verification:${participantId}`);
-  await invalidateCache(`track:*`);
-};
-
-const invalidateStatsCache = async () => {
-  await redis.del('admin_stats');
-};
-
-const invalidateGalleryCache = async () => {
-  await invalidateCache('gallery:*');
-};
-
-const invalidateAnnouncementsCache = async () => {
-  await redis.del('announcements');
-};
-
-const invalidateEventsCache = async () => {
-  await invalidateCache('events:*');
-  await invalidateCache('seats:*');
-};
-
-// 8. Connection Pool Middleware
-fastify.addHook('onRequest', async (request, reply) => {
-  // Attach pool to request for reuse
-  request.pool = pool;
-  request.redis = redis;
-});
 
 // Event dates (for auto-close feature)
 const EVENT_DATES = {
-  workshop_day: moment().add(5, 'days').format('YYYY-MM-DD'),
-  event_day: moment().add(6, 'days').format('YYYY-MM-DD'),
-  registration_closes: moment().add(4, 'days').format('YYYY-MM-DD')
+  workshop_day: moment().add(5, 'days').format('YYYY-MM-DD'), // Day 1 (5 days from today)
+  event_day: moment().add(6, 'days').format('YYYY-MM-DD'),    // Day 2 (6 days from today)
+  registration_closes: moment().add(4, 'days').format('YYYY-MM-DD') // Day before event (4 days from today)
 };
 
-// ==================== HEALTH ENDPOINT WITH LOAD CHECK ====================
+
+
+
 
 fastify.get('/api/health', async () => {
-  const startTime = Date.now();
-  
-  // Parallel health checks
-  const [dbHealth, redisHealth, queueLength] = await Promise.all([
-    pool.query('SELECT 1 as healthy').catch(() => ({ rows: [{ healthy: 0 }] })),
-    redis.ping().then(() => 'OK').catch(() => 'ERROR'),
-    Promise.resolve(requestQueue.registrations.length + requestQueue.payments.length)
-  ]);
-  
-  const responseTime = Date.now() - startTime;
+  const dbHealth = await pool.query('SELECT 1 as healthy').catch(() => ({ rows: [{ healthy: 0 }] }));
+  const redisHealth = await redis.ping().then(() => 'OK').catch(() => 'ERROR');
   
   return {
     status: 'operational',
     timestamp: new Date().toISOString(),
-    response_time_ms: responseTime,
     services: {
       database: dbHealth.rows[0].healthy === 1 ? 'OK' : 'ERROR',
       redis: redisHealth,
       registration_open: moment().isBefore(moment(EVENT_DATES.registration_closes))
-    },
-    load: {
-      active_connections: pool.totalCount,
-      idle_connections: pool.idleCount,
-      waiting_connections: pool.waitingCount,
-      queue_length: queueLength
     }
   };
 });
 
-const sendEmail = async (to, subject, html) => {
+  const sendEmail = async (to, subject, html) => {
   console.log(`Email to ${to}: ${subject}`);
   return true;
 };
@@ -252,8 +88,9 @@ const sendWhatsApp = async (phone, message) => {
   return true;
 };
 
-// ==================== PLUGIN REGISTRATION ====================
 
+
+// -------------------- Plugin Registration --------------------
 await fastify.register(cors, { origin: '*' });
 await fastify.register(formbody);
 await fastify.register(multipart);
@@ -262,22 +99,15 @@ await fastify.register(staticPlugin, {
   prefix: '/public/',
 });
 
-// ==================== OPTIMIZED API ROUTES ====================
+// -------------------- API Routes --------------------
 
-// 1. Get Event Dates & Countdown (Cached)
+// 1. Get Event Dates & Countdown
 fastify.get('/api/event-dates', async () => {
-  const cacheKey = 'event_dates';
-  const cached = await getCached(cacheKey);
-  
-  if (cached) {
-    return cached;
-  }
-  
   const today = moment();
   const workshopDate = moment(EVENT_DATES.workshop_day);
   const eventDate = moment(EVENT_DATES.event_day);
   
-  const response = {
+  return {
     workshop_day: EVENT_DATES.workshop_day,
     event_day: EVENT_DATES.event_day,
     registration_closes: EVENT_DATES.registration_closes,
@@ -287,22 +117,14 @@ fastify.get('/api/event-dates', async () => {
       is_registration_open: today.isBefore(moment(EVENT_DATES.registration_closes))
     }
   };
-  
-  await cacheWithTTL(cacheKey, response, 300); // Cache for 5 minutes
-  return response;
 });
 
-// 2. Get Events (Cached)
+
 fastify.get('/api/events', async (request, reply) => {
   try {
     const { day, type } = request.query;
-    const cacheKey = `events:${day || 'all'}:${type || 'all'}`;
-    
-    const cached = await getCached(cacheKey);
-    if (cached) {
-      return cached;
-    }
-    
+
+    // Base query
     let query = `
       SELECT 
         event_id, event_name, event_type, day, fee,
@@ -333,14 +155,10 @@ fastify.get('/api/events', async (request, reply) => {
 
     const result = await pool.query(query, params);
 
-    const response = {
+    return {
       events: result.rows,
       registration_open: moment().isBefore(moment(EVENT_DATES.registration_closes))
     };
-    
-    await cacheWithTTL(cacheKey, response, 60); // Cache for 1 minute
-    
-    return response;
 
   } catch (error) {
     fastify.log.error(error);
@@ -348,35 +166,7 @@ fastify.get('/api/events', async (request, reply) => {
   }
 });
 
-// 3. QUEUED REGISTRATION ENDPOINT (Optimized for concurrency)
 fastify.post('/api/register', async (request, reply) => {
-  return new Promise((resolve, reject) => {
-    // Add to queue instead of processing immediately
-    requestQueue.registrations.push({
-      request,
-      reply,
-      handler: async (req, rep) => {
-        await handleRegistration(req, rep);
-      }
-    });
-    
-    // Process queue
-    processQueue('registrations');
-    
-    // Immediate response
-    rep.code(202).send({
-      success: true,
-      message: 'Registration request received. Processing in queue...',
-      queue_position: requestQueue.registrations.length,
-      estimated_wait: Math.min(requestQueue.registrations.length * 2, 30) // seconds
-    });
-    
-    resolve();
-  });
-});
-
-// Original registration handler (unchanged)
-const handleRegistration = async (request, reply) => {
   const client = await pool.connect();
   
   try {
@@ -441,22 +231,13 @@ const handleRegistration = async (request, reply) => {
       throw new Error('REGISTRATION_CLOSED: Registration is closed. Please contact organizers.');
     }
     
-    // 3. CHECK FOR DUPLICATE EMAIL (with cache)
-    const emailCacheKey = `email_check:${email.toLowerCase()}`;
-    const cachedEmailCheck = await getCached(emailCacheKey);
+    // 3. CHECK FOR DUPLICATE EMAIL
+    const existing = await client.query(
+      'SELECT * FROM participants WHERE LOWER(email) = LOWER($1)',
+      [email]
+    );
     
-    if (!cachedEmailCheck) {
-      const existing = await client.query(
-        'SELECT * FROM participants WHERE LOWER(email) = LOWER($1)',
-        [email]
-      );
-      
-      if (existing.rows.length > 0) {
-        await cacheWithTTL(emailCacheKey, { exists: true }, 60);
-        throw new Error('EMAIL_EXISTS: This email is already registered. Please use a different email.');
-      }
-      await cacheWithTTL(emailCacheKey, { exists: false }, 60);
-    } else if (cachedEmailCheck.exists) {
+    if (existing.rows.length > 0) {
       throw new Error('EMAIL_EXISTS: This email is already registered. Please use a different email.');
     }
     
@@ -489,13 +270,13 @@ const handleRegistration = async (request, reply) => {
       throw new Error('NO_EVENTS_SELECTED: Please select at least one workshop or event');
     }
     
-    // 6. DEFINE SEAT CHECK FUNCTION (Optimized with cache)
+    // 6. DEFINE SEAT CHECK FUNCTION (JUST CHECKS, NO DECREMENT)
     const checkSeatAvailability = async (eventId, department) => {
       const cacheKey = `seats:${eventId}`;
-      const cached = await getCached(cacheKey);
+      const cached = await redis.get(cacheKey);
       
       if (cached) {
-        const eventData = cached;
+        const eventData = JSON.parse(cached);
         
         if (department === 'CSE') {
           if (eventData.cse_available_seats <= 0) {
@@ -521,9 +302,6 @@ const handleRegistration = async (request, reply) => {
       
       const eventData = event.rows[0];
       
-      // Cache the seat data
-      await cacheWithTTL(cacheKey, eventData, 30);
-      
       if (department === 'CSE') {
         if (eventData.cse_available_seats <= 0) {
           throw new Error(`CSE_SEATS_FULL: No CSE seats available for "${eventData.event_name}". CSE seats: ${eventData.cse_available_seats}/${eventData.cse_seats}`);
@@ -537,7 +315,7 @@ const handleRegistration = async (request, reply) => {
       return true;
     };
     
-    // 7. PROCESS WORKSHOPS
+    // 7. PROCESS WORKSHOPS (CHECK SEATS BUT DON'T DECREMENT)
     const processedWorkshops = [];
     for (const eventId of workshop_selections) {
       const eventIdNum = parseInt(eventId);
@@ -545,6 +323,7 @@ const handleRegistration = async (request, reply) => {
         throw new Error(`INVALID_WORKSHOP_ID: Workshop ID "${eventId}" is invalid`);
       }
       
+      // Check if workshop exists and is type 'workshop'
       const event = await client.query(
         'SELECT event_name, fee, day, event_type FROM events WHERE event_id = $1',
         [eventId]
@@ -558,14 +337,17 @@ const handleRegistration = async (request, reply) => {
         throw new Error(`NOT_A_WORKSHOP: Event ID ${eventId} is not a workshop (type: ${event.rows[0].event_type})`);
       }
       
+      // CHECK seat availability (but don't decrement yet)
       await checkSeatAvailability(eventId, department);
       
+      // Generate registration ID
       const prefix = 'THREADS26-WS-';
       const deptCode = department === 'CSE' ? 'CSE' : 'OTH';
       const timestamp = Date.now().toString().slice(-9);
       const baseRegId = `${prefix}${deptCode}-${timestamp}`;
       const regId = `${baseRegId}-${eventId}`;
       
+      // Insert registration as PENDING
       await client.query(
         `INSERT INTO registrations (
           participant_id, event_id, registration_unique_id,
@@ -575,19 +357,21 @@ const handleRegistration = async (request, reply) => {
           participantId,
           eventId,
           regId,
-          'Pending',
+          'Pending', // Payment status is Pending
           parseFloat(event.rows[0].fee) || 0,
           event.rows[0].event_name,
           event.rows[0].day
         ]
       );
       
+      // ❌ NO SEAT DECREMENT HERE - Will happen after payment
+      
       registrationIds.push(regId);
       totalAmount += parseFloat(event.rows[0].fee) || 0;
       processedWorkshops.push(eventId);
     }
     
-    // 8. PROCESS EVENTS
+    // 8. PROCESS EVENTS (CHECK SEATS BUT DON'T DECREMENT)
     const processedEvents = [];
     for (const eventId of event_selections) {
       const eventIdNum = parseInt(eventId);
@@ -595,6 +379,7 @@ const handleRegistration = async (request, reply) => {
         throw new Error(`INVALID_EVENT_ID: Event ID "${eventId}" is invalid`);
       }
       
+      // Check if event exists and is day 2
       const event = await client.query(
         'SELECT event_name, fee, day FROM events WHERE event_id = $1',
         [eventId]
@@ -608,14 +393,17 @@ const handleRegistration = async (request, reply) => {
         throw new Error(`NOT_DAY2_EVENT: Event ID ${eventId} is not a Day 2 event (day: ${event.rows[0].day})`);
       }
       
+      // CHECK seat availability (but don't decrement yet)
       await checkSeatAvailability(eventId, department);
       
+      // Generate registration ID
       const prefix = 'THREADS26-EV-';
       const deptCode = department === 'CSE' ? 'CSE' : 'OTH';
       const timestamp = Date.now().toString().slice(-9);
       const baseRegId = `${prefix}${deptCode}-${timestamp}`;
       const regId = `${baseRegId}-${eventId}`;
       
+      // Insert registration as PENDING
       await client.query(
         `INSERT INTO registrations (
           participant_id, event_id, registration_unique_id,
@@ -625,12 +413,14 @@ const handleRegistration = async (request, reply) => {
           participantId,
           eventId,
           regId,
-          'Pending',
+          'Pending', // Payment status is Pending
           parseFloat(event.rows[0].fee) || 0,
           event.rows[0].event_name,
           event.rows[0].day
         ]
       );
+      
+      // ❌ NO SEAT DECREMENT HERE - Will happen after payment
       
       registrationIds.push(regId);
       totalAmount += parseFloat(event.rows[0].fee) || 0;
@@ -676,6 +466,7 @@ const handleRegistration = async (request, reply) => {
     // 12. ANALYZE ERROR AND RETURN SPECIFIC MESSAGE
     const errorMessage = error.message;
     
+    // Categorize errors
     if (errorMessage.includes('CSE_SEATS_FULL')) {
       return reply.code(400).send({
         success: false,
@@ -699,6 +490,7 @@ const handleRegistration = async (request, reply) => {
       });
     }
     
+    // ... (keep other error handling same)
     return reply.code(400).send({
       success: false,
       error_type: 'REGISTRATION_ERROR',
@@ -711,34 +503,70 @@ const handleRegistration = async (request, reply) => {
   } finally {
     client.release();
   }
-};
-
-// 4. QUEUED PAYMENT VERIFICATION (Optimized)
-fastify.post('/api/verify-payment', async (request, reply) => {
-  return new Promise((resolve, reject) => {
-    requestQueue.payments.push({
-      request,
-      reply,
-      handler: async (req, rep) => {
-        await handlePaymentVerification(req, rep);
-      }
-    });
-    
-    processQueue('payments');
-    
-    rep.code(202).send({
-      success: true,
-      message: 'Payment verification request received. Processing in queue...',
-      queue_position: requestQueue.payments.length,
-      estimated_wait: Math.min(requestQueue.payments.length * 1, 20) // seconds
-    });
-    
-    resolve();
-  });
 });
 
-// Original payment verification handler (unchanged)
-const handlePaymentVerification = async (request, reply) => {
+fastify.post("/api/admin/verify-payments", async (request, reply) => {
+  const client = await pool.connect();
+
+  try {
+    const { payments } = request.body;
+
+    if (!Array.isArray(payments) || payments.length === 0) {
+      return reply.code(400).send({ error: "payments array required" });
+    }
+
+    const verified = [];
+    const failed = [];
+
+    await client.query("BEGIN");
+
+    for (const row of payments) {
+      const { transaction_id, amount } = row;
+
+      if (!transaction_id || amount == null) {
+        failed.push({ transaction_id, reason: "Invalid data" });
+        continue;
+      }
+
+      const result = await client.query(
+        `UPDATE payments
+         SET verified_by_admin = true,
+             verified_at = NOW(),
+             payment_status = 'Success'
+         WHERE transaction_id = $1
+           AND amount = $2
+         RETURNING payment_id`,
+        [transaction_id, amount]
+      );
+
+      if (result.rowCount > 0) {
+        verified.push(transaction_id);
+      } else {
+        failed.push({ transaction_id, reason: "No match found" });
+      }
+    }
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+      verified_count: verified.length,
+      failed_count: failed.length,
+      verified,
+      failed
+    };
+
+  } catch (err) {
+    await client.query("ROLLBACK");
+    fastify.log.error(err);
+    return reply.code(500).send({ error: "Verification failed" });
+  } finally {
+    client.release();
+  }
+});
+
+
+fastify.post('/api/verify-payment', async (request, reply) => {
   const client = await pool.connect();
   
   try {
@@ -888,7 +716,7 @@ const handlePaymentVerification = async (request, reply) => {
       ]
     );
     
-    // 8. DEFINE SEAT UPDATE FUNCTION
+    // 8. DEFINE SEAT UPDATE FUNCTION (NOW DECREMENTING SEATS)
     const updateSeats = async (eventId, department, increment = false) => {
       const op = increment ? '+' : '-';
       
@@ -910,6 +738,7 @@ const handlePaymentVerification = async (request, reply) => {
     // 9. CHECK AND DECREMENT SEATS FOR EACH REGISTRATION
     const seatLocks = [];
     for (const reg of pendingRegistrations.rows) {
+      // Acquire lock for this event to prevent race conditions
       const lockKey = `seat_lock:${reg.event_id}:${Date.now()}`;
       const lockAcquired = await redis.set(lockKey, 'locked', { nx: true, ex: 3 });
       if (!lockAcquired) {
@@ -917,6 +746,7 @@ const handlePaymentVerification = async (request, reply) => {
       }
       seatLocks.push(lockKey);
       
+      // Check if event still has seats available
       const event = await client.query(
         'SELECT event_name, cse_available_seats, available_seats FROM events WHERE event_id = $1 AND is_active = true',
         [reg.event_id]
@@ -928,6 +758,7 @@ const handlePaymentVerification = async (request, reply) => {
       
       const eventData = event.rows[0];
       
+      // Check seat availability again (in case seats filled since registration)
       if (department === 'CSE') {
         if (eventData.cse_available_seats <= 0) {
           throw new Error(`CSE_SEATS_FULL_AT_PAYMENT: No CSE seats available for "${reg.event_name}". Seats filled before payment.`);
@@ -938,6 +769,7 @@ const handlePaymentVerification = async (request, reply) => {
         }
       }
       
+      // ✅ DECREMENT SEATS HERE (AFTER PAYMENT VERIFICATION)
       await updateSeats(reg.event_id, department, false);
     }
     
@@ -1055,6 +887,7 @@ const handlePaymentVerification = async (request, reply) => {
       }
     };
     
+    // Add QR code if generated successfully
     if (qrCodeBase64) {
       response.qr_code = qrCodeBase64;
       response.qr_payload = qrPayload;
@@ -1063,14 +896,17 @@ const handlePaymentVerification = async (request, reply) => {
     return reply.send(response);
     
   } catch (error) {
+    // 18. ROLLBACK ON ERROR
     try {
       await client.query('ROLLBACK');
     } catch (rollbackError) {
       console.error('Rollback error:', rollbackError);
     }
     
+    // 19. ANALYZE ERROR
     const errorMessage = error.message;
     
+    // Handle seat-related errors during payment
     if (errorMessage.includes('CSE_SEATS_FULL_AT_PAYMENT')) {
       return reply.code(400).send({
         success: false,
@@ -1094,6 +930,7 @@ const handlePaymentVerification = async (request, reply) => {
       });
     }
     
+    // 20. RETURN GENERIC ERROR
     fastify.log.error('Payment verification error:', error);
     
     return reply.code(400).send({
@@ -1106,83 +943,19 @@ const handlePaymentVerification = async (request, reply) => {
     });
     
   } finally {
-    client.release();
-  }
-};
-
-// 5. ADMIN PAYMENT VERIFICATION (Optimized with cache invalidation)
-fastify.post("/api/admin/verify-payments", async (request, reply) => {
-  const client = await pool.connect();
-
-  try {
-    const { payments } = request.body;
-
-    if (!Array.isArray(payments) || payments.length === 0) {
-      return reply.code(400).send({ error: "payments array required" });
-    }
-
-    const verified = [];
-    const failed = [];
-
-    await client.query("BEGIN");
-
-    for (const row of payments) {
-      const { transaction_id, amount } = row;
-
-      if (!transaction_id || amount == null) {
-        failed.push({ transaction_id, reason: "Invalid data" });
-        continue;
-      }
-
-      const result = await client.query(
-        `UPDATE payments
-         SET verified_by_admin = true,
-             verified_at = NOW(),
-             payment_status = 'Success'
-         WHERE transaction_id = $1
-           AND amount = $2
-         RETURNING payment_id`,
-        [transaction_id, amount]
-      );
-
-      if (result.rowCount > 0) {
-        verified.push(transaction_id);
-      } else {
-        failed.push({ transaction_id, reason: "No match found" });
-      }
-    }
-
-    await client.query("COMMIT");
-
-    // Clear relevant caches
-    await Promise.all([
-      redis.del('admin_stats'),
-      invalidateCache('^track:.*'),
-      invalidateCache('^verification:.*'),
-      invalidateCache('events:*')
-    ]);
-
-    return {
-      success: true,
-      verified_count: verified.length,
-      failed_count: failed.length,
-      verified,
-      failed
-    };
-
-  } catch (err) {
-    await client.query("ROLLBACK");
-    fastify.log.error(err);
-    return reply.code(500).send({ error: "Verification failed" });
-  } finally {
+    // 21. RELEASE CLIENT
     client.release();
   }
 });
 
-// 6. ADMIN LOGIN (No changes needed)
+
+// -------------------- ADMIN PAYMENT VERIFICATION ENDPOINTS --------------------
+
+// 1. Admin Login
 fastify.post('/api/admin/login', async (request, reply) => {
   const { username, password } = request.body;
   
+  // In production, use proper authentication with JWT
   const adminUsername = process.env.ADMIN_USERNAME || 'admin';
   const adminPassword = process.env.ADMIN_PASSWORD || 'threads26';
   
@@ -1198,16 +971,13 @@ fastify.post('/api/admin/login', async (request, reply) => {
   return reply.code(401).send({ error: 'Invalid credentials' });
 });
 
-// 7. ADMIN REGISTRATIONS (Cached)
+
 fastify.get('/api/admin/registrations', async (request) => {
   try {
     const { page = 1, limit = 50, event_id, payment_status } = request.query;
     const offset = (page - 1) * limit;
-    
-    const cacheKey = `admin_reg:${page}:${limit}:${event_id || 'all'}:${payment_status || 'all'}`;
-    const cached = await getCached(cacheKey);
-    if (cached) return cached;
 
+    // ✅ OPTIMIZED QUERY - Use CTE for payments subquery
     let query = `
       WITH latest_payments AS (
         SELECT 
@@ -1286,8 +1056,6 @@ fastify.get('/api/admin/registrations', async (request) => {
       };
     });
 
-    await cacheWithTTL(cacheKey, rows, 30); // Cache for 30 seconds
-    
     return rows;
 
   } catch (error) {
@@ -1296,7 +1064,7 @@ fastify.get('/api/admin/registrations', async (request) => {
   }
 });
 
-// 8. MANUAL PAYMENT VERIFICATION (Optimized with cache invalidation)
+// Manual Payment Verification (schema-safe)
 fastify.post('/api/admin/manual-verification', async (request, reply) => {
   const client = await pool.connect();
 
@@ -1356,12 +1124,11 @@ fastify.post('/api/admin/manual-verification', async (request, reply) => {
 
     await client.query('COMMIT');
 
-    // Clear caches
-    await Promise.all([
-      invalidateParticipantCache(participant_id),
-      invalidateStatsCache(),
-      invalidateEventsCache()
-    ]);
+    Promise.all([
+  invalidateParticipantCache(participant_id),
+  invalidateStatsCache()
+]).catch(err => console.error('Cache invalidation error:', err));
+
 
     return {
       success: true,
@@ -1379,7 +1146,10 @@ fastify.post('/api/admin/manual-verification', async (request, reply) => {
   }
 });
 
-// 9. ADMIN QR SCAN (No changes needed)
+
+// -------------------- ADMIN ATTENDANCE ENDPOINTS --------------------
+
+// 6. Admin QR Scan & Attendance Update
 fastify.post('/api/admin/scan-qr', async (request, reply) => {
   try {
     const { qr_data, admin_token } = request.body;
@@ -1437,7 +1207,8 @@ fastify.post('/api/admin/scan-qr', async (request, reply) => {
   }
 });
 
-// 10. UPDATE ATTENDANCE (Optimized with cache invalidation)
+
+// 7. Update Attendance Status (QR Scan Based)
 fastify.post('/api/admin/attendance', async (request, reply) => {
   const client = await pool.connect();
 
@@ -1474,8 +1245,10 @@ fastify.post('/api/admin/attendance', async (request, reply) => {
 
     await client.query('COMMIT');
 
-    // Clear cache
-    await invalidateStatsCache();
+    // ✅ ADD CACHE INVALIDATION
+Promise.all([
+  invalidateStatsCache()
+]).catch(err => console.error('Cache invalidation error:', err));
 
     return {
       success: true,
@@ -1497,7 +1270,8 @@ fastify.post('/api/admin/attendance', async (request, reply) => {
   }
 });
 
-// 11. ATTENDANCE REPORT (Cached)
+
+// 8. Get Attendance Report
 fastify.get('/api/admin/attendance-report', async (request) => {
   // Verify admin token
   const adminToken = request.headers['x-admin-token'];
@@ -1507,10 +1281,6 @@ fastify.get('/api/admin/attendance-report', async (request) => {
   
   try {
     const { event_id, day, date } = request.query;
-    
-    const cacheKey = `attendance_report:${event_id || 'all'}:${day || 'all'}:${date || 'all'}`;
-    const cached = await getCached(cacheKey);
-    if (cached) return cached;
     
     let query = `
       SELECT 
@@ -1596,14 +1366,10 @@ fastify.get('/api/admin/attendance-report', async (request) => {
       }
     });
     
-    const response = {
+    return {
       registrations: result.rows,
       statistics: stats
     };
-    
-    await cacheWithTTL(cacheKey, response, 30); // Cache for 30 seconds
-    
-    return response;
     
   } catch (error) {
     fastify.log.error(error);
@@ -1611,7 +1377,7 @@ fastify.get('/api/admin/attendance-report', async (request) => {
   }
 });
 
-// 12. BULK ATTENDANCE UPDATE (Optimized with cache invalidation)
+// 9. Bulk Attendance Update
 fastify.post('/api/admin/bulk-attendance', async (request, reply) => {
   const client = await pool.connect();
   
@@ -1663,9 +1429,6 @@ fastify.post('/api/admin/bulk-attendance', async (request, reply) => {
     
     await client.query('COMMIT');
     
-    // Clear cache
-    await invalidateStatsCache();
-    
     return {
       success: true,
       updated_count: result.rowCount,
@@ -1681,7 +1444,7 @@ fastify.post('/api/admin/bulk-attendance', async (request, reply) => {
   }
 });
 
-// 13. EXPORT REGISTRATIONS (Cached data query)
+// 10. Export Registrations (Admin)
 fastify.get('/api/admin/export', async (request, reply) => {
   // Verify admin token
   const adminToken = request.headers['x-admin-token'];
@@ -1690,42 +1453,31 @@ fastify.get('/api/admin/export', async (request, reply) => {
   }
   
   try {
-    const cacheKey = 'export_data';
-    const cached = await getCached(cacheKey);
-    
-    let result;
-    if (cached) {
-      result = { rows: cached };
-    } else {
-      result = await pool.query(`
-        SELECT 
-          p.full_name,
-          p.email,
-          p.phone,
-          p.college_name,
-          p.department,
-          p.year_of_study,
-          p.city,
-          p.state,
-          p.accommodation_required,
-          r.registration_unique_id,
-          r.payment_status,
-          r.amount_paid,
-          r.registered_at,
-          r.attendance_status,
-          e.event_name,
-          e.event_type,
-          e.day,
-          e.fee
-        FROM registrations r
-        JOIN participants p ON r.participant_id = p.participant_id
-        JOIN events e ON r.event_id = e.event_id
-        ORDER BY r.registered_at DESC
-      `);
-      
-      // Cache the data (not the CSV) for 30 seconds
-      await cacheWithTTL(cacheKey, result.rows, 30);
-    }
+    const result = await pool.query(`
+      SELECT 
+        p.full_name,
+        p.email,
+        p.phone,
+        p.college_name,
+        p.department,
+        p.year_of_study,
+        p.city,
+        p.state,
+        p.accommodation_required,
+        r.registration_unique_id,
+        r.payment_status,
+        r.amount_paid,
+        r.registered_at,
+        r.attendance_status,
+        e.event_name,
+        e.event_type,
+        e.day,
+        e.fee
+      FROM registrations r
+      JOIN participants p ON r.participant_id = p.participant_id
+      JOIN events e ON r.event_id = e.event_id
+      ORDER BY r.registered_at DESC
+    `);
     
     // Convert to CSV
     const headers = Object.keys(result.rows[0] || {}).join(',');
@@ -1747,16 +1499,16 @@ fastify.get('/api/admin/export', async (request, reply) => {
   }
 });
 
-// 14. PARTICIPANT VERIFICATION STATUS (Cached)
+
 fastify.get('/api/participant/:id/verification-status', async (request, reply) => {
   try {
     const { id } = request.params;
     const cacheKey = `verification:${id}`;
     
     // Try cache first
-    const cached = await getCached(cacheKey);
+    const cached = await redis.get(cacheKey);
     if (cached) {
-      return cached;
+      return JSON.parse(cached);
     }
     
     // Get participant details
@@ -1839,7 +1591,7 @@ fastify.get('/api/participant/:id/verification-status', async (request, reply) =
     };
     
     // Cache for 30 seconds
-    await cacheWithTTL(cacheKey, response, 30);
+    await redis.setex(cacheKey, 30, JSON.stringify(response));
     
     return response;
     
@@ -1849,16 +1601,15 @@ fastify.get('/api/participant/:id/verification-status', async (request, reply) =
   }
 });
 
-// 15. TRACK REGISTRATION (Cached)
 fastify.get('/api/track/:registration_id', async (request, reply) => {
   try {
     const { registration_id } = request.params;
     const cacheKey = `track:${registration_id}`;
     
     // Try cache first
-    const cached = await getCached(cacheKey);
+    const cached = await redis.get(cacheKey);
     if (cached) {
-      return cached;
+      return JSON.parse(cached);
     }
     
     const result = await pool.query(
@@ -1941,8 +1692,8 @@ fastify.get('/api/track/:registration_id', async (request, reply) => {
       }
     };
     
-    // Cache for 60 seconds
-    await cacheWithTTL(cacheKey, response, 60);
+    // Cache for 60 seconds (tracking doesn't change often)
+    await redis.setex(cacheKey, 60, JSON.stringify(response));
     
     return response;
   } catch (error) {
@@ -1951,14 +1702,13 @@ fastify.get('/api/track/:registration_id', async (request, reply) => {
   }
 });
 
-// 16. ADMIN STATS (Cached)
 fastify.get('/api/admin/stats', async (request) => {
   const cacheKey = 'admin_stats';
   
   // Try cache first
-  const cached = await getCached(cacheKey);
+  const cached = await redis.get(cacheKey);
   if (cached) {
-    return cached;
+    return JSON.parse(cached);
   }
   
   try {
@@ -2029,8 +1779,8 @@ fastify.get('/api/admin/stats', async (request) => {
       updated_at: new Date().toISOString()
     };
     
-    // Cache for 60 seconds
-    await cacheWithTTL(cacheKey, result, 60);
+    // Cache for 60 seconds (stats update every minute is fine)
+    await redis.setex(cacheKey, 60, JSON.stringify(result));
     
     return result;
   } catch (error) {
@@ -2039,7 +1789,44 @@ fastify.get('/api/admin/stats', async (request) => {
   }
 });
 
-// 17. UPDATE EVENT STATUS (Optimized with cache invalidation)
+
+// Add these after Redis setup
+const invalidateCache = async (pattern) => {
+  try {
+    const keys = await redis.keys(pattern);
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
+  } catch (err) {
+    console.error('Error invalidating cache:', err);
+  }
+};
+
+// Specific cache invalidation functions
+const invalidateEventsCache = async () => {
+  await invalidateCache('events:*');
+  await invalidateCache('seats:*');
+};
+
+const invalidateParticipantCache = async (participantId) => {
+  await redis.del(`verification:${participantId}`);
+  await invalidateCache(`track:*`); // Invalidate all tracking
+};
+
+const invalidateStatsCache = async () => {
+  await redis.del('admin_stats');
+};
+
+const invalidateGalleryCache = async () => {
+  await invalidateCache('gallery:*');
+};
+
+const invalidateAnnouncementsCache = async () => {
+  await redis.del('announcements');
+};
+
+
+// 12. Update Event Status (Admin)
 fastify.patch('/api/admin/events/:id', async (request, reply) => {
   
   try {
@@ -2080,9 +1867,6 @@ fastify.patch('/api/admin/events/:id', async (request, reply) => {
     
     const result = await pool.query(query, params);
     
-    // Clear events cache
-    await invalidateEventsCache();
-    
     return { 
       success: true, 
       event: result.rows[0] 
@@ -2094,7 +1878,8 @@ fastify.patch('/api/admin/events/:id', async (request, reply) => {
   }
 });
 
-// 18. UPLOAD GALLERY IMAGE (Optimized with cache invalidation)
+
+// 13. Upload Gallery Image (Admin)
 fastify.post('/api/admin/gallery', async (request, reply) => {
   // Verify admin token
   const adminToken = request.headers['x-admin-token'];
@@ -2125,9 +1910,6 @@ fastify.post('/api/admin/gallery', async (request, reply) => {
       [album_name.value, imageUrl]
     );
     
-    // Clear gallery cache
-    await invalidateGalleryCache();
-    
     return { 
       success: true, 
       image_id: result.rows[0].image_id,
@@ -2140,15 +1922,11 @@ fastify.post('/api/admin/gallery', async (request, reply) => {
   }
 });
 
-// 19. GET GALLERY IMAGES (Cached)
+
+// 14. Get Gallery Images (Public)
 fastify.get('/api/gallery', async (request) => {
   try {
     const { album_name } = request.query;
-    const cacheKey = `gallery:${album_name || 'all'}`;
-    
-    const cached = await getCached(cacheKey);
-    if (cached) return cached;
-    
     let query = 'SELECT * FROM gallery ORDER BY uploaded_at DESC';
     const params = [];
     
@@ -2158,9 +1936,6 @@ fastify.get('/api/gallery', async (request) => {
     }
     
     const result = await pool.query(query, params);
-    
-    await cacheWithTTL(cacheKey, result.rows, 300); // Cache for 5 minutes
-    
     return result.rows;
   } catch (error) {
     fastify.log.error(error);
@@ -2168,7 +1943,8 @@ fastify.get('/api/gallery', async (request) => {
   }
 });
 
-// 20. CREATE ANNOUNCEMENT (Optimized with cache invalidation)
+
+// 15. Create announcement (Admin)
 fastify.post('/api/admin/announcements', async (request, reply) => {
   const adminToken = request.headers['x-admin-token'];
   if (!adminToken || adminToken !== process.env.ADMIN_TOKEN) {
@@ -2185,9 +1961,6 @@ fastify.post('/api/admin/announcements', async (request, reply) => {
       [title, content, expires_at]
     );
     
-    // Clear announcements cache
-    await invalidateAnnouncementsCache();
-    
     return {
       success: true,
       announcement_id: result.rows[0].announcement_id,
@@ -2199,21 +1972,15 @@ fastify.post('/api/admin/announcements', async (request, reply) => {
   }
 });
 
-// 21. GET ACTIVE ANNOUNCEMENTS (Cached)
+
+// 16. Get active announcements (Public)
 fastify.get('/api/announcements', async () => {
   try {
-    const cacheKey = 'announcements';
-    const cached = await getCached(cacheKey);
-    if (cached) return cached;
-    
     const result = await pool.query(
       `SELECT * FROM announcements 
        WHERE is_active = true AND (expires_at IS NULL OR expires_at > NOW())
        ORDER BY created_at DESC`
     );
-    
-    await cacheWithTTL(cacheKey, result.rows, 120); // Cache for 2 minutes
-    
     return result.rows;
   } catch (error) {
     fastify.log.error(error);
@@ -2221,14 +1988,11 @@ fastify.get('/api/announcements', async () => {
   }
 });
 
-// 22. GET QR FOR PARTICIPANT (Cached)
+
+// 17. Get QR for participant (for admin display)
 fastify.get('/api/participant/:id/qr-data', async (request) => {
   try {
     const { id } = request.params;
-    const cacheKey = `qr_data:${id}`;
-    
-    const cached = await getCached(cacheKey);
-    if (cached) return cached;
     
     const participant = await pool.query(
       `SELECT * FROM participants WHERE participant_id = $1`,
@@ -2266,7 +2030,7 @@ fastify.get('/api/participant/:id/qr-data', async (request) => {
       sum + parseFloat(reg.amount_paid || 0), 0
     );
     
-    const response = {
+    return {
       participant: participant.rows[0],
       registrations: registrations.rows,
       payments: payments.rows,
@@ -2274,17 +2038,14 @@ fastify.get('/api/participant/:id/qr-data', async (request) => {
       qr_url: `/api/participant/${id}/qr`
     };
     
-    await cacheWithTTL(cacheKey, response, 30); // Cache for 30 seconds
-    
-    return response;
-    
   } catch (error) {
     fastify.log.error(error);
     throw error;
   }
 });
 
-// 23. AUTO-CLOSE REGISTRATION CHECK (No cache needed - real-time)
+
+// 9. Auto-close Registration Check (Cron job simulation)
 fastify.get('/api/admin/check-registration-status', async (request) => {
   const today = moment();
   const closeDate = moment(EVENT_DATES.registration_closes);
@@ -2294,9 +2055,6 @@ fastify.get('/api/admin/check-registration-status', async (request) => {
     await pool.query(
       `UPDATE events SET is_active = false WHERE is_active = true`
     );
-    
-    // Clear events cache
-    await invalidateEventsCache();
     
     return {
       status: 'closed',
@@ -2312,7 +2070,8 @@ fastify.get('/api/admin/check-registration-status', async (request) => {
   };
 });
 
-// 24. SCAN QR & MARK ATTENDANCE (Optimized)
+
+// -------------------- Scan QR & Mark Attendance by Registration --------------------
 fastify.post('/api/scan-attendance', async (request, reply) => {
   const client = await pool.connect();
 
@@ -2387,9 +2146,6 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
       [registration_id]
     );
 
-    // Clear cache
-    await invalidateStatsCache();
-
     return reply.send({
       success: true,
       message: 'Attendance marked successfully',
@@ -2406,8 +2162,150 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
 });
 
 
-
-// ==================== SERVER START ====================
+// -------------------- Database Setup with All Fields --------------------
+fastify.get('/api/setup-db', async (request, reply) => {
+  try {
+    const queries = [
+      // Participants table
+      `CREATE TABLE IF NOT EXISTS participants (
+        participant_id SERIAL PRIMARY KEY,
+        full_name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        phone VARCHAR(20) NOT NULL,
+        college_name VARCHAR(255) NOT NULL,
+        department VARCHAR(100) NOT NULL,
+        year_of_study INTEGER NOT NULL,
+        city VARCHAR(100),
+        state VARCHAR(100),
+        accommodation_required BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`,
+      
+      // Events table (with ALL required fields)
+      `CREATE TABLE IF NOT EXISTS events (
+        event_id SERIAL PRIMARY KEY,
+        event_name VARCHAR(255) NOT NULL,
+        event_type VARCHAR(50) NOT NULL CHECK (event_type IN ('workshop', 'technical', 'non-technical')),
+        day INTEGER NOT NULL CHECK (day IN (1, 2)),
+        fee DECIMAL(10, 2) DEFAULT 0,
+        description TEXT,
+        duration VARCHAR(50),
+        speaker VARCHAR(255),
+        rules TEXT,
+        total_seats INTEGER DEFAULT 100,
+        available_seats INTEGER DEFAULT 100,
+        cse_seats INTEGER DEFAULT 30,
+        cse_available_seats INTEGER DEFAULT 30,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`,
+      
+      // Registrations table
+      `CREATE TABLE IF NOT EXISTS registrations (
+        registration_id SERIAL PRIMARY KEY,
+        participant_id INTEGER REFERENCES participants(participant_id),
+        event_id INTEGER REFERENCES events(event_id),
+        registration_unique_id VARCHAR(50) UNIQUE NOT NULL,
+        payment_status VARCHAR(20) DEFAULT 'Pending' CHECK (payment_status IN ('Pending', 'Success', 'Failed', 'Refunded')),
+        amount_paid DECIMAL(10, 2) DEFAULT 0,
+        event_name VARCHAR(255),
+        day INTEGER,
+        attendance_status VARCHAR(20) DEFAULT 'NOT_ATTENDED' CHECK (attendance_status IN ('NOT_ATTENDED', 'ATTENDED')),
+        registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        attended_at TIMESTAMP,
+        certificate_generated BOOLEAN DEFAULT false
+      )`,
+      
+      // Payments table
+      `CREATE TABLE IF NOT EXISTS payments (
+        payment_id SERIAL PRIMARY KEY,
+        participant_id INTEGER REFERENCES participants(participant_id),
+        transaction_id VARCHAR(100),
+        payment_reference VARCHAR(100),
+        amount DECIMAL(10, 2) NOT NULL,
+        payment_method VARCHAR(50),
+        payment_status VARCHAR(20) DEFAULT 'Success' CHECK (payment_status IN ('Success', 'Failed', 'Refunded')),
+        verified_by_admin BOOLEAN DEFAULT false,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        verified_at TIMESTAMP
+      )`,
+      
+      // Gallery table
+      `CREATE TABLE IF NOT EXISTS gallery (
+        image_id SERIAL PRIMARY KEY,
+        album_name VARCHAR(100) NOT NULL,
+        image_url VARCHAR(500) NOT NULL,
+        caption TEXT,
+        uploaded_by VARCHAR(100),
+        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`,
+      
+      // Announcements table
+      `CREATE TABLE IF NOT EXISTS announcements (
+        announcement_id SERIAL PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        content TEXT NOT NULL,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP
+      )`
+    ];
+    
+    for (const query of queries) {
+      await pool.query(query);
+    }
+    
+    // Insert sample events
+    const sampleEvents = [
+      // Workshops (Day 1)
+      [1, 'AI/ML Workshop', 'workshop', 1, 150, 'Learn AI/ML techniques', '3 hours', 'Dr. AI Expert', 'Bring laptop with Python', 50, 50, 30, 30, true],
+      [2, 'Web3 Workshop', 'workshop', 1, 120, 'Blockchain and Web3', '3 hours', 'Blockchain Specialist', 'Basic programming required', 50, 50, 30, 30, true],
+      [3, 'IoT Workshop', 'workshop', 1, 130, 'Internet of Things', '3 hours', 'IoT Engineer', 'No prior experience', 50, 50, 30, 30, true],
+      
+      // Technical Events (Day 2)
+      [4, 'Paper Presentation', 'technical', 2, 80, 'Present research papers', '2 hours', null, 'Max 2 authors per paper', 100, 100, 40, 40, true],
+      [5, 'Code Relay', 'technical', 2, 70, 'Team coding competition', '2 hours', null, 'Teams of 2 members', 100, 100, 40, 40, true],
+      [6, 'Debugging Challenge', 'technical', 2, 60, 'Find and fix bugs', '1.5 hours', null, 'Individual participation', 100, 100, 40, 40, true],
+      
+      // Non-Technical Events (Day 2)
+      [7, 'Technical Quiz', 'non-technical', 2, 50, 'Tech knowledge quiz', '1 hour', null, 'Teams of 2-3 members', 100, 100, 40, 40, true],
+      [8, 'Treasure Hunt', 'non-technical', 2, 40, 'Campus treasure hunt', '2 hours', null, 'Teams of 3-4 members', 100, 100, 40, 40, true],
+      [9, 'Connections', 'non-technical', 2, 30, 'Word connection game', '1 hour', null, 'Individual participation', 100, 100, 40, 40, true]
+    ];
+    
+    for (const event of sampleEvents) {
+      await pool.query(`
+        INSERT INTO events (
+          event_id, event_name, event_type, day, fee, description,
+          duration, speaker, rules, total_seats, available_seats,
+          cse_seats, cse_available_seats, is_active
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        ON CONFLICT (event_id) DO UPDATE SET
+          event_name = EXCLUDED.event_name,
+          event_type = EXCLUDED.event_type,
+          fee = EXCLUDED.fee,
+          description = EXCLUDED.description,
+          duration = EXCLUDED.duration,
+          speaker = EXCLUDED.speaker,
+          rules = EXCLUDED.rules
+      `, event);
+    }
+    
+    return { 
+      success: true, 
+      message: 'Database setup complete with all required fields',
+      tables_created: queries.length,
+      sample_events_inserted: sampleEvents.length
+    };
+    
+  } catch (error) {
+    fastify.log.error(error);
+    return reply.code(500).send({ error: error.message });
+  }
+});
 
 const PORT = process.env.PORT || 3000;
 
@@ -2415,34 +2313,14 @@ const start = async () => {
   try {
     await fastify.listen({
       port: PORT,
-      host: '0.0.0.0'
+      host: '0.0.0.0' // REQUIRED for deployment
     });
 
     console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📊 Connection pool ready: ${pool.totalCount} connections available`);
-    console.log(`⚡ Rate limiting enabled: ${RATE_LIMIT.maxRequests} requests per ${RATE_LIMIT.windowMs/60000} minutes`);
-    
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
   }
 };
-
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received. Closing server...');
-  await fastify.close();
-  await pool.end();
-  console.log('Server closed');
-  process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-  console.log('SIGINT received. Closing server...');
-  await fastify.close();
-  await pool.end();
-  console.log('Server closed');
-  process.exit(0);
-});
 
 start();
