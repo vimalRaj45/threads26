@@ -2,197 +2,534 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Verify Payments (CSV / XLS / XLSX)</title>
+<title>Admin - Payment Verification</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
 <style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
   body {
-    font-family: Arial, sans-serif;
-    background: #f4f6f8;
-    padding: 40px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
   }
-  .box {
-    max-width: 700px;
-    background: #fff;
-    padding: 25px;
-    margin: auto;
-    border-radius: 8px;
-    box-shadow: 0 10px 20px rgba(0,0,0,.1);
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
   }
-  input, button {
-    width: 100%;
-    padding: 10px;
-    margin-top: 12px;
+  .header {
+    text-align: center;
+    margin-bottom: 30px;
+    color: white;
   }
-  button {
-    background: #0b3c5d;
-    color: #fff;
+  .header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+  }
+  .header p {
+    font-size: 1.1rem;
+    opacity: 0.9;
+  }
+  .tabs {
+    display: flex;
+    background: white;
+    border-radius: 10px 10px 0 0;
+    overflow: hidden;
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 15px 20px;
+    background: #f8f9fa;
     border: none;
+    font-size: 16px;
     cursor: pointer;
+    transition: all 0.3s;
+  }
+  .tab-btn.active {
+    background: white;
+    font-weight: bold;
+    border-bottom: 3px solid #667eea;
+  }
+  .tab-btn:hover:not(.active) {
+    background: #e9ecef;
+  }
+  .tab-content {
+    display: none;
+    background: white;
+    padding: 30px;
+    border-radius: 0 0 10px 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  }
+  .tab-content.active {
+    display: block;
+  }
+  .upload-box {
+    border: 2px dashed #667eea;
+    border-radius: 10px;
+    padding: 40px;
+    text-align: center;
+    margin-bottom: 20px;
+    background: #f8f9ff;
+  }
+  .upload-box input {
+    display: none;
+  }
+  .upload-box label {
+    display: inline-block;
+    background: #667eea;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background 0.3s;
+  }
+  .upload-box label:hover {
+    background: #5a67d8;
+  }
+  .file-info {
+    margin-top: 15px;
+    color: #666;
+  }
+  .manual-form {
+    max-width: 500px;
+  }
+  .form-group {
+    margin-bottom: 20px;
+  }
+  .form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #333;
+  }
+  .form-group input {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 16px;
+    transition: border 0.3s;
+  }
+  .form-group input:focus {
+    border-color: #667eea;
+    outline: none;
+  }
+  .btn {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 14px 28px;
+    border-radius: 6px;
+    font-size: 16px;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.3s;
+  }
+  .btn:hover {
+    background: #5a67d8;
+  }
+  .btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+  }
+  .results {
+    margin-top: 30px;
+    background: #f8f9ff;
+    border-radius: 8px;
+    padding: 20px;
+  }
+  .results h3 {
+    margin-bottom: 15px;
+    color: #333;
+  }
+  .result-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+  }
+  .stat-box {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+  }
+  .stat-value {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #667eea;
+  }
+  .stat-label {
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 5px;
+  }
+  .result-data {
+    background: white;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 15px;
+    max-height: 400px;
+    overflow-y: auto;
   }
   pre {
-    background: #eee;
-    padding: 10px;
-    margin-top: 15px;
-    max-height: 300px;
-    overflow: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .loading {
+    text-align: center;
+    padding: 20px;
+    display: none;
+  }
+  .loading.active {
+    display: block;
+  }
+  .spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #667eea;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 15px;
+  }
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
   }
 </style>
 </head>
-
 <body>
 
-<div class="box">
-  <h2>Payment Verification</h2>
-  <input type="file" id="fileInput" accept=".csv,.xls,.xlsx">
-  <button onclick="processFile()">Verify</button>
-  <pre id="result"></pre>
+<div class="container">
+  <div class="header">
+    <h1>Admin Payment Verification</h1>
+    <p>Verify payments via CSV/XLS upload or manual entry</p>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('csv')">CSV/XLS Verification</button>
+    <button class="tab-btn" onclick="switchTab('manual')">Manual Verification</button>
+  </div>
+
+  <!-- CSV/XLS Tab -->
+  <div id="csv-tab" class="tab-content active">
+    <div class="upload-box">
+      <h3>Upload Bank Statement</h3>
+      <p>Supported formats: CSV, XLS, XLSX</p>
+      <input type="file" id="fileInput" accept=".csv,.xls,.xlsx">
+      <label for="fileInput">Choose File</label>
+      <div class="file-info" id="fileInfo"></div>
+    </div>
+    
+    <div class="loading" id="csvLoading">
+      <div class="spinner"></div>
+      <p>Processing file and verifying payments...</p>
+    </div>
+    
+    <button class="btn" onclick="processFile()" id="verifyBtn">Verify Payments</button>
+    
+    <div class="results" id="csvResults" style="display: none;">
+      <h3>Verification Results</h3>
+      <div class="result-stats" id="csvStats"></div>
+      <div class="result-data">
+        <pre id="csvResultData"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manual Tab -->
+  <div id="manual-tab" class="tab-content">
+    <div class="manual-form">
+      <div class="form-group">
+        <label for="participantId">Participant ID</label>
+        <input type="number" id="participantId" placeholder="Enter participant ID" min="1">
+      </div>
+      
+      <div class="loading" id="manualLoading">
+        <div class="spinner"></div>
+        <p>Processing manual verification...</p>
+      </div>
+      
+      <button class="btn" onclick="manualVerify()" id="manualBtn">Verify Manually</button>
+      
+      <div class="results" id="manualResults" style="display: none;">
+        <h3>Manual Verification Result</h3>
+        <div class="result-data">
+          <pre id="manualResultData"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
 <script>
+// Tab switching
+function switchTab(tabName) {
+  // Update tab buttons
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  document.querySelector(`.tab-btn[onclick="switchTab('${tabName}')"]`).classList.add('active');
+  
+  // Update tab content
+  document.querySelectorAll('.tab-content').forEach(content => {
+    content.classList.remove('active');
+  });
+  document.getElementById(`${tabName}-tab`).classList.add('active');
+}
+
+// File input handler
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  const fileInfo = document.getElementById('fileInfo');
+  
+  if (file) {
+    fileInfo.innerHTML = `
+      <strong>Selected file:</strong> ${file.name}<br>
+      <strong>Size:</strong> ${(file.size / 1024).toFixed(2)} KB<br>
+      <strong>Type:</strong> ${file.type || 'Unknown'}
+    `;
+  } else {
+    fileInfo.innerHTML = '';
+  }
+});
+
+// CSV/XLS Verification
 async function processFile() {
-
   console.clear();
-  const file = document.getElementById("fileInput").files[0];
-  const resultBox = document.getElementById("result");
-
+  const file = document.getElementById('fileInput').files[0];
+  const verifyBtn = document.getElementById('verifyBtn');
+  const csvLoading = document.getElementById('csvLoading');
+  const csvResults = document.getElementById('csvResults');
+  const csvStats = document.getElementById('csvStats');
+  const csvResultData = document.getElementById('csvResultData');
+  
   if (!file) {
-    alert("Select file");
+    alert("Please select a file first");
     return;
   }
-
-  const reader = new FileReader();
-
-  reader.onload = async (e) => {
-    try {
-      let payments = [];
-
-      /* =================== EXCEL =================== */
-      if (!file.name.toLowerCase().endsWith(".csv")) {
-
-        const wb = XLSX.read(e.target.result, { type: "array" });
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-
-        // Read as 2D array (IMPORTANT)
-        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-
-        console.log("ALL ROWS");
-        console.table(rows);
-
-        // 🔍 FIND HEADER ROW
-        let headerRowIndex = -1;
-        let headers = [];
-
-        for (let i = 0; i < rows.length; i++) {
-          const rowText = rows[i].join(" ").toLowerCase();
-          if (rowText.includes("deposit") && rowText.includes("remark")) {
-            headerRowIndex = i;
-            headers = rows[i];
-            console.log("✔ Header row found at:", i + 1);
-            break;
-          }
-        }
-
-        if (headerRowIndex === -1) {
-          alert("Transaction table not found");
-          return;
-        }
-
-        const depositIndex = headers.findIndex(h =>
-          h.toLowerCase().includes("deposit")
-        );
-
-        const remarksIndex = headers.findIndex(h =>
-          h.toLowerCase().includes("remark")
-        );
-
-        console.log("Deposit index:", depositIndex);
-        console.log("Remarks index:", remarksIndex);
-
-        // 📊 DATA ROWS
-        for (let i = headerRowIndex + 1; i < rows.length; i++) {
-
-          const row = rows[i];
-          const deposit = Number(String(row[depositIndex]).replace(/,/g, ""));
-          const remarks = row[remarksIndex];
-
-          if (!deposit || deposit <= 0) continue;
-
-          const match = remarks?.match(/UPI\/(?:CR|DR)\/(\d+)\//);
-          if (!match) continue;
-
-          payments.push({
-            transaction_id: match[1],
-            amount: deposit
-          });
-        }
-      }
-
-      /* =================== CSV =================== */
-      else {
-        const lines = e.target.result.split("\n").map(l => l.trim()).filter(Boolean);
-
-        let headerIndex = -1;
-        let headers = [];
-
-        for (let i = 0; i < lines.length; i++) {
-          if (lines[i].toLowerCase().includes("deposit") &&
-              lines[i].toLowerCase().includes("remark")) {
-            headerIndex = i;
-            headers = lines[i].split(",");
-            break;
-          }
-        }
-
-        const dIndex = headers.findIndex(h => h.toLowerCase().includes("deposit"));
-        const rIndex = headers.findIndex(h => h.toLowerCase().includes("remark"));
-
-        for (let i = headerIndex + 1; i < lines.length; i++) {
-          const cols = lines[i].split(",").map(v => v.replace(/"/g, "").trim());
-          const deposit = Number(cols[dIndex]);
-          const remarks = cols[rIndex];
-
-          if (!deposit || deposit <= 0) continue;
-          const match = remarks?.match(/UPI\/(?:CR|DR)\/(\d+)\//);
-          if (!match) continue;
-
-          payments.push({
-            transaction_id: match[1],
-            amount: deposit
-          });
-        }
-      }
-
-      console.table(payments);
-
-      if (!payments.length) {
-        alert("No valid deposits found");
-        return;
-      }
-
-      const res = await fetch(
-        "https://threads26-2-fdem.onrender.com/api/admin/verify-payments",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ payments })
-        }
-      );
-
-      const data = await res.json();
-      resultBox.textContent = JSON.stringify(data, null, 2);
-
-    } catch (err) {
-      console.error(err);
-      resultBox.textContent = err.message;
+  
+  // Show loading, disable button
+  verifyBtn.disabled = true;
+  verifyBtn.textContent = 'Processing...';
+  csvLoading.classList.add('active');
+  csvResults.style.display = 'none';
+  
+  try {
+    const payments = await readFile(file);
+    
+    if (!payments.length) {
+      throw new Error("No valid payments found in the file");
     }
-  };
+    
+    console.log("Found payments:", payments);
+    
+    const res = await fetch("https://threads26-2-fdem.onrender.com/api/admin/verify-payments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payments })
+    });
+    
+    const data = await res.json();
+    
+    // Update UI with results
+    if (data.success) {
+      csvStats.innerHTML = `
+        <div class="stat-box">
+          <div class="stat-value">${data.summary.total_pending_before || 0}</div>
+          <div class="stat-label">Total Pending</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${data.summary.newly_verified || 0}</div>
+          <div class="stat-label">Newly Verified</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${data.summary.failed || 0}</div>
+          <div class="stat-label">Failed</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${data.summary.total_verified_now || 0}</div>
+          <div class="stat-label">Total Verified</div>
+        </div>
+      `;
+      
+      csvResultData.textContent = JSON.stringify(data, null, 2);
+    } else {
+      csvResultData.textContent = JSON.stringify(data, null, 2);
+    }
+    
+    csvResults.style.display = 'block';
+    
+  } catch (err) {
+    console.error(err);
+    csvResultData.textContent = `Error: ${err.message}`;
+    csvResults.style.display = 'block';
+  } finally {
+    // Reset UI
+    verifyBtn.disabled = false;
+    verifyBtn.textContent = 'Verify Payments';
+    csvLoading.classList.remove('active');
+  }
+}
 
-  file.name.endsWith(".csv")
-    ? reader.readAsText(file)
-    : reader.readAsArrayBuffer(file);
+// Manual Verification
+async function manualVerify() {
+  const participantId = document.getElementById('participantId').value;
+  const manualBtn = document.getElementById('manualBtn');
+  const manualLoading = document.getElementById('manualLoading');
+  const manualResults = document.getElementById('manualResults');
+  const manualResultData = document.getElementById('manualResultData');
+  
+  if (!participantId || participantId < 1) {
+    alert("Please enter a valid participant ID");
+    return;
+  }
+  
+  // Show loading, disable button
+  manualBtn.disabled = true;
+  manualBtn.textContent = 'Processing...';
+  manualLoading.classList.add('active');
+  manualResults.style.display = 'none';
+  
+  try {
+    const res = await fetch("https://threads26-2-fdem.onrender.com/api/admin/manual-verification", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participant_id: parseInt(participantId) })
+    });
+    
+    const data = await res.json();
+    manualResultData.textContent = JSON.stringify(data, null, 2);
+    manualResults.style.display = 'block';
+    
+  } catch (err) {
+    console.error(err);
+    manualResultData.textContent = `Error: ${err.message}`;
+    manualResults.style.display = 'block';
+  } finally {
+    // Reset UI
+    manualBtn.disabled = false;
+    manualBtn.textContent = 'Verify Manually';
+    manualLoading.classList.remove('active');
+  }
+}
+
+// File reading function
+async function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      try {
+        let payments = [];
+        
+        if (!file.name.toLowerCase().endsWith(".csv")) {
+          // Excel file
+          const wb = XLSX.read(e.target.result, { type: "array" });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+          
+          // Find header row
+          let headerRowIndex = -1;
+          let headers = [];
+          
+          for (let i = 0; i < rows.length; i++) {
+            const rowText = rows[i].join(" ").toLowerCase();
+            if (rowText.includes("deposit") && rowText.includes("remark")) {
+              headerRowIndex = i;
+              headers = rows[i];
+              break;
+            }
+          }
+          
+          if (headerRowIndex === -1) {
+            reject(new Error("Transaction table not found in Excel file"));
+            return;
+          }
+          
+          const depositIndex = headers.findIndex(h =>
+            h.toLowerCase().includes("deposit")
+          );
+          
+          const remarksIndex = headers.findIndex(h =>
+            h.toLowerCase().includes("remark")
+          );
+          
+          // Process data rows
+          for (let i = headerRowIndex + 1; i < rows.length; i++) {
+            const row = rows[i];
+            const deposit = Number(String(row[depositIndex]).replace(/,/g, ""));
+            const remarks = row[remarksIndex];
+            
+            if (!deposit || deposit <= 0) continue;
+            
+            const match = remarks?.match(/UPI\/(?:CR|DR)\/(\d+)\//);
+            if (!match) continue;
+            
+            payments.push({
+              transaction_id: match[1],
+              amount: deposit
+            });
+          }
+        } else {
+          // CSV file
+          const lines = e.target.result.split("\n").map(l => l.trim()).filter(Boolean);
+          
+          let headerIndex = -1;
+          let headers = [];
+          
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].toLowerCase().includes("deposit") &&
+                lines[i].toLowerCase().includes("remark")) {
+              headerIndex = i;
+              headers = lines[i].split(",");
+              break;
+            }
+          }
+          
+          const dIndex = headers.findIndex(h => h.toLowerCase().includes("deposit"));
+          const rIndex = headers.findIndex(h => h.toLowerCase().includes("remark"));
+          
+          for (let i = headerIndex + 1; i < lines.length; i++) {
+            const cols = lines[i].split(",").map(v => v.replace(/"/g, "").trim());
+            const deposit = Number(cols[dIndex]);
+            const remarks = cols[rIndex];
+            
+            if (!deposit || deposit <= 0) continue;
+            const match = remarks?.match(/UPI\/(?:CR|DR)\/(\d+)\//);
+            if (!match) continue;
+            
+            payments.push({
+              transaction_id: match[1],
+              amount: deposit
+            });
+          }
+        }
+        
+        resolve(payments);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    
+    file.name.endsWith(".csv")
+      ? reader.readAsText(file)
+      : reader.readAsArrayBuffer(file);
+  });
 }
 </script>
 
