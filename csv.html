@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Verify Payments by CSV</title>
+<title>Verify Payments by CSV/XLS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
@@ -45,51 +45,74 @@
 <body>
 
 <div class="box">
-  <h2>CSV Payment Verification</h2>
+  <h2>Payment Verification (CSV / XLS / XLSX)</h2>
 
-  <input type="file" id="csvFile" accept=".csv">
-  <button onclick="processCSV()">Verify Payments</button>
+  <input type="file" id="fileInput" accept=".csv, .xls, .xlsx">
+  <button onclick="processFile()">Verify Payments</button>
 
   <pre id="result"></pre>
 </div>
 
+<!-- SheetJS Library -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
 <script>
-function processCSV() {
-  const fileInput = document.getElementById("csvFile");
+async function processFile() {
+  const fileInput = document.getElementById("fileInput");
   const resultBox = document.getElementById("result");
 
   if (!fileInput.files.length) {
-    alert("Please select a CSV file");
+    alert("Please select a file");
     return;
   }
 
+  const file = fileInput.files[0];
   const reader = new FileReader();
-  reader.onload = async function (e) {
-    const text = e.target.result.trim();
-    const lines = text.split("\n");
 
-    // Expect header: transaction_id,amount
-    const payments = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const [transaction_id, amount] = lines[i].split(",");
-
-      if (transaction_id && amount) {
-        payments.push({
-          transaction_id: transaction_id.trim(),
-          amount: Number(amount.trim())
-        });
-      }
-    }
-
-    if (payments.length === 0) {
-      alert("No valid rows found");
-      return;
-    }
-
-    resultBox.textContent = "Verifying...";
+  reader.onload = async function(e) {
+    let payments = [];
 
     try {
+      if (file.name.endsWith(".csv")) {
+        const text = e.target.result.trim();
+        const lines = text.split("\n");
+
+        // CSV header: transaction_id,amount
+        for (let i = 1; i < lines.length; i++) {
+          const [transaction_id, amount] = lines[i].split(",");
+          if (transaction_id && amount) {
+            payments.push({
+              transaction_id: transaction_id.trim(),
+              amount: Number(amount.trim())
+            });
+          }
+        }
+      } else {
+        // XLS/XLSX
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet);
+
+        rows.forEach(row => {
+          if (row.transaction_id && row.amount !== undefined) {
+            payments.push({
+              transaction_id: String(row.transaction_id).trim(),
+              amount: Number(row.amount)
+            });
+          }
+        });
+      }
+
+      if (payments.length === 0) {
+        alert("No valid rows found");
+        return;
+      }
+
+      resultBox.textContent = "Verifying...";
+
       const res = await fetch("https://threads26-2-fdem.onrender.com/api/admin/verify-payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -104,7 +127,11 @@ function processCSV() {
     }
   };
 
-  reader.readAsText(fileInput.files[0]);
+  if (file.name.endsWith(".csv")) {
+    reader.readAsText(file);
+  } else {
+    reader.readAsArrayBuffer(file);
+  }
 }
 </script>
 
