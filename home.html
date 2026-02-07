@@ -24,7 +24,8 @@
                 });
                 
                 if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(`HTTP ${response.status}: ${errorData.message || errorData.details || 'Unknown error'}`);
                 }
                 
                 return await response.json();
@@ -308,7 +309,7 @@ Note: THREADS26 Registration ${currentParticipantId}
         async function submitRegistration() {
             const form = document.getElementById('registration-form');
             
-            // Get form data
+            // Get form data - FIXED: Use proper form field names
             const formData = {
                 full_name: form.elements['full_name'].value,
                 email: form.elements['email'].value,
@@ -319,11 +320,16 @@ Note: THREADS26 Registration ${currentParticipantId}
                 city: form.elements['city'].value,
                 state: form.elements['state'].value,
                 accommodation_required: form.elements['accommodation_required'].checked,
-                workshop_selections: Array.from(form.elements['workshop_selections'].selectedOptions)
-                    .map(opt => opt.value),
-                event_selections: Array.from(form.elements['event_selections'].selectedOptions)
-                    .map(opt => opt.value)
+                // FIXED: Get values directly from the select elements
+                workshop_selections: getSelectedValues('workshop-selection'),
+                event_selections: getSelectedValues('event-selection')
             };
+            
+            // Helper function to get selected values
+            function getSelectedValues(selectId) {
+                const select = document.getElementById(selectId);
+                return Array.from(select.selectedOptions).map(opt => opt.value);
+            }
             
             // Validation
             if (!formData.full_name || !formData.email || !formData.phone) {
@@ -337,6 +343,7 @@ Note: THREADS26 Registration ${currentParticipantId}
             }
             
             try {
+                console.log('Submitting registration:', formData);
                 const result = await fetchAPI('/register', {
                     method: 'POST',
                     body: JSON.stringify(formData)
@@ -372,6 +379,7 @@ Note: THREADS26 Registration ${currentParticipantId}
                 showPage('payment-page');
                 
             } catch (error) {
+                console.error('Registration error:', error);
                 alert('Registration failed: ' + error.message);
             }
         }
@@ -455,25 +463,22 @@ Note: THREADS26 Registration ${currentParticipantId}
                 document.getElementById('verification-result').innerHTML = `
                     <h3 style="color: green;">✅ Payment Verified Successfully!</h3>
                     <table border="1">
-                        <tr><td>Payment ID</td><td>${result.payment_id}</td></tr>
-                        <tr><td>Payment Date</td><td>${new Date(result.payment_date).toLocaleString()}</td></tr>
+                        <tr><td>Payment ID</td><td>${result.payment_details.payment_id}</td></tr>
+                        <tr><td>Payment Date</td><td>${new Date(result.payment_details.payment_date).toLocaleString()}</td></tr>
                         <tr><td>Transaction ID</td><td>${verificationData.transaction_id}</td></tr>
-                        <tr><td>Amount</td><td>₹${currentTotalAmount}</td></tr>
+                        <tr><td>Amount</td><td>₹${result.payment_details.amount}</td></tr>
                     </table>
                     
-                    <h4>Download Documents:</h4>
-                    <p><a href="${result.confirmation_pdf}" target="_blank">📄 Download Confirmation PDF</a></p>
                     <h4>🎟 Event Entry QR Code</h4>
-<div style="text-align:center; margin:15px 0;">
-  <img src="${result.qr_code}" 
-       alt="Event QR Code"
-       style="max-width:260px; border:1px solid #ccc; padding:10px;">
-  <p><strong>Use this QR for ALL events</strong></p>
-  <button onclick="downloadEventQR('${result.qr_code}')">
-    ⬇ Download QR
-  </button>
-</div>
-
+                    <div style="text-align:center; margin:15px 0;">
+                      <img src="${result.qr_code}" 
+                           alt="Event QR Code"
+                           style="max-width:260px; border:1px solid #ccc; padding:10px;">
+                      <p><strong>Use this QR for ALL events</strong></p>
+                      <button onclick="downloadEventQR('${result.qr_code}')">
+                        ⬇ Download QR
+                      </button>
+                    </div>
                     
                     <button onclick="showPage('status-page')">Check Registration Status</button>
                     <button onclick="showPage('download-page')">Download All Documents</button>
@@ -486,11 +491,11 @@ Note: THREADS26 Registration ${currentParticipantId}
         }
         
         function downloadEventQR(base64QR) {
-  const link = document.createElement('a');
-  link.href = base64QR;
-  link.download = `THREADS26_EVENT_QR_${currentParticipantId}.png`;
-  link.click();
-}
+            const link = document.createElement('a');
+            link.href = base64QR;
+            link.download = `THREADS26_EVENT_QR_${currentParticipantId}.png`;
+            link.click();
+        }
 
         // -------------------- PAGE 6: TRACK REGISTRATION --------------------
         async function loadRegistration(registrationId) {
@@ -509,7 +514,7 @@ Note: THREADS26 Registration ${currentParticipantId}
                         <tr><td>Attendance Status</td><td>${data.registration.attendance_status}</td></tr>
                 `;
                 
-                if (data.payment.transaction_id) {
+                if (data.payment && data.payment.transaction_id) {
                     html += `
                         <tr><td>Transaction ID</td><td>${data.payment.transaction_id}</td></tr>
                         <tr><td>Verification Status</td><td>${data.payment.verification_status}</td></tr>
@@ -522,17 +527,11 @@ Note: THREADS26 Registration ${currentParticipantId}
                 // Add action buttons
                 html += '<h4>Actions:</h4>';
                 
-                if (data.actions.download_qr) {
-                    html += `<p><button onclick="window.open('${data.actions.download_qr}', '_blank')">Download QR Code</button></p>`;
+                if (data.qr_code) {
+                    html += `<p><button onclick="downloadEventQR('${data.qr_code}')">Download QR Code</button></p>`;
                 }
                 
-                if (data.actions.download_certificate) {
-                    html += `<p><button onclick="window.open('${data.actions.download_certificate}', '_blank')">Download Certificate</button></p>`;
-                }
-                
-                if (data.actions.verify_payment) {
-                    html += `<p><button onclick="showPage('verify-page')">Verify Payment</button></p>`;
-                }
+                html += `<p><button onclick="showPage('verify-page')">Verify Payment</button></p>`;
                 
                 document.getElementById('tracking-result').innerHTML = html;
                 
@@ -564,18 +563,16 @@ Note: THREADS26 Registration ${currentParticipantId}
                         <tr><th>Paid Registrations</th><td>${data.payment_summary.paid_registrations}</td></tr>
                         <tr><th>Total Amount Paid</th><td>₹${data.payment_summary.total_amount}</td></tr>
                     </table>
-                    
-                    <h4>Payment History:</h4>
                 `;
                 
-                if (data.payments.length > 0) {
-                    html += '<table border="1"><tr><th>Transaction ID</th><th>Amount</th><th>Status</th><th>Date</th></tr>';
+                if (data.payments && data.payments.length > 0) {
+                    html += '<h4>Payment History:</h4><table border="1"><tr><th>Transaction ID</th><th>Amount</th><th>Status</th><th>Date</th></tr>';
                     data.payments.forEach(payment => {
                         html += `
                             <tr>
                                 <td>${payment.transaction_id}</td>
                                 <td>₹${payment.amount}</td>
-                                <td>${payment.status}</td>
+                                <td>${payment.payment_status}</td>
                                 <td>${new Date(payment.created_at).toLocaleString()}</td>
                             </tr>
                         `;
@@ -586,14 +583,8 @@ Note: THREADS26 Registration ${currentParticipantId}
                 }
                 
                 // Actions
-                html += '<h4>Actions:</h4><table border="0">';
-                if (data.next_actions.download_qr) {
-                    html += `<tr><td><button onclick="window.open('${data.next_actions.download_qr}', '_blank')">Download Event QR Code</button></td></tr>`;
-                }
-                if (data.next_actions.download_certificate) {
-                    html += `<tr><td><button onclick="window.open('${data.next_actions.download_certificate}', '_blank')">Download Certificate</button></td></tr>`;
-                }
-                html += '</table>';
+                html += '<h4>Actions:</h4>';
+                html += `<p><button onclick="downloadDocument('qr')">Download Event QR Code</button></p>`;
                 
                 document.getElementById('status-details').innerHTML = html;
                 
@@ -612,71 +603,19 @@ Note: THREADS26 Registration ${currentParticipantId}
                 return;
             }
             
-            let endpoint;
-            
-            switch(type) {
-                case 'qr':
-                    endpoint = `/participant/${pid}/qr`;
-                    break;
-                case 'pdf':
-                    endpoint = `/participant/${pid}/certificate`;
-                    break;
-            }
-            
-            if (endpoint) {
-                window.open(`${API_BASE}${endpoint}`, '_blank');
-            }
-        }
-        
-        // -------------------- CONTACT --------------------
-        async function loadContact() {
             try {
-                const data = await fetchAPI('/contact');
+                const data = await fetchAPI(`/participant/${pid}/qr-data`);
                 
-                let html = `
-                    <h3>Contact Information</h3>
-                    <table border="1">
-                        <tr><td>College</td><td>${data.college_name}</td></tr>
-                        <tr><td>Department</td><td>${data.department}</td></tr>
-                        <tr><td>Email</td><td><a href="mailto:${data.email}">${data.email}</a></td></tr>
-                        <tr><td>Address</td><td>${data.address}</td></tr>
-                    </table>
-                    
-                    <h4>Payment Support:</h4>
-                    <p><strong>UPI ID:</strong> 8807099288@upi</p>
-                    <p><strong>Bank Account:</strong> 1234567890 (IFSC: SBIN0001234)</p>
-                    
-                    <h4>Student Coordinators:</h4>
-                    <table border="1">
-                `;
-                
-                data.student_coordinators.forEach(coord => {
-                    html += `<tr><td>${coord.name}</td><td>${coord.role}</td><td>${coord.phone}</td></tr>`;
-                });
-                
-                html += `
-                    </table>
-                    
-                    <h4>Faculty Coordinators:</h4>
-                    <table border="1">
-                `;
-                
-                data.faculty_coordinators.forEach(coord => {
-                    html += `<tr><td>${coord.name}</td><td>${coord.role}</td><td>${coord.phone}</td></tr>`;
-                });
-                
-                html += `
-                    </table>
-                    
-                    <p><button onclick="window.open('${data.google_maps_url}', '_blank')">View on Google Maps</button></p>
-                `;
-                
-                document.getElementById('contact-info').innerHTML = html;
-                showPage('contact-page');
-                
+                if (type === 'qr' && data.qr_code) {
+                    const link = document.createElement('a');
+                    link.href = data.qr_code;
+                    link.download = `THREADS26_QR_${pid}.png`;
+                    link.click();
+                } else {
+                    alert('Document not available');
+                }
             } catch (error) {
-                document.getElementById('contact-info').innerHTML = 
-                    '<p>Error loading contact information</p>';
+                alert('Error downloading document: ' + error.message);
             }
         }
         
@@ -704,7 +643,6 @@ Note: THREADS26 Registration ${currentParticipantId}
         <button onclick="showPage('payment-page')">💳 Payment</button>
         <button onclick="showPage('track-page')">🔍 Track</button>
         <button onclick="showPage('status-page')">📊 Status</button>
-        <button onclick="loadContact()">📞 Contact</button>
         <button onclick="resetRegistration()">🔄 Reset</button>
     </div>
 
@@ -783,11 +721,11 @@ Note: THREADS26 Registration ${currentParticipantId}
                     <td>Department*:</td>
                     <td>
                         <select name="department" required>
+                            <option value="">Select Department</option>
                             <option value="CSE">Computer Science & Engineering</option>
                             <option value="ECE">Electronics & Communication</option>
                             <option value="EEE">Electrical & Electronics</option>
                             <option value="MECH">Mechanical</option>
-                            <option value="CIVIL">Civil</option>
                             <option value="OTH">Other</option>
                         </select>
                     </td>
@@ -796,6 +734,7 @@ Note: THREADS26 Registration ${currentParticipantId}
                     <td>Year of Study*:</td>
                     <td>
                         <select name="year_of_study" required>
+                            <option value="">Select Year</option>
                             <option value="1">1st Year</option>
                             <option value="2">2nd Year</option>
                             <option value="3">3rd Year</option>
@@ -821,12 +760,12 @@ Note: THREADS26 Registration ${currentParticipantId}
             <div id="total-amount">No events selected</div>
             
             <p>Day 1 Workshops (Select at least one):</p>
-            <select id="workshop-selection" name="workshop_selections" multiple size="5" style="width: 100%;">
+            <select id="workshop-selection" multiple size="5" style="width: 100%;">
                 <!-- Options will be added by JavaScript -->
             </select>
             
             <p>Day 2 Events (Select any):</p>
-            <select id="event-selection" name="event_selections" multiple size="8" style="width: 100%;">
+            <select id="event-selection" multiple size="8" style="width: 100%;">
                 <!-- Options will be added by JavaScript -->
             </select>
             
@@ -934,25 +873,10 @@ Note: THREADS26 Registration ${currentParticipantId}
                         <p>For event entry</p>
                         <button onclick="downloadDocument('qr')">Download QR</button>
                     </td>
-                    <td>
-                        <h4>📄 Confirmation PDF</h4>
-                        <p>Registration confirmation</p>
-                        <button onclick="downloadDocument('pdf')">Download PDF</button>
-                    </td>
                 </tr>
             </table>
             
             <p>Participant ID: <input type="text" id="download-pid" placeholder="Enter Participant ID" size="30" value="${currentParticipantId || ''}"></p>
-        </div>
-    </div>
-
-    <!-- PAGE 9: CONTACT -->
-    <div id="contact-page" class="page" style="display: none;">
-        <h2>📞 Contact Us</h2>
-        <button onclick="showPage('home-page')">← Back to Home</button>
-        
-        <div id="contact-info">
-            Loading contact information...
         </div>
     </div>
 
@@ -1029,6 +953,9 @@ Note: THREADS26 Registration ${currentParticipantId}
             background: white;
             border: 1px solid #ccc;
             border-radius: 8px;
+        }
+        select[multiple] {
+            min-height: 120px;
         }
     </style>
 </body>
