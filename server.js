@@ -559,9 +559,10 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
         // Verified: Only transaction_id
         verified.push(dbPayment.transaction_id);
       } else {
-        // Failed: transaction_id, name, phone
+        // Failed: transaction_id, participant_id, name, phone
         failed.push({
           transaction_id: dbPayment.transaction_id,
+          participant_id: dbPayment.participant_id,
           name: dbPayment.full_name,
           phone: dbPayment.phone
         });
@@ -597,7 +598,7 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
         failed: failed.length
       },
       verified,  // Just transaction IDs
-      failed     // Object with transaction_id, name, phone
+      failed     // Object with transaction_id, participant_id, name, phone
     };
 
   } catch (err) {
@@ -608,7 +609,6 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
     client.release();
   }
 });
-
 
 
 fastify.post('/api/verify-payment', async (request, reply) => {
