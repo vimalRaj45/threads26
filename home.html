@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>THREADS'26 - Participant Portal</title>
+    <script>
+        // Base URL for API
+        const API_BASE = 'https://threads26-1-dtnm.onrender.com/api';
+        
+        // State management
+        let currentParticipantId = null;
+        let currentRegistrationIds = [];
+        let currentTotalAmount = 0;
+        let currentEventNames = []; // Store event names for QR code
+        
+        // Helper functions
+        async function fetchAPI(endpoint, options = {}) {
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API Error:', error);
+                alert(`Error: ${error.message}`);
+                throw error;
+            }
+        }
+        
+        function showPage(pageId) {
+            // Hide all pages
+            document.querySelectorAll('.page').forEach(page => {
+                page.style.display = 'none';
+            });
+            
+            // Show requested page
+            document.getElementById(pageId).style.display = 'block';
+            
+            // Update page title
+            const pageTitles = {
+                'home-page': 'THREADS\'26 - Home',
+                'events-page': 'Browse Events',
+                'register-page': 'Register for Events',
+                'payment-page': 'Make Payment',
+                'verify-page': 'Verify Payment',
+                'track-page': 'Track Registration',
+                'status-page': 'Registration Status',
+                'download-page': 'Download Documents'
+            };
+            
+            if (pageTitles[pageId]) {
+                document.title = pageTitles[pageId];
+            }
+        }
+        
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load event dates
+            loadEventDates();
+            
+            // Check URL for registration ID
+            const urlParams = new URLSearchParams(window.location.search);
+            const regId = urlParams.get('track');
+            
+            if (regId) {
+                showPage('track-page');
+                loadRegistration(regId);
+            }
+            
+            // Show home page initially
+            showPage('home-page');
+        });
+        
+        // -------------------- QR CODE GENERATION --------------------
+        function generateUPIQRCode() {
+            if (!currentParticipantId || !currentTotalAmount) {
+                alert('Please complete registration first');
+                return;
+            }
+            
+            // Get event names (shortened for QR code)
+            const eventShortNames = currentEventNames.map(name => 
+                name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 6)
+            );
+            
+            // Create UPI payment URL with auto-filled amount
+            const upiUrl = 
+                `upi://pay?pa=8807099288@upi` +
+                `&pn=THREADS26` +
+                `&am=${currentTotalAmount}` +
+                `&cu=INR` +
+                `&tn=THREADS26|${eventShortNames.join(',')}|REF:${currentParticipantId}`;
+            
+            // Generate QR code using external API
+            const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(upiUrl)}`;
+            
+            // Display QR code
+            const qrDiv = document.getElementById('qr-code-container');
+            qrDiv.innerHTML = `
+                <div style="text-align: center; margin: 20px;">
+                    <h4>Scan QR Code to Pay</h4>
+                    <img src="${qrImageUrl}" alt="UPI QR Code" style="border: 1px solid #ccc; padding: 10px;">
+                    <p><strong>Amount: ₹${currentTotalAmount}</strong></p>
+                    <p><strong>UPI ID: 8807099288@upi</strong></p>
+                    <p><strong>Reference: THREADS26-${currentParticipantId}</strong></p>
+                    <p style="color: green;">Scan with Google Pay, PhonePe, or Paytm</p>
+                    <button onclick="copyUPIURL()">Copy UPI Link</button>
+                    <button onclick="downloadQR()">Download QR Code</button>
+                </div>
+            `;
+            
+            // Also generate direct UPI link
+            const upiLinkDiv = document.getElementById('upi-link');
+            upiLinkDiv.innerHTML = `
+                <h4>Direct UPI Payment Link:</h4>
+                <p><a href="${upiUrl}" target="_blank">Click here to open in UPI app</a></p>
+                <p><strong>Or copy this text to any UPI app:</strong></p>
+                <textarea readonly style="width: 100%; height: 60px; font-family: monospace;">
+UPI ID: 8807099288@upi
+Amount: ₹${currentTotalAmount}
+Note: THREADS26 Registration ${currentParticipantId}
+                </textarea>
+            `;
+        }
+        
+        function copyUPIURL() {
+            const upiUrl = `upi://pay?pa=8807099288@upi&pn=THREADS26&am=${currentTotalAmount}&cu=INR&tn=THREADS26-${currentParticipantId}`;
+            navigator.clipboard.writeText(upiUrl)
+                .then(() => alert('UPI link copied!'))
+                .catch(err => console.error('Copy failed:', err));
+        }
+        
+        function downloadQR() {
+            const qrImg = document.querySelector('#qr-code-container img');
+            if (qrImg) {
+                const link = document.createElement('a');
+                link.download = `THREADS26_PAYMENT_QR_${currentParticipantId}.png`;
+                link.href = qrImg.src;
+                link.click();
+            }
+        }
+        
+        // -------------------- PAGE 1: HOME --------------------
+        async function loadEventDates() {
+            try {
+                const data = await fetchAPI('/event-dates');
+                
+                const datesDiv = document.getElementById('event-dates');
+                datesDiv.innerHTML = `
+                    <h3>Event Dates</h3>
+                    <table border="1">
+                        <tr><td>Workshop Day (Day 1)</td><td>${data.workshop_day}</td></tr>
+                        <tr><td>Event Day (Day 2)</td><td>${data.event_day}</td></tr>
+                        <tr><td>Registration Closes</td><td>${data.registration_closes}</td></tr>
+                        <tr><td>Registration Status</td><td>${data.countdown.is_registration_open ? '<span style="color:green;">OPEN</span>' : '<span style="color:red;">CLOSED</span>'}</td></tr>
+                        <tr><td>Days to Workshop</td><td>${data.countdown.days_to_workshop} days</td></tr>
+                    </table>
+                `;
+            } catch (error) {
+                document.getElementById('event-dates').innerHTML = 
+                    '<p>Error loading event dates</p>';
+            }
+        }
+        
+        function navigateToEvents() {
+            loadEvents();
+            showPage('events-page');
+        }
+        
+        function navigateToRegister() {
+            showPage('register-page');
+        }
+        
+        function navigateToTrack() {
+            const regId = document.getElementById('track-input').value.trim();
+            if (regId) {
+                window.location.href = `?track=${regId}`;
+            } else {
+                alert('Please enter a registration ID');
+            }
+        }
+        
+        // -------------------- PAGE 2: EVENTS --------------------
+        async function loadEvents() {
+            try {
+                const data = await fetchAPI('/events');
+                
+                let html = '<h3>Available Events</h3>';
+                
+                // Group by day
+                const day1Events = data.events.filter(e => e.day === 1);
+                const day2Events = data.events.filter(e => e.day === 2);
+                
+                // Day 1 - Workshops
+                html += '<h4>📅 Day 1: Workshops</h4>';
+                day1Events.forEach(event => {
+                    html += `
+                        <div style="border: 1px solid #ccc; padding: 10px; margin: 10px 0;">
+                            <strong>${event.event_name}</strong><br>
+                            Type: ${event.event_type}<br>
+                            Fee: ₹${event.fee}<br>
+                            Seats: ${event.available_seats} available<br>
+                            Status: ${event.seat_status}<br>
+                            <button onclick="addEventToForm(${event.event_id}, '${event.event_name}', ${event.fee}, ${event.day})">Select</button>
+                        </div>
+                    `;
+                });
+                
+                // Day 2 - Events
+                html += '<h4>📅 Day 2: Technical & Non-Technical Events</h4>';
+                day2Events.forEach(event => {
+                    html += `
+                        <div style="border: 1px solid #ccc; padding: 10px; margin: 10px 0;">
+                            <strong>${event.event_name}</strong><br>
+                            Type: ${event.event_type}<br>
+                            Fee: ₹${event.fee}<br>
+                            Seats: ${event.available_seats} available<br>
+                            Status: ${event.seat_status}<br>
+                            <button onclick="addEventToForm(${event.event_id}, '${event.event_name}', ${event.fee}, ${event.day})">Select</button>
+                        </div>
+                    `;
+                });
+                
+                document.getElementById('events-list').innerHTML = html;
+                
+                // Update registration status
+                document.getElementById('registration-status').innerHTML = 
+                    data.registration_open ? 
+                    '<span style="color: green;">✓ Registration OPEN</span>' : 
+                    '<span style="color: red;">✗ Registration CLOSED</span>';
+                    
+            } catch (error) {
+                document.getElementById('events-list').innerHTML = 
+                    '<p>Error loading events</p>';
+            }
+        }
+        
+        function addEventToForm(eventId, eventName, fee, day) {
+            // Add to selections
+            const selectId = day === 1 ? 'workshop-selection' : 'event-selection';
+            const select = document.getElementById(selectId);
+            
+            // Check if already selected
+            for (let option of select.options) {
+                if (option.value == eventId) {
+                    return; // Already selected
+                }
+            }
+            
+            // Add new option
+            const option = document.createElement('option');
+            option.value = eventId;
+            option.text = `${eventName} - ₹${fee}`;
+            option.selected = true;
+            select.appendChild(option);
+            
+            // Store event name for QR code
+            currentEventNames.push(eventName);
+            
+            // Calculate running total
+            currentTotalAmount += fee;
+            updateTotalAmount();
+            
+            // Show registration page
+            showPage('register-page');
+        }
+        
+        function updateTotalAmount() {
+            const totalDiv = document.getElementById('total-amount');
+            if (totalDiv) {
+                totalDiv.innerHTML = `<strong>Total Amount: ₹${currentTotalAmount}</strong>`;
+            }
+        }
+        
+        function removeSelectedEvents() {
+            // Clear workshop selections
+            const workshopSelect = document.getElementById('workshop-selection');
+            for (let i = workshopSelect.options.length - 1; i >= 0; i--) {
+                if (workshopSelect.options[i].selected) {
+                    const fee = parseInt(workshopSelect.options[i].text.split('₹')[1]) || 0;
+                    currentTotalAmount -= fee;
+                    workshopSelect.remove(i);
+                }
+            }
+            
+            // Clear event selections
+            const eventSelect = document.getElementById('event-selection');
+            for (let i = eventSelect.options.length - 1; i >= 0; i--) {
+                if (eventSelect.options[i].selected) {
+                    const fee = parseInt(eventSelect.options[i].text.split('₹')[1]) || 0;
+                    currentTotalAmount -= fee;
+                    eventSelect.remove(i);
+                }
+            }
+            
+            updateTotalAmount();
+        }
+        
+        // -------------------- PAGE 3: REGISTRATION FORM --------------------
+        async function submitRegistration() {
+            const form = document.getElementById('registration-form');
+            
+            // Get form data
+            const formData = {
+                full_name: form.elements['full_name'].value,
+                email: form.elements['email'].value,
+                phone: form.elements['phone'].value,
+                college_name: form.elements['college_name'].value,
+                department: form.elements['department'].value,
+                year_of_study: form.elements['year_of_study'].value,
+                city: form.elements['city'].value,
+                state: form.elements['state'].value,
+                accommodation_required: form.elements['accommodation_required'].checked,
+                workshop_selections: Array.from(form.elements['workshop_selections'].selectedOptions)
+                    .map(opt => opt.value),
+                event_selections: Array.from(form.elements['event_selections'].selectedOptions)
+                    .map(opt => opt.value)
+            };
+            
+            // Validation
+            if (!formData.full_name || !formData.email || !formData.phone) {
+                alert('Please fill all required fields');
+                return;
+            }
+            
+            if (formData.workshop_selections.length === 0 && formData.event_selections.length === 0) {
+                alert('Please select at least one event');
+                return;
+            }
+            
+            try {
+                const result = await fetchAPI('/register', {
+                    method: 'POST',
+                    body: JSON.stringify(formData)
+                });
+                
+                // Save for next pages
+                currentParticipantId = result.participant_id;
+                currentRegistrationIds = result.registration_ids;
+                currentTotalAmount = result.total_amount;
+                
+                // Show payment details
+                document.getElementById('payment-details').innerHTML = `
+                    <h3>✅ Registration Successful!</h3>
+                    <table border="1">
+                        <tr><td>Participant ID</td><td><strong>${result.participant_id}</strong></td></tr>
+                        <tr><td>Registration IDs</td><td>${result.registration_ids.join('<br>')}</td></tr>
+                        <tr><td>Total Amount</td><td><strong>₹${result.total_amount}</strong></td></tr>
+                        <tr><td>Payment Reference</td><td>${result.payment_reference}</td></tr>
+                    </table>
+                    
+                    <h4>Next Steps:</h4>
+                    <ol>
+                        <li>Complete payment within 24 hours</li>
+                        <li>Use Payment Reference: <strong>${result.payment_reference}</strong></li>
+                        <li>Save the transaction ID</li>
+                        <li>Verify payment after completion</li>
+                    </ol>
+                `;
+                
+                // Auto-generate QR code
+                setTimeout(() => generateUPIQRCode(), 500);
+                
+                showPage('payment-page');
+                
+            } catch (error) {
+                alert('Registration failed: ' + error.message);
+            }
+        }
+        
+        // -------------------- PAGE 4: PAYMENT --------------------
+        function showPaymentMethods() {
+            document.getElementById('payment-methods').innerHTML = `
+                <h3>💳 Payment Methods</h3>
+                
+                <div id="qr-code-container"></div>
+                <div id="upi-link"></div>
+                
+                <table border="1">
+                    <tr><th>Method</th><th>Details</th></tr>
+                    <tr>
+                        <td>QR Code</td>
+                        <td>
+                            <p>Scan the QR code above</p>
+                            <button onclick="generateUPIQRCode()">Regenerate QR Code</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>UPI Manual</td>
+                        <td>
+                            <p><strong>UPI ID:</strong> 8807099288@upi</p>
+                            <p><strong>Amount:</strong> ₹${currentTotalAmount}</p>
+                            <p><strong>Reference:</strong> THREADS26-${currentParticipantId}</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Bank Transfer</td>
+                        <td>
+                            <p><strong>Account:</strong> 1234567890</p>
+                            <p><strong>IFSC:</strong> SBIN0001234</p>
+                            <p><strong>Reference:</strong> THREADS26-${currentParticipantId}</p>
+                        </td>
+                    </tr>
+                </table>
+                
+                <h4>After Payment:</h4>
+                <p>1. Save your transaction ID</p>
+                <p>2. Go to Verify Payment page</p>
+                <p>3. Enter transaction details</p>
+                
+                <button onclick="showPage('verify-page')">✅ I've Made Payment</button>
+            `;
+            
+            // Generate QR code if we have the data
+            if (currentParticipantId && currentTotalAmount > 0) {
+                generateUPIQRCode();
+            }
+        }
+        
+        // -------------------- PAGE 5: VERIFY PAYMENT --------------------
+        async function submitVerification() {
+            const form = document.getElementById('verification-form');
+            
+            const verificationData = {
+                participant_id: currentParticipantId || form.elements['participant_id'].value,
+                transaction_id: form.elements['transaction_id'].value,
+                payment_reference: form.elements['payment_reference'].value,
+                payment_method: form.elements['payment_method'].value
+            };
+            
+            if (!verificationData.participant_id) {
+                alert('Please enter Participant ID');
+                return;
+            }
+            
+            if (!verificationData.transaction_id) {
+                alert('Please enter Transaction ID');
+                return;
+            }
+            
+            try {
+                const result = await fetchAPI('/verify-payment', {
+                    method: 'POST',
+                    body: JSON.stringify(verificationData)
+                });
+                
+                document.getElementById('verification-result').innerHTML = `
+                    <h3 style="color: green;">✅ Payment Verified Successfully!</h3>
+                    <table border="1">
+                        <tr><td>Payment ID</td><td>${result.payment_id}</td></tr>
+                        <tr><td>Payment Date</td><td>${new Date(result.payment_date).toLocaleString()}</td></tr>
+                        <tr><td>Transaction ID</td><td>${verificationData.transaction_id}</td></tr>
+                        <tr><td>Amount</td><td>₹${currentTotalAmount}</td></tr>
+                    </table>
+                    
+                    <h4>Download Documents:</h4>
+                    <p><a href="${result.confirmation_pdf}" target="_blank">📄 Download Confirmation PDF</a></p>
+                    <h4>🎟 Event Entry QR Code</h4>
+<div style="text-align:center; margin:15px 0;">
+  <img src="${result.qr_code}" 
+       alt="Event QR Code"
+       style="max-width:260px; border:1px solid #ccc; padding:10px;">
+  <p><strong>Use this QR for ALL events</strong></p>
+  <button onclick="downloadEventQR('${result.qr_code}')">
+    ⬇ Download QR
+  </button>
+</div>
+
+                    
+                    <button onclick="showPage('status-page')">Check Registration Status</button>
+                    <button onclick="showPage('download-page')">Download All Documents</button>
+                `;
+                
+            } catch (error) {
+                document.getElementById('verification-result').innerHTML = 
+                    `<p style="color: red;">❌ Verification failed: ${error.message}</p>`;
+            }
+        }
+        
+        function downloadEventQR(base64QR) {
+  const link = document.createElement('a');
+  link.href = base64QR;
+  link.download = `THREADS26_EVENT_QR_${currentParticipantId}.png`;
+  link.click();
+}
+
+        // -------------------- PAGE 6: TRACK REGISTRATION --------------------
+        async function loadRegistration(registrationId) {
+            try {
+                const data = await fetchAPI(`/track/${registrationId}`);
+                
+                let html = `
+                    <h3>Registration Details</h3>
+                    <table border="1">
+                        <tr><th>Field</th><th>Value</th></tr>
+                        <tr><td>Registration ID</td><td>${data.registration.registration_id}</td></tr>
+                        <tr><td>Participant Name</td><td>${data.participant.full_name}</td></tr>
+                        <tr><td>Event</td><td>${data.registration.event_name}</td></tr>
+                        <tr><td>Fee</td><td>₹${data.registration.fee}</td></tr>
+                        <tr><td>Payment Status</td><td>${data.registration.payment_status}</td></tr>
+                        <tr><td>Attendance Status</td><td>${data.registration.attendance_status}</td></tr>
+                `;
+                
+                if (data.payment.transaction_id) {
+                    html += `
+                        <tr><td>Transaction ID</td><td>${data.payment.transaction_id}</td></tr>
+                        <tr><td>Verification Status</td><td>${data.payment.verification_status}</td></tr>
+                        <tr><td>Verified By</td><td>${data.payment.verified_by || 'Not verified'}</td></tr>
+                    `;
+                }
+                
+                html += `</table>`;
+                
+                // Add action buttons
+                html += '<h4>Actions:</h4>';
+                
+                if (data.actions.download_qr) {
+                    html += `<p><button onclick="window.open('${data.actions.download_qr}', '_blank')">Download QR Code</button></p>`;
+                }
+                
+                if (data.actions.download_certificate) {
+                    html += `<p><button onclick="window.open('${data.actions.download_certificate}', '_blank')">Download Certificate</button></p>`;
+                }
+                
+                if (data.actions.verify_payment) {
+                    html += `<p><button onclick="showPage('verify-page')">Verify Payment</button></p>`;
+                }
+                
+                document.getElementById('tracking-result').innerHTML = html;
+                
+            } catch (error) {
+                document.getElementById('tracking-result').innerHTML = 
+                    `<p>Error loading registration: ${error.message}</p>`;
+            }
+        }
+        
+        // -------------------- PAGE 7: STATUS --------------------
+        async function loadStatus() {
+            const pid = document.getElementById('status-pid').value || currentParticipantId;
+            
+            if (!pid) {
+                alert('Please enter Participant ID');
+                return;
+            }
+            
+            try {
+                const data = await fetchAPI(`/participant/${pid}/verification-status`);
+                
+                let html = `
+                    <h3>Registration Status for ${data.full_name}</h3>
+                    <table border="1">
+                        <tr><th>Verification Status</th><td>${data.verification_status}</td></tr>
+                        <tr><th>Verified By</th><td>${data.verified_by}</td></tr>
+                        <tr><th>Verified At</th><td>${data.verified_at ? new Date(data.verified_at).toLocaleString() : 'Not verified'}</td></tr>
+                        <tr><th>Total Registrations</th><td>${data.payment_summary.total_registrations}</td></tr>
+                        <tr><th>Paid Registrations</th><td>${data.payment_summary.paid_registrations}</td></tr>
+                        <tr><th>Total Amount Paid</th><td>₹${data.payment_summary.total_amount}</td></tr>
+                    </table>
+                    
+                    <h4>Payment History:</h4>
+                `;
+                
+                if (data.payments.length > 0) {
+                    html += '<table border="1"><tr><th>Transaction ID</th><th>Amount</th><th>Status</th><th>Date</th></tr>';
+                    data.payments.forEach(payment => {
+                        html += `
+                            <tr>
+                                <td>${payment.transaction_id}</td>
+                                <td>₹${payment.amount}</td>
+                                <td>${payment.status}</td>
+                                <td>${new Date(payment.created_at).toLocaleString()}</td>
+                            </tr>
+                        `;
+                    });
+                    html += '</table>';
+                } else {
+                    html += '<p>No payments found</p>';
+                }
+                
+                // Actions
+                html += '<h4>Actions:</h4><table border="0">';
+                if (data.next_actions.download_qr) {
+                    html += `<tr><td><button onclick="window.open('${data.next_actions.download_qr}', '_blank')">Download Event QR Code</button></td></tr>`;
+                }
+                if (data.next_actions.download_certificate) {
+                    html += `<tr><td><button onclick="window.open('${data.next_actions.download_certificate}', '_blank')">Download Certificate</button></td></tr>`;
+                }
+                html += '</table>';
+                
+                document.getElementById('status-details').innerHTML = html;
+                
+            } catch (error) {
+                document.getElementById('status-details').innerHTML = 
+                    `<p>Error loading status: ${error.message}</p>`;
+            }
+        }
+        
+        // -------------------- PAGE 8: DOWNLOAD --------------------
+        async function downloadDocument(type) {
+            const pid = document.getElementById('download-pid').value || currentParticipantId;
+            
+            if (!pid) {
+                alert('Please enter Participant ID');
+                return;
+            }
+            
+            let endpoint;
+            
+            switch(type) {
+                case 'qr':
+                    endpoint = `/participant/${pid}/qr`;
+                    break;
+                case 'pdf':
+                    endpoint = `/participant/${pid}/certificate`;
+                    break;
+            }
+            
+            if (endpoint) {
+                window.open(`${API_BASE}${endpoint}`, '_blank');
+            }
+        }
+        
+        // -------------------- CONTACT --------------------
+        async function loadContact() {
+            try {
+                const data = await fetchAPI('/contact');
+                
+                let html = `
+                    <h3>Contact Information</h3>
+                    <table border="1">
+                        <tr><td>College</td><td>${data.college_name}</td></tr>
+                        <tr><td>Department</td><td>${data.department}</td></tr>
+                        <tr><td>Email</td><td><a href="mailto:${data.email}">${data.email}</a></td></tr>
+                        <tr><td>Address</td><td>${data.address}</td></tr>
+                    </table>
+                    
+                    <h4>Payment Support:</h4>
+                    <p><strong>UPI ID:</strong> 8807099288@upi</p>
+                    <p><strong>Bank Account:</strong> 1234567890 (IFSC: SBIN0001234)</p>
+                    
+                    <h4>Student Coordinators:</h4>
+                    <table border="1">
+                `;
+                
+                data.student_coordinators.forEach(coord => {
+                    html += `<tr><td>${coord.name}</td><td>${coord.role}</td><td>${coord.phone}</td></tr>`;
+                });
+                
+                html += `
+                    </table>
+                    
+                    <h4>Faculty Coordinators:</h4>
+                    <table border="1">
+                `;
+                
+                data.faculty_coordinators.forEach(coord => {
+                    html += `<tr><td>${coord.name}</td><td>${coord.role}</td><td>${coord.phone}</td></tr>`;
+                });
+                
+                html += `
+                    </table>
+                    
+                    <p><button onclick="window.open('${data.google_maps_url}', '_blank')">View on Google Maps</button></p>
+                `;
+                
+                document.getElementById('contact-info').innerHTML = html;
+                showPage('contact-page');
+                
+            } catch (error) {
+                document.getElementById('contact-info').innerHTML = 
+                    '<p>Error loading contact information</p>';
+            }
+        }
+        
+        function resetRegistration() {
+            currentParticipantId = null;
+            currentRegistrationIds = [];
+            currentTotalAmount = 0;
+            currentEventNames = [];
+            
+            // Clear form selections
+            document.getElementById('workshop-selection').innerHTML = '';
+            document.getElementById('event-selection').innerHTML = '';
+            
+            updateTotalAmount();
+            showPage('home-page');
+        }
+    </script>
+</head>
+<body>
+    <!-- Navigation -->
+    <div style="background: #f0f0f0; padding: 10px; margin-bottom: 20px;">
+        <button onclick="showPage('home-page')">🏠 Home</button>
+        <button onclick="navigateToEvents()">📅 Events</button>
+        <button onclick="navigateToRegister()">📝 Register</button>
+        <button onclick="showPage('payment-page')">💳 Payment</button>
+        <button onclick="showPage('track-page')">🔍 Track</button>
+        <button onclick="showPage('status-page')">📊 Status</button>
+        <button onclick="loadContact()">📞 Contact</button>
+        <button onclick="resetRegistration()">🔄 Reset</button>
+    </div>
+
+    <!-- PAGE 1: HOME -->
+    <div id="home-page" class="page">
+        <h1>THREADS'26 - Participant Portal</h1>
+        <div id="event-dates">Loading event dates...</div>
+        
+        <h3>Quick Actions:</h3>
+        <table border="1">
+            <tr>
+                <td>
+                    <h4>🎯 Register for Events</h4>
+                    <p>Register for workshops and events</p>
+                    <button onclick="navigateToEvents()">Browse Events</button>
+                    <button onclick="navigateToRegister()">Register Now</button>
+                </td>
+                <td>
+                    <h4>🔍 Track Registration</h4>
+                    <p>Check your registration status</p>
+                    <input type="text" id="track-input" placeholder="Enter Registration ID">
+                    <button onclick="navigateToTrack()">Track</button>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <h4>💳 Make Payment</h4>
+                    <p>Complete your payment</p>
+                    <button onclick="showPage('payment-page')">Payment Methods</button>
+                </td>
+                <td>
+                    <h4>✅ Verify Payment</h4>
+                    <p>Submit transaction details</p>
+                    <button onclick="showPage('verify-page')">Verify Payment</button>
+                </td>
+            </tr>
+        </table>
+        
+        <h3>Current Selection:</h3>
+        <div id="total-amount">No events selected</div>
+    </div>
+
+    <!-- PAGE 2: EVENTS -->
+    <div id="events-page" class="page" style="display: none;">
+        <h2>📅 Available Events</h2>
+        <button onclick="showPage('home-page')">← Back to Home</button>
+        <p id="registration-status">Checking registration status...</p>
+        <div id="events-list">Loading events...</div>
+    </div>
+
+    <!-- PAGE 3: REGISTRATION FORM -->
+    <div id="register-page" class="page" style="display: none;">
+        <h2>📝 Register for THREADS'26</h2>
+        <button onclick="showPage('events-page')">← Back to Events</button>
+        
+        <form id="registration-form">
+            <h3>Personal Details</h3>
+            <table>
+                <tr>
+                    <td>Full Name*:</td>
+                    <td><input type="text" name="full_name" required size="30"></td>
+                </tr>
+                <tr>
+                    <td>Email*:</td>
+                    <td><input type="email" name="email" required size="30"></td>
+                </tr>
+                <tr>
+                    <td>Phone*:</td>
+                    <td><input type="tel" name="phone" required size="30"></td>
+                </tr>
+                <tr>
+                    <td>College Name*:</td>
+                    <td><input type="text" name="college_name" required size="30"></td>
+                </tr>
+                <tr>
+                    <td>Department*:</td>
+                    <td>
+                        <select name="department" required>
+                            <option value="CSE">Computer Science & Engineering</option>
+                            <option value="ECE">Electronics & Communication</option>
+                            <option value="EEE">Electrical & Electronics</option>
+                            <option value="MECH">Mechanical</option>
+                            <option value="CIVIL">Civil</option>
+                            <option value="OTH">Other</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Year of Study*:</td>
+                    <td>
+                        <select name="year_of_study" required>
+                            <option value="1">1st Year</option>
+                            <option value="2">2nd Year</option>
+                            <option value="3">3rd Year</option>
+                            <option value="4">4th Year</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>City:</td>
+                    <td><input type="text" name="city" size="30"></td>
+                </tr>
+                <tr>
+                    <td>State:</td>
+                    <td><input type="text" name="state" size="30"></td>
+                </tr>
+                <tr>
+                    <td>Need Accommodation:</td>
+                    <td><input type="checkbox" name="accommodation_required"></td>
+                </tr>
+            </table>
+            
+            <h3>Selected Events:</h3>
+            <div id="total-amount">No events selected</div>
+            
+            <p>Day 1 Workshops (Select at least one):</p>
+            <select id="workshop-selection" name="workshop_selections" multiple size="5" style="width: 100%;">
+                <!-- Options will be added by JavaScript -->
+            </select>
+            
+            <p>Day 2 Events (Select any):</p>
+            <select id="event-selection" name="event_selections" multiple size="8" style="width: 100%;">
+                <!-- Options will be added by JavaScript -->
+            </select>
+            
+            <br><br>
+            <button type="button" onclick="removeSelectedEvents()">Remove Selected Events</button>
+            <button type="button" onclick="submitRegistration()">✅ Submit Registration</button>
+        </form>
+    </div>
+
+    <!-- PAGE 4: PAYMENT -->
+    <div id="payment-page" class="page" style="display: none;">
+        <h2>💳 Make Payment</h2>
+        <button onclick="showPage('register-page')">← Back to Registration</button>
+        
+        <div id="payment-details">
+            <p>Please complete your registration first</p>
+        </div>
+        
+        <div id="payment-methods">
+            <button onclick="showPaymentMethods()">Show Payment Methods</button>
+        </div>
+    </div>
+
+    <!-- PAGE 5: VERIFY PAYMENT -->
+    <div id="verify-page" class="page" style="display: none;">
+        <h2>✅ Verify Payment</h2>
+        <button onclick="showPage('payment-page')">← Back to Payment</button>
+        
+        <form id="verification-form">
+            <h3>Enter Payment Details</h3>
+            <table>
+                <tr>
+                    <td>Participant ID*:</td>
+                    <td><input type="text" name="participant_id" value="${currentParticipantId || ''}" required size="30"></td>
+                </tr>
+                <tr>
+                    <td>Transaction ID*:</td>
+                    <td><input type="text" name="transaction_id" required size="30" placeholder="e.g., UPIR123456789"></td>
+                </tr>
+                <tr>
+                    <td>Payment Reference:</td>
+                    <td><input type="text" name="payment_reference" value="THREADS26-${currentParticipantId || ''}" size="30"></td>
+                </tr>
+                <tr>
+                    <td>Payment Method:</td>
+                    <td>
+                        <select name="payment_method">
+                            <option value="UPI">UPI</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                            <option value="Cash">Cash</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </td>
+                </tr>
+            </table>
+            
+            <br>
+            <button type="button" onclick="submitVerification()">✅ Submit Verification</button>
+        </form>
+        
+        <div id="verification-result"></div>
+    </div>
+
+    <!-- PAGE 6: TRACK REGISTRATION -->
+    <div id="track-page" class="page" style="display: none;">
+        <h2>🔍 Track Registration</h2>
+        <button onclick="showPage('home-page')">← Back to Home</button>
+        
+        <div>
+            <input type="text" id="new-track-input" placeholder="Enter Registration ID" size="30">
+            <button onclick="loadRegistration(document.getElementById('new-track-input').value)">Track</button>
+        </div>
+        
+        <div id="tracking-result">
+            <p>Enter a registration ID to track your status</p>
+        </div>
+    </div>
+
+    <!-- PAGE 7: STATUS -->
+    <div id="status-page" class="page" style="display: none;">
+        <h2>📊 Registration Status</h2>
+        <button onclick="showPage('home-page')">← Back to Home</button>
+        
+        <div>
+            <input type="text" id="status-pid" placeholder="Enter Participant ID" size="30" value="${currentParticipantId || ''}">
+            <button onclick="loadStatus()">Check Status</button>
+        </div>
+        
+        <div id="status-details">
+            <p>Enter Participant ID and click "Check Status"</p>
+        </div>
+    </div>
+
+    <!-- PAGE 8: DOWNLOAD -->
+    <div id="download-page" class="page" style="display: none;">
+        <h2>📥 Download Documents</h2>
+        <button onclick="showPage('status-page')">← Back to Status</button>
+        
+        <div>
+            <h3>Available Downloads:</h3>
+            <table border="1">
+                <tr>
+                    <td>
+                        <h4>📱 Event QR Code</h4>
+                        <p>For event entry</p>
+                        <button onclick="downloadDocument('qr')">Download QR</button>
+                    </td>
+                    <td>
+                        <h4>📄 Confirmation PDF</h4>
+                        <p>Registration confirmation</p>
+                        <button onclick="downloadDocument('pdf')">Download PDF</button>
+                    </td>
+                </tr>
+            </table>
+            
+            <p>Participant ID: <input type="text" id="download-pid" placeholder="Enter Participant ID" size="30" value="${currentParticipantId || ''}"></p>
+        </div>
+    </div>
+
+    <!-- PAGE 9: CONTACT -->
+    <div id="contact-page" class="page" style="display: none;">
+        <h2>📞 Contact Us</h2>
+        <button onclick="showPage('home-page')">← Back to Home</button>
+        
+        <div id="contact-info">
+            Loading contact information...
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="margin-top: 50px; border-top: 1px solid #ccc; padding: 10px; text-align: center;">
+        <p>THREADS'26 - Department of Computer Science and Engineering</p>
+        <p>📧 threads26@college.edu | 📱 9876543210 | 💳 UPI: 8807099288@upi</p>
+        <p>Payment Reference Format: THREADS26-[Your Participant ID]</p>
+    </div>
+
+    <style>
+        .page {
+            padding: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 5px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        input, select {
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        table {
+            border-collapse: collapse;
+            margin: 10px 0;
+            width: 100%;
+        }
+        td, th {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: left;
+            vertical-align: top;
+        }
+        th {
+            background: #f2f2f2;
+            font-weight: bold;
+        }
+        h1, h2, h3, h4 {
+            color: #333;
+            margin-top: 20px;
+        }
+        textarea {
+            font-family: monospace;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+        }
+        #total-amount {
+            padding: 10px;
+            background: #e7f3fe;
+            border: 1px solid #2196F3;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        #qr-code-container {
+            text-align: center;
+            margin: 20px 0;
+            padding: 20px;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+    </style>
+</body>
+</html>
