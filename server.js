@@ -1283,12 +1283,9 @@ fastify.post('/api/admin/manual-verification', async (request, reply) => {
 // 6. Admin QR Scan & Attendance Update
 fastify.post('/api/admin/scan-qr', async (request, reply) => {
   try {
-    const { qr_data, admin_token } = request.body;
+    const { qr_data} = request.body;
     
-    // Verify admin
-    if (!admin_token || admin_token !== process.env.ADMIN_TOKEN) {
-      return reply.code(401).send({ error: 'Unauthorized' });
-    }
+
     
     // Parse QR data
     let participantData;
@@ -1405,10 +1402,7 @@ Promise.all([
 // 8. Get Attendance Report
 fastify.get('/api/admin/attendance-report', async (request) => {
   // Verify admin token
-  const adminToken = request.headers['x-admin-token'];
-  if (!adminToken || adminToken !== process.env.ADMIN_TOKEN) {
-    throw new Error('Unauthorized');
-  }
+
   
   try {
     const { event_id, day, date } = request.query;
@@ -1520,10 +1514,6 @@ fastify.post('/api/admin/bulk-attendance', async (request, reply) => {
       admin_token 
     } = request.body;
     
-    // Verify admin
-    if (!admin_token || admin_token !== process.env.ADMIN_TOKEN) {
-      return reply.code(401).send({ error: 'Unauthorized' });
-    }
     
     if (!['NOT_ATTENDED', 'ATTENDED'].includes(attendance_status)) {
       return reply.code(400).send({ error: 'Invalid attendance status' });
@@ -1578,11 +1568,7 @@ fastify.post('/api/admin/bulk-attendance', async (request, reply) => {
 // 10. Export Registrations (Admin)
 fastify.get('/api/admin/export', async (request, reply) => {
   // Verify admin token
-  const adminToken = request.headers['x-admin-token'];
-  if (!adminToken || adminToken !== process.env.ADMIN_TOKEN) {
-    return reply.code(401).send({ error: 'Unauthorized' });
-  }
-  
+
   try {
     const result = await pool.query(`
       SELECT 
@@ -2012,11 +1998,6 @@ fastify.patch('/api/admin/events/:id', async (request, reply) => {
 
 // 13. Upload Gallery Image (Admin)
 fastify.post('/api/admin/gallery', async (request, reply) => {
-  // Verify admin token
-  const adminToken = request.headers['x-admin-token'];
-  if (!adminToken || adminToken !== process.env.ADMIN_TOKEN) {
-    return reply.code(401).send({ error: 'Unauthorized' });
-  }
   
   try {
     const data = await request.file();
@@ -2077,10 +2058,7 @@ fastify.get('/api/gallery', async (request) => {
 
 // 15. Create announcement (Admin)
 fastify.post('/api/admin/announcements', async (request, reply) => {
-  const adminToken = request.headers['x-admin-token'];
-  if (!adminToken || adminToken !== process.env.ADMIN_TOKEN) {
-    return reply.code(401).send({ error: 'Unauthorized' });
-  }
+
   
   try {
     const { title, content, expires_at } = request.body;
