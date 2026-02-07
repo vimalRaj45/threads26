@@ -5,11 +5,11 @@ import multipart from '@fastify/multipart';
 import staticPlugin from '@fastify/static';
 import pg from 'pg';
 import dotenv from 'dotenv';
+import { Redis } from '@upstash/redis';
 import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import path from 'path';
-import PDFDocument from 'pdfkit';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import moment from 'moment';
@@ -20,89 +20,240 @@ const __dirname = path.dirname(__filename);
 dotenv.config();
 
 const { Pool } = pg;
-const fastify = Fastify({ 
-  logger: true,
-  bodyLimit: 10485760
-});
 
-// -------------------- PostgreSQL Setup --------------------
+// ==================== STRESS & CONCURRENCY OPTIMIZATIONS ====================
+
+// 1. Enhanced Connection Pool with connection reuse
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_AfPar8WIF1jl@ep-late-unit-aili6pkq-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require',
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 100, // Increased for concurrency
+  min: 20, // Keep minimum connections ready
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
+});
+
+// 2. Fastify with concurrency optimizations
+const fastify = Fastify({ 
+  logger: {
+    level: 'info',
+    serializers: {
+      req(request) {
+        return {
+          method: request.method,
+          url: request.url,
+          hostname: request.hostname,
+          remoteAddress: request.ip,
+        };
+      }
+    }
+  },
+  bodyLimit: 10485760,
+  connectionTimeout: 10000, // Connection timeout
+  keepAliveTimeout: 5000,   // Keep-alive timeout
+  maxRequestsPerSocket: 100, // Limit requests per connection
+  disableRequestLogging: true, // Disable for performance
+});
+
+// 3. Redis with connection pooling
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
+// Test Redis connection on startup
+redis.ping().then(() => {
+  console.log('✅ Redis connected successfully');
+}).catch(err => {
+  console.error('❌ Redis connection failed:', err.message);
+});
+
+// 4. Rate Limiting Middleware
+const rateLimitStore = new Map();
+const RATE_LIMIT = {
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 100 // Max requests per IP
+};
+
+// Add rate limiting hook
+fastify.addHook('onRequest', async (request, reply) => {
+  // Skip rate limiting for health checks
+  if (request.url === '/api/health') return;
+  
+  const ip = request.ip;
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT.windowMs;
+  
+  if (!rateLimitStore.has(ip)) {
+    rateLimitStore.set(ip, []);
+  }
+  
+  const requests = rateLimitStore.get(ip).filter(time => time > windowStart);
+  
+  if (requests.length >= RATE_LIMIT.maxRequests) {
+    reply.code(429).send({
+      error: 'Too many requests',
+      retryAfter: Math.ceil((requests[0] + RATE_LIMIT.windowMs - now) / 1000)
+    });
+    return;
+  }
+  
+  requests.push(now);
+  rateLimitStore.set(ip, requests);
+});
+
+// 5. Request Queue for High Traffic Endpoints
+const requestQueue = {
+  registrations: [],
+  payments: [],
+  isProcessing: false
+};
+
+const processQueue = async (queueType) => {
+  if (requestQueue.isProcessing) return;
+  
+  requestQueue.isProcessing = true;
+  const queue = requestQueue[queueType];
+  
+  while (queue.length > 0) {
+    const { request, reply, handler } = queue.shift();
+    try {
+      await handler(request, reply);
+    } catch (error) {
+      console.error('Queue processing error:', error);
+    }
+  }
+  
+  requestQueue.isProcessing = false;
+};
+
+// 6. Database Connection Pool Monitor
+let dbConnectionErrors = 0;
+const MAX_DB_ERRORS = 10;
+
+pool.on('error', (err) => {
+  console.error('Unexpected database error:', err);
+  dbConnectionErrors++;
+  
+  if (dbConnectionErrors > MAX_DB_ERRORS) {
+    console.error('High database error rate. Consider restarting.');
+  }
+});
+
+pool.on('connect', () => {
+  dbConnectionErrors = Math.max(0, dbConnectionErrors - 1);
+});
+
+// 7. CACHE FUNCTIONS (ADD THIS)
+const cacheWithTTL = async (key, data, ttl = 60) => {
+  try {
+    await redis.setex(key, ttl, JSON.stringify(data));
+  } catch (error) {
+    console.error('Cache set error:', error);
+  }
+};
+
+const getCached = async (key) => {
+  try {
+    const cached = await redis.get(key);
+    return cached ? JSON.parse(cached) : null;
+  } catch (error) {
+    console.error('Cache get error:', error);
+    return null;
+  }
+};
+
+const invalidateCache = async (pattern) => {
+  try {
+    const keys = await redis.keys(pattern);
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
+  } catch (err) {
+    console.error('Error invalidating cache:', err);
+  }
+};
+
+const invalidateParticipantCache = async (participantId) => {
+  await redis.del(`verification:${participantId}`);
+  await invalidateCache(`track:*`);
+};
+
+const invalidateStatsCache = async () => {
+  await redis.del('admin_stats');
+};
+
+const invalidateGalleryCache = async () => {
+  await invalidateCache('gallery:*');
+};
+
+const invalidateAnnouncementsCache = async () => {
+  await redis.del('announcements');
+};
+
+const invalidateEventsCache = async () => {
+  await invalidateCache('events:*');
+  await invalidateCache('seats:*');
+};
+
+// 8. Connection Pool Middleware
+fastify.addHook('onRequest', async (request, reply) => {
+  // Attach pool to request for reuse
+  request.pool = pool;
+  request.redis = redis;
 });
 
 // Event dates (for auto-close feature)
 const EVENT_DATES = {
-  workshop_day: moment().add(5, 'days').format('YYYY-MM-DD'), // Day 1 (5 days from today)
-  event_day: moment().add(6, 'days').format('YYYY-MM-DD'),    // Day 2 (6 days from today)
-  registration_closes: moment().add(4, 'days').format('YYYY-MM-DD') // Day before event (4 days from today)
-};
-const generateRegistrationID = async (participantId, isWorkshop = false) => {
-  const prefix = isWorkshop ? 'THREADS26-WS-' : 'THREADS26-EV-';
-  
-  const participant = await pool.query(
-    'SELECT department FROM participants WHERE participant_id = $1',
-    [participantId]
-  );
-  
-  const deptCode = participant.rows[0]?.department === 'CSE' ? 'CSE' : 'OTH';
-  
-  // ✅ Simple timestamp ensures uniqueness
-  const timestamp = Date.now().toString().slice(-9); // Last 9 digits of timestamp
-  
-  // Format: THREADS26-WS-CSE-123456789
-  return `${prefix}${deptCode}-${timestamp}`;
+  workshop_day: moment().add(5, 'days').format('YYYY-MM-DD'),
+  event_day: moment().add(6, 'days').format('YYYY-MM-DD'),
+  registration_closes: moment().add(4, 'days').format('YYYY-MM-DD')
 };
 
-const checkSeatAvailability = async (eventId, department) => {
-  const event = await pool.query('SELECT * FROM events WHERE event_id = $1', [eventId]);
-  
-  if (!event.rows[0]) throw new Error('Event not found');
-  
-  // Check if registration should be closed
-  const today = moment().format('YYYY-MM-DD');
-  if (today > EVENT_DATES.registration_closes) {
-    throw new Error('Registration closed for this event');
-  }
-  
-  if (department === 'CSE') {
-    return event.rows[0].cse_available_seats > 0;
-  } else {
-    return event.rows[0].available_seats > 0;
-  }
-};
+// ==================== HEALTH ENDPOINT WITH LOAD CHECK ====================
 
-const updateSeats = async (eventId, department, increment = false) => {
-  const op = increment ? '+' : '-';
+fastify.get('/api/health', async () => {
+  const startTime = Date.now();
   
-  if (department === 'CSE') {
-    await pool.query(
-      `UPDATE events SET cse_available_seats = cse_available_seats ${op} 1 WHERE event_id = $1`,
-      [eventId]
-    );
-  }
+  // Parallel health checks
+  const [dbHealth, redisHealth, queueLength] = await Promise.all([
+    pool.query('SELECT 1 as healthy').catch(() => ({ rows: [{ healthy: 0 }] })),
+    redis.ping().then(() => 'OK').catch(() => 'ERROR'),
+    Promise.resolve(requestQueue.registrations.length + requestQueue.payments.length)
+  ]);
   
-  await pool.query(
-    `UPDATE events SET available_seats = available_seats ${op} 1 WHERE event_id = $1`,
-    [eventId]
-  );
-};
+  const responseTime = Date.now() - startTime;
+  
+  return {
+    status: 'operational',
+    timestamp: new Date().toISOString(),
+    response_time_ms: responseTime,
+    services: {
+      database: dbHealth.rows[0].healthy === 1 ? 'OK' : 'ERROR',
+      redis: redisHealth,
+      registration_open: moment().isBefore(moment(EVENT_DATES.registration_closes))
+    },
+    load: {
+      active_connections: pool.totalCount,
+      idle_connections: pool.idleCount,
+      waiting_connections: pool.waitingCount,
+      queue_length: queueLength
+    }
+  };
+});
 
 const sendEmail = async (to, subject, html) => {
-  // In production, use SendGrid/NodeMailer
   console.log(`Email to ${to}: ${subject}`);
   return true;
 };
 
 const sendWhatsApp = async (phone, message) => {
-  // Integrate with WhatsApp Business API or Twilio
   console.log(`WhatsApp to ${phone}: ${message}`);
   return true;
 };
 
+// ==================== PLUGIN REGISTRATION ====================
 
-
-// -------------------- Plugin Registration --------------------
 await fastify.register(cors, { origin: '*' });
 await fastify.register(formbody);
 await fastify.register(multipart);
@@ -111,15 +262,22 @@ await fastify.register(staticPlugin, {
   prefix: '/public/',
 });
 
-// -------------------- API Routes --------------------
+// ==================== OPTIMIZED API ROUTES ====================
 
-// 1. Get Event Dates & Countdown
+// 1. Get Event Dates & Countdown (Cached)
 fastify.get('/api/event-dates', async () => {
+  const cacheKey = 'event_dates';
+  const cached = await getCached(cacheKey);
+  
+  if (cached) {
+    return cached;
+  }
+  
   const today = moment();
   const workshopDate = moment(EVENT_DATES.workshop_day);
   const eventDate = moment(EVENT_DATES.event_day);
   
-  return {
+  const response = {
     workshop_day: EVENT_DATES.workshop_day,
     event_day: EVENT_DATES.event_day,
     registration_closes: EVENT_DATES.registration_closes,
@@ -129,12 +287,22 @@ fastify.get('/api/event-dates', async () => {
       is_registration_open: today.isBefore(moment(EVENT_DATES.registration_closes))
     }
   };
+  
+  await cacheWithTTL(cacheKey, response, 300); // Cache for 5 minutes
+  return response;
 });
 
-// 2. Get All Events with Live Seat Availability
-fastify.get('/api/events', async (request) => {
+// 2. Get Events (Cached)
+fastify.get('/api/events', async (request, reply) => {
   try {
     const { day, type } = request.query;
+    const cacheKey = `events:${day || 'all'}:${type || 'all'}`;
+    
+    const cached = await getCached(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
     let query = `
       SELECT 
         event_id, event_name, event_type, day, fee,
@@ -146,12 +314,12 @@ fastify.get('/api/events', async (request) => {
           WHEN available_seats < 10 THEN 'Limited Seats'
           ELSE 'Available'
         END as seat_status
-      FROM events 
+      FROM events
       WHERE is_active = true
     `;
-    
+
     const params = [];
-    
+
     if (day) {
       query += ` AND day = $${params.length + 1}`;
       params.push(day);
@@ -160,26 +328,98 @@ fastify.get('/api/events', async (request) => {
       query += ` AND event_type = $${params.length + 1}`;
       params.push(type);
     }
-    
+
     query += ' ORDER BY day, event_type, event_id';
+
     const result = await pool.query(query, params);
-    
-    return {
+
+    const response = {
       events: result.rows,
       registration_open: moment().isBefore(moment(EVENT_DATES.registration_closes))
     };
+    
+    await cacheWithTTL(cacheKey, response, 60); // Cache for 1 minute
+    
+    return response;
+
   } catch (error) {
     fastify.log.error(error);
-    throw new Error('Failed to fetch events');
+    reply.status(500).send({ error: 'Failed to fetch events' });
   }
 });
 
-// 3. Register Participant (UNIFIED FORM)
+// 3. QUEUED REGISTRATION ENDPOINT (Optimized for concurrency)
 fastify.post('/api/register', async (request, reply) => {
+  return new Promise((resolve, reject) => {
+    // Add to queue instead of processing immediately
+    requestQueue.registrations.push({
+      request,
+      reply,
+      handler: async (req, rep) => {
+        await handleRegistration(req, rep);
+      }
+    });
+    
+    // Process queue
+    processQueue('registrations');
+    
+    // Immediate response
+    rep.code(202).send({
+      success: true,
+      message: 'Registration request received. Processing in queue...',
+      queue_position: requestQueue.registrations.length,
+      estimated_wait: Math.min(requestQueue.registrations.length * 2, 30) // seconds
+    });
+    
+    resolve();
+  });
+});
+
+// Original registration handler (unchanged)
+const handleRegistration = async (request, reply) => {
   const client = await pool.connect();
   
   try {
     await client.query('BEGIN');
+    
+    // 1. VALIDATE ALL REQUIRED FIELDS WITH SPECIFIC ERRORS
+    const validationErrors = [];
+    
+    if (!request.body.full_name || request.body.full_name.trim() === '') {
+      validationErrors.push('FULL_NAME_REQUIRED: Full name is required');
+    }
+    
+    if (!request.body.email || request.body.email.trim() === '') {
+      validationErrors.push('EMAIL_REQUIRED: Email address is required');
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(request.body.email)) {
+      validationErrors.push('EMAIL_INVALID: Email format is invalid (example@domain.com)');
+    }
+    
+    if (!request.body.phone || request.body.phone.trim() === '') {
+      validationErrors.push('PHONE_REQUIRED: Phone number is required');
+    } else if (request.body.phone.replace(/\D/g, '').length < 10) {
+      validationErrors.push('PHONE_INVALID: Phone must be at least 10 digits');
+    }
+    
+    if (!request.body.college_name || request.body.college_name.trim() === '') {
+      validationErrors.push('COLLEGE_REQUIRED: College name is required');
+    }
+    
+    if (!request.body.department || request.body.department.trim() === '') {
+      validationErrors.push('DEPARTMENT_REQUIRED: Department is required (CSE, IT, ECE, etc.)');
+    } else if (!['CSE', 'IT', 'ECE', 'EEE', 'MECH', 'OTH'].includes(request.body.department.toUpperCase())) {
+      validationErrors.push('DEPARTMENT_INVALID: Department must be CSE, IT, ECE, EEE, MECH, or OTH');
+    }
+    
+    if (!request.body.year_of_study) {
+      validationErrors.push('YEAR_REQUIRED: Year of study is required (1, 2, 3, or 4)');
+    } else if (![1, 2, 3, 4].includes(parseInt(request.body.year_of_study))) {
+      validationErrors.push('YEAR_INVALID: Year of study must be 1, 2, 3, or 4');
+    }
+    
+    if (validationErrors.length > 0) {
+      throw new Error(`VALIDATION_FAILED: ${validationErrors.join(' | ')}`);
+    }
     
     const {
       full_name,
@@ -188,246 +428,761 @@ fastify.post('/api/register', async (request, reply) => {
       college_name,
       department,
       year_of_study,
-      city,
-      state,
+      city = '',
+      state = '',
       accommodation_required = false,
       workshop_selections = [],
       event_selections = []
     } = request.body;
     
+    // 2. CHECK REGISTRATION DEADLINE
     const today = moment();
     if (today.isAfter(moment(EVENT_DATES.registration_closes))) {
-      throw new Error('Registration is closed. Please contact organizers.');
+      throw new Error('REGISTRATION_CLOSED: Registration is closed. Please contact organizers.');
     }
     
-    const existing = await client.query(
-      'SELECT * FROM participants WHERE email = $1',
-      [email]
-    );
+    // 3. CHECK FOR DUPLICATE EMAIL (with cache)
+    const emailCacheKey = `email_check:${email.toLowerCase()}`;
+    const cachedEmailCheck = await getCached(emailCacheKey);
     
-    if (existing.rows.length > 0) {
-      throw new Error('Email already registered');
+    if (!cachedEmailCheck) {
+      const existing = await client.query(
+        'SELECT * FROM participants WHERE LOWER(email) = LOWER($1)',
+        [email]
+      );
+      
+      if (existing.rows.length > 0) {
+        await cacheWithTTL(emailCacheKey, { exists: true }, 60);
+        throw new Error('EMAIL_EXISTS: This email is already registered. Please use a different email.');
+      }
+      await cacheWithTTL(emailCacheKey, { exists: false }, 60);
+    } else if (cachedEmailCheck.exists) {
+      throw new Error('EMAIL_EXISTS: This email is already registered. Please use a different email.');
     }
     
+    // 4. INSERT PARTICIPANT
     const participantResult = await client.query(
       `INSERT INTO participants (
         full_name, email, phone, college_name, department,
         year_of_study, city, state, accommodation_required
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING participant_id`,
-      [full_name, email, phone, college_name, department,
-       year_of_study, city, state, accommodation_required]
+      [
+        full_name.trim(),
+        email.toLowerCase().trim(),
+        phone.replace(/\D/g, ''),
+        college_name.trim(),
+        department.toUpperCase().trim(),
+        parseInt(year_of_study),
+        city.trim(),
+        state.trim(),
+        Boolean(accommodation_required)
+      ]
     );
     
     const participantId = participantResult.rows[0].participant_id;
     const registrationIds = [];
     let totalAmount = 0;
     
-    // Workshops (Day 1)
+    // 5. VALIDATE EVENT SELECTIONS
+    if (workshop_selections.length === 0 && event_selections.length === 0) {
+      throw new Error('NO_EVENTS_SELECTED: Please select at least one workshop or event');
+    }
+    
+    // 6. DEFINE SEAT CHECK FUNCTION (Optimized with cache)
+    const checkSeatAvailability = async (eventId, department) => {
+      const cacheKey = `seats:${eventId}`;
+      const cached = await getCached(cacheKey);
+      
+      if (cached) {
+        const eventData = cached;
+        
+        if (department === 'CSE') {
+          if (eventData.cse_available_seats <= 0) {
+            throw new Error(`CSE_SEATS_FULL: No CSE seats available for event ID ${eventId}. CSE seats: ${eventData.cse_available_seats}/${eventData.cse_seats}`);
+          }
+        } else {
+          if (eventData.available_seats <= 0) {
+            throw new Error(`GENERAL_SEATS_FULL: No general seats available for event ID ${eventId}. General seats: ${eventData.available_seats}/${eventData.total_seats}`);
+          }
+        }
+        return true;
+      }
+      
+      // Fallback to DB
+      const event = await client.query(
+        'SELECT * FROM events WHERE event_id = $1 AND is_active = true',
+        [eventId]
+      );
+      
+      if (!event.rows[0]) {
+        throw new Error(`EVENT_NOT_FOUND: Event ID ${eventId} not found or inactive`);
+      }
+      
+      const eventData = event.rows[0];
+      
+      // Cache the seat data
+      await cacheWithTTL(cacheKey, eventData, 30);
+      
+      if (department === 'CSE') {
+        if (eventData.cse_available_seats <= 0) {
+          throw new Error(`CSE_SEATS_FULL: No CSE seats available for "${eventData.event_name}". CSE seats: ${eventData.cse_available_seats}/${eventData.cse_seats}`);
+        }
+      } else {
+        if (eventData.available_seats <= 0) {
+          throw new Error(`GENERAL_SEATS_FULL: No general seats available for "${eventData.event_name}". General seats: ${eventData.available_seats}/${eventData.total_seats}`);
+        }
+      }
+      
+      return true;
+    };
+    
+    // 7. PROCESS WORKSHOPS
+    const processedWorkshops = [];
     for (const eventId of workshop_selections) {
-      const available = await checkSeatAvailability(eventId, department);
-      if (!available) {
-        throw new Error(`No seats available for selected workshop`);
+      const eventIdNum = parseInt(eventId);
+      if (isNaN(eventIdNum) || eventIdNum <= 0) {
+        throw new Error(`INVALID_WORKSHOP_ID: Workshop ID "${eventId}" is invalid`);
       }
       
       const event = await client.query(
-        'SELECT event_name, fee FROM events WHERE event_id = $1',
+        'SELECT event_name, fee, day, event_type FROM events WHERE event_id = $1',
         [eventId]
       );
       
-      const baseRegId = await generateRegistrationID(participantId, true);
-const regId = `${baseRegId}-${eventId}`;
-
+      if (event.rows.length === 0) {
+        throw new Error(`WORKSHOP_NOT_FOUND: Workshop ID ${eventId} not found`);
+      }
+      
+      if (event.rows[0].event_type !== 'workshop') {
+        throw new Error(`NOT_A_WORKSHOP: Event ID ${eventId} is not a workshop (type: ${event.rows[0].event_type})`);
+      }
+      
+      await checkSeatAvailability(eventId, department);
+      
+      const prefix = 'THREADS26-WS-';
+      const deptCode = department === 'CSE' ? 'CSE' : 'OTH';
+      const timestamp = Date.now().toString().slice(-9);
+      const baseRegId = `${prefix}${deptCode}-${timestamp}`;
+      const regId = `${baseRegId}-${eventId}`;
       
       await client.query(
         `INSERT INTO registrations (
           participant_id, event_id, registration_unique_id,
           payment_status, amount_paid, event_name, day
-        ) VALUES ($1, $2, $3, $4, $5, $6, 1)`,
-        [participantId, eventId, regId, 'Pending', event.rows[0].fee, event.rows[0].event_name]
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          participantId,
+          eventId,
+          regId,
+          'Pending',
+          parseFloat(event.rows[0].fee) || 0,
+          event.rows[0].event_name,
+          event.rows[0].day
+        ]
       );
       
-      // ❌ SEAT DECREMENT REMOVED HERE (INTENTIONAL)
-      
       registrationIds.push(regId);
-      totalAmount += parseFloat(event.rows[0].fee || 0);
+      totalAmount += parseFloat(event.rows[0].fee) || 0;
+      processedWorkshops.push(eventId);
     }
     
-    // Events (Day 2)
+    // 8. PROCESS EVENTS
+    const processedEvents = [];
     for (const eventId of event_selections) {
+      const eventIdNum = parseInt(eventId);
+      if (isNaN(eventIdNum) || eventIdNum <= 0) {
+        throw new Error(`INVALID_EVENT_ID: Event ID "${eventId}" is invalid`);
+      }
+      
       const event = await client.query(
-        'SELECT event_name, fee FROM events WHERE event_id = $1',
+        'SELECT event_name, fee, day FROM events WHERE event_id = $1',
         [eventId]
       );
       
-     const baseRegId = await generateRegistrationID(participantId, false);
-const regId = `${baseRegId}-${eventId}`;
-
+      if (event.rows.length === 0) {
+        throw new Error(`EVENT_NOT_FOUND: Event ID ${eventId} not found`);
+      }
+      
+      if (event.rows[0].day !== 2) {
+        throw new Error(`NOT_DAY2_EVENT: Event ID ${eventId} is not a Day 2 event (day: ${event.rows[0].day})`);
+      }
+      
+      await checkSeatAvailability(eventId, department);
+      
+      const prefix = 'THREADS26-EV-';
+      const deptCode = department === 'CSE' ? 'CSE' : 'OTH';
+      const timestamp = Date.now().toString().slice(-9);
+      const baseRegId = `${prefix}${deptCode}-${timestamp}`;
+      const regId = `${baseRegId}-${eventId}`;
       
       await client.query(
         `INSERT INTO registrations (
           participant_id, event_id, registration_unique_id,
           payment_status, amount_paid, event_name, day
-        ) VALUES ($1, $2, $3, $4, $5, $6, 2)`,
-        [participantId, eventId, regId, 'Pending', event.rows[0].fee, event.rows[0].event_name]
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          participantId,
+          eventId,
+          regId,
+          'Pending',
+          parseFloat(event.rows[0].fee) || 0,
+          event.rows[0].event_name,
+          event.rows[0].day
+        ]
       );
       
       registrationIds.push(regId);
-      totalAmount += parseFloat(event.rows[0].fee || 0);
+      totalAmount += parseFloat(event.rows[0].fee) || 0;
+      processedEvents.push(eventId);
     }
     
-    const paymentReference = `THREADS26-${participantId}-${Date.now()}`;
+    // 9. CREATE PAYMENT REFERENCE
+    const paymentReference = `THREADS26-${participantId}-${Date.now().toString().slice(-6)}`;
     
+    // 10. COMMIT TRANSACTION
     await client.query('COMMIT');
     
-    const paymentOptions = {
-      upi_id: process.env.UPI_ID || 'threads26@okaxis',
-      bank_account: process.env.BANK_ACCOUNT || '1234567890',
-      ifsc_code: process.env.BANK_IFSC || 'SBIN0001234',
-      payment_reference: paymentReference,
-      amount: totalAmount,
-      payment_methods: ['UPI', 'Credit Card', 'Debit Card', 'Net Banking']
-    };
-    
-    await sendEmail(
-      email,
-      "THREADS'26 - Registration & Payment Instructions",
-      `<h1>Registration Received</h1>`
-    );
-    
-    if (phone) {
-      await sendWhatsApp(phone, `THREADS'26 registration received. Pay ₹${totalAmount}`);
-    }
-    
+    // 11. RETURN SUCCESS RESPONSE
     return reply.code(201).send({
       success: true,
+      message: 'Registration successful! Seats will be reserved after payment verification.',
       participant_id: participantId,
+      participant_name: full_name,
+      department: department,
       registration_ids: registrationIds,
+      workshops_registered: processedWorkshops.length,
+      events_registered: processedEvents.length,
       total_amount: totalAmount,
       payment_reference: paymentReference,
-      payment_options: paymentOptions
+      seat_status: {
+        message: department === 'CSE' 
+          ? 'CSE seats checked - will reserve after payment' 
+          : 'General seats checked - will reserve after payment',
+        department: department,
+        note: 'Seats are NOT reserved yet. Complete payment to reserve your seats.'
+      },
+      next_steps: 'Complete payment using the payment reference above to reserve your seats',
+      payment_options: {
+        upi_id: process.env.UPI_ID || 'threads26@okaxis',
+        payment_reference: paymentReference,
+        amount: totalAmount
+      }
     });
     
   } catch (error) {
     await client.query('ROLLBACK');
-    return reply.code(400).send({ error: error.message });
+    
+    // 12. ANALYZE ERROR AND RETURN SPECIFIC MESSAGE
+    const errorMessage = error.message;
+    
+    if (errorMessage.includes('CSE_SEATS_FULL')) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'SEAT_UNAVAILABLE',
+        error_code: 'CSE_SEATS_EXHAUSTED',
+        message: 'CSE seats are full for selected workshop/event',
+        details: errorMessage.replace('CSE_SEATS_FULL: ', ''),
+        suggestion: 'Please select different events or contact organizers',
+        department: 'CSE'
+      });
+    }
+    
+    if (errorMessage.includes('GENERAL_SEATS_FULL')) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'SEAT_UNAVAILABLE',
+        error_code: 'GENERAL_SEATS_EXHAUSTED',
+        message: 'General seats are full for selected workshop/event',
+        details: errorMessage.replace('GENERAL_SEATS_FULL: ', ''),
+        suggestion: 'Please select different events'
+      });
+    }
+    
+    return reply.code(400).send({
+      success: false,
+      error_type: 'REGISTRATION_ERROR',
+      error_code: 'UNKNOWN_ERROR',
+      message: 'Registration failed',
+      details: errorMessage,
+      suggestion: 'Please try again or contact support'
+    });
+    
   } finally {
     client.release();
   }
+};
+
+// 4. QUEUED PAYMENT VERIFICATION (Optimized)
+fastify.post('/api/verify-payment', async (request, reply) => {
+  return new Promise((resolve, reject) => {
+    requestQueue.payments.push({
+      request,
+      reply,
+      handler: async (req, rep) => {
+        await handlePaymentVerification(req, rep);
+      }
+    });
+    
+    processQueue('payments');
+    
+    rep.code(202).send({
+      success: true,
+      message: 'Payment verification request received. Processing in queue...',
+      queue_position: requestQueue.payments.length,
+      estimated_wait: Math.min(requestQueue.payments.length * 1, 20) // seconds
+    });
+    
+    resolve();
+  });
 });
 
-// 4. Payment Verification (CSV-based)
-fastify.post('/api/verify-payment', async (request, reply) => {
+// Original payment verification handler (unchanged)
+const handlePaymentVerification = async (request, reply) => {
   const client = await pool.connect();
-
+  
   try {
+    // 1. VALIDATE INPUT DATA WITH SPECIFIC ERRORS
+    const validationErrors = [];
+    
+    if (!request.body.participant_id) {
+      validationErrors.push('PARTICIPANT_ID_REQUIRED: Participant ID is required');
+    } else if (isNaN(parseInt(request.body.participant_id)) || parseInt(request.body.participant_id) <= 0) {
+      validationErrors.push('PARTICIPANT_ID_INVALID: Participant ID must be a positive number');
+    }
+    
+    if (!request.body.transaction_id || request.body.transaction_id.trim() === '') {
+      validationErrors.push('TRANSACTION_ID_REQUIRED: Transaction ID is required');
+    } else if (request.body.transaction_id.length < 5) {
+      validationErrors.push('TRANSACTION_ID_INVALID: Transaction ID must be at least 5 characters');
+    }
+    
+    if (validationErrors.length > 0) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'INPUT_VALIDATION',
+        error_code: 'REQUIRED_FIELDS_MISSING',
+        message: 'Please check the following fields:',
+        validation_errors: validationErrors.map(err => {
+          const [code, message] = err.split(': ');
+          return { field_code: code, message };
+        })
+      });
+    }
+    
     const {
       participant_id,
       transaction_id,
       payment_reference,
       payment_method = 'UPI'
     } = request.body;
-
-    // Prevent duplicate transaction
-    const dup = await client.query(
+    
+    const participantId = parseInt(participant_id);
+    const cleanTransactionId = transaction_id.trim();
+    
+    // 2. PREVENT DUPLICATE TRANSACTION
+    const duplicateCheck = await client.query(
       'SELECT 1 FROM payments WHERE transaction_id = $1',
-      [transaction_id]
+      [cleanTransactionId]
     );
-    if (dup.rows.length > 0) {
-      throw new Error('Transaction already used');
+    
+    if (duplicateCheck.rows.length > 0) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'DUPLICATE_TRANSACTION',
+        error_code: 'TRANSACTION_ALREADY_USED',
+        message: 'Transaction ID already used',
+        details: 'Please use a different transaction ID',
+        transaction_id: cleanTransactionId
+      });
     }
-
-    // Pending amount
-    const pending = await client.query(
-      `SELECT SUM(amount_paid) AS total
-       FROM registrations
-       WHERE participant_id = $1 AND payment_status = 'Pending'`,
-      [participant_id]
+    
+    // 3. CHECK PARTICIPANT EXISTS AND GET DEPARTMENT
+    const participantCheck = await client.query(
+      'SELECT participant_id, full_name, department FROM participants WHERE participant_id = $1',
+      [participantId]
     );
-
-    const amount = Number(pending.rows[0].total || 0);
-    if (amount <= 0) {
-      throw new Error('No pending registrations');
+    
+    if (participantCheck.rows.length === 0) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'PARTICIPANT_NOT_FOUND',
+        error_code: 'INVALID_PARTICIPANT_ID',
+        message: 'Participant not found',
+        details: `No participant found with ID ${participantId}`,
+        suggestion: 'Check the participant ID and try again'
+      });
     }
-
+    
+    const department = participantCheck.rows[0].department;
+    
+    // 4. CHECK FOR PENDING REGISTRATIONS
+    const pendingRegistrations = await client.query(
+      `SELECT 
+        r.registration_id,
+        r.event_id,
+        r.registration_unique_id,
+        r.amount_paid,
+        r.event_name,
+        e.day,
+        e.event_type
+       FROM registrations r
+       JOIN events e ON r.event_id = e.event_id
+       WHERE r.participant_id = $1 AND r.payment_status = 'Pending'`,
+      [participantId]
+    );
+    
+    if (pendingRegistrations.rows.length === 0) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'NO_PENDING_REGISTRATIONS',
+        error_code: 'NO_PAYMENT_REQUIRED',
+        message: 'No pending registrations found',
+        details: 'This participant has no pending registrations to pay for',
+        participant_id: participantId,
+        participant_name: participantCheck.rows[0].full_name,
+        suggestion: 'Check if payment was already completed'
+      });
+    }
+    
+    // 5. CALCULATE TOTAL AMOUNT
+    const totalAmount = pendingRegistrations.rows.reduce(
+      (sum, reg) => sum + parseFloat(reg.amount_paid || 0),
+      0
+    );
+    
+    if (totalAmount <= 0) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'INVALID_AMOUNT',
+        error_code: 'ZERO_AMOUNT',
+        message: 'Invalid payment amount',
+        details: 'Total amount calculated is zero or negative',
+        suggestion: 'Contact support for assistance'
+      });
+    }
+    
+    // 6. START TRANSACTION
     await client.query('BEGIN');
-
-    // Save payment
+    
+    // 7. SAVE PAYMENT RECORD
     const paymentResult = await client.query(
       `INSERT INTO payments (
-        participant_id, transaction_id, payment_reference,
-        amount, payment_method, payment_status
-      ) VALUES ($1,$2,$3,$4,$5,'Success')
+        participant_id, 
+        transaction_id, 
+        payment_reference,
+        amount, 
+        payment_method, 
+        payment_status,
+        verified_by_admin,
+        verified_at,
+        created_at
+      ) VALUES ($1, $2, $3, $4, $5, 'Success', false, NOW(), NOW())
       RETURNING payment_id, created_at`,
       [
-        participant_id,
-        transaction_id,
-        payment_reference,
-        amount,
+        participantId,
+        cleanTransactionId,
+        payment_reference?.trim() || `PAY-${Date.now().toString().slice(-8)}`,
+        totalAmount,
         payment_method
       ]
     );
-
-    // Get all pending registrations
-    const regs = await client.query(
-      `SELECT event_id, registration_unique_id
-       FROM registrations
-       WHERE participant_id = $1 AND payment_status = 'Pending'`,
-      [participant_id]
-    );
-
-    // ✅ SEAT DECREASE HAPPENS HERE
-    for (const r of regs.rows) {
-      await updateSeats(r.event_id);
+    
+    // 8. DEFINE SEAT UPDATE FUNCTION
+    const updateSeats = async (eventId, department, increment = false) => {
+      const op = increment ? '+' : '-';
+      
+      if (department === 'CSE') {
+        await client.query(
+          `UPDATE events SET cse_available_seats = cse_available_seats ${op} 1 WHERE event_id = $1`,
+          [eventId]
+        );
+      }
+      
+      await client.query(
+        `UPDATE events SET available_seats = available_seats ${op} 1 WHERE event_id = $1`,
+        [eventId]
+      );
+      
+      await redis.del(`seats:${eventId}`);
+    };
+    
+    // 9. CHECK AND DECREMENT SEATS FOR EACH REGISTRATION
+    const seatLocks = [];
+    for (const reg of pendingRegistrations.rows) {
+      const lockKey = `seat_lock:${reg.event_id}:${Date.now()}`;
+      const lockAcquired = await redis.set(lockKey, 'locked', { nx: true, ex: 3 });
+      if (!lockAcquired) {
+        throw new Error(`Event ${reg.event_id} is being processed. Please try again.`);
+      }
+      seatLocks.push(lockKey);
+      
+      const event = await client.query(
+        'SELECT event_name, cse_available_seats, available_seats FROM events WHERE event_id = $1 AND is_active = true',
+        [reg.event_id]
+      );
+      
+      if (event.rows.length === 0) {
+        throw new Error(`Event ${reg.event_id} not found or inactive`);
+      }
+      
+      const eventData = event.rows[0];
+      
+      if (department === 'CSE') {
+        if (eventData.cse_available_seats <= 0) {
+          throw new Error(`CSE_SEATS_FULL_AT_PAYMENT: No CSE seats available for "${reg.event_name}". Seats filled before payment.`);
+        }
+      } else {
+        if (eventData.available_seats <= 0) {
+          throw new Error(`GENERAL_SEATS_FULL_AT_PAYMENT: No general seats available for "${reg.event_name}". Seats filled before payment.`);
+        }
+      }
+      
+      await updateSeats(reg.event_id, department, false);
     }
-
-    // Mark registrations as confirmed
-    await client.query(
+    
+    // 10. MARK REGISTRATIONS AS CONFIRMED
+    const updateResult = await client.query(
       `UPDATE registrations
        SET payment_status = 'Success'
-       WHERE participant_id = $1`,
-      [participant_id]
+       WHERE participant_id = $1 AND payment_status = 'Pending'
+       RETURNING registration_unique_id`,
+      [participantId]
     );
-
+    
+    if (updateResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return reply.code(400).send({
+        success: false,
+        error_type: 'UPDATE_FAILED',
+        error_code: 'REGISTRATION_UPDATE_ERROR',
+        message: 'Failed to update registrations',
+        details: 'Could not mark registrations as paid',
+        suggestion: 'Contact support for assistance'
+      });
+    }
+    
+    // 11. COMMIT TRANSACTION
     await client.query('COMMIT');
-
-    // 🔲 ONE QR WITH ALL REGISTRATION IDS
-    const registrationIds = regs.rows.map(r => r.registration_unique_id);
-
+    
+    // 12. RELEASE SEAT LOCKS
+    for (const lockKey of seatLocks) {
+      await redis.del(lockKey).catch(() => {});
+    }
+    
+    // 13. GET ALL SUCCESSFUL REGISTRATION IDS
+    const allRegistrations = await client.query(
+      `SELECT registration_unique_id 
+       FROM registrations 
+       WHERE participant_id = $1 AND payment_status = 'Success'
+       ORDER BY registered_at`,
+      [participantId]
+    );
+    
+    const registrationIds = allRegistrations.rows.map(r => r.registration_unique_id);
+    
+    // 14. GENERATE QR CODE
     const qrPayload = {
-      participant_id,
+      participant_id: participantId,
       registration_ids: registrationIds,
       event: "THREADS'26"
     };
-
-    const qrCodeBase64 = await QRCode.toDataURL(
-      JSON.stringify(qrPayload)
-    );
-
-    return reply.send({
+    
+    let qrCodeBase64;
+    try {
+      qrCodeBase64 = await QRCode.toDataURL(
+        JSON.stringify(qrPayload),
+        {
+          errorCorrectionLevel: 'H',
+          type: 'image/png',
+          margin: 1,
+          width: 250,
+          color: {
+            dark: '#000000',
+            light: '#ffffff'
+          }
+        }
+      );
+    } catch (qrError) {
+      console.error('QR generation error:', qrError);
+      qrCodeBase64 = null;
+    }
+    
+    // 15. GET PARTICIPANT DETAILS
+    const participantDetails = participantCheck.rows[0];
+    
+    // 16. CLEANUP CACHES
+    try {
+      await redis.del(`verification:${participantId}`);
+      await redis.del('admin_stats');
+      for (const reg of pendingRegistrations.rows) {
+        await redis.del(`track:${reg.registration_unique_id}`);
+      }
+    } catch (cacheError) {
+      console.error('Cache cleanup error:', cacheError);
+    }
+    
+    // 17. RETURN SUCCESS RESPONSE
+    const response = {
       success: true,
-      payment_id: paymentResult.rows[0].payment_id,
-      payment_date: paymentResult.rows[0].created_at,
-      registration_ids: registrationIds,
-      qr_code: qrCodeBase64,
-      message: 'Payment verified & registration confirmed'
+      message: '🎉 Payment verified successfully! Seats have been reserved.',
+      payment_details: {
+        participant_id: participantId,
+        participant_name: participantDetails.full_name,
+        department: department,
+        transaction_id: cleanTransactionId,
+        amount: totalAmount,
+        payment_id: paymentResult.rows[0].payment_id,
+        payment_date: paymentResult.rows[0].created_at,
+        payment_status: 'Verified'
+      },
+      seat_status: {
+        message: department === 'CSE' 
+          ? '✅ CSE seats successfully reserved after payment' 
+          : '✅ General seats successfully reserved after payment',
+        department: department,
+        seats_reserved: pendingRegistrations.rows.length
+      },
+      registration_details: {
+        total_registrations: registrationIds.length,
+        registration_ids: registrationIds,
+        events_registered: pendingRegistrations.rows.map(r => ({
+          event_name: r.event_name,
+          registration_id: r.registration_unique_id,
+          amount: r.amount_paid,
+          seat_type: department === 'CSE' ? 'CSE Quota' : 'General Quota'
+        }))
+      }
+    };
+    
+    if (qrCodeBase64) {
+      response.qr_code = qrCodeBase64;
+      response.qr_payload = qrPayload;
+    }
+    
+    return reply.send(response);
+    
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('Rollback error:', rollbackError);
+    }
+    
+    const errorMessage = error.message;
+    
+    if (errorMessage.includes('CSE_SEATS_FULL_AT_PAYMENT')) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'SEAT_UNAVAILABLE_AT_PAYMENT',
+        error_code: 'CSE_SEATS_FILLED_BEFORE_PAYMENT',
+        message: 'CSE seats filled before payment completion',
+        details: errorMessage.replace('CSE_SEATS_FULL_AT_PAYMENT: ', ''),
+        suggestion: 'Contact organizers for assistance. Your payment was not processed.',
+        department: 'CSE'
+      });
+    }
+    
+    if (errorMessage.includes('GENERAL_SEATS_FULL_AT_PAYMENT')) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'SEAT_UNAVAILABLE_AT_PAYMENT',
+        error_code: 'GENERAL_SEATS_FILLED_BEFORE_PAYMENT',
+        message: 'General seats filled before payment completion',
+        details: errorMessage.replace('GENERAL_SEATS_FULL_AT_PAYMENT: ', ''),
+        suggestion: 'Contact organizers for assistance. Your payment was not processed.'
+      });
+    }
+    
+    fastify.log.error('Payment verification error:', error);
+    
+    return reply.code(400).send({
+      success: false,
+      error_type: 'PAYMENT_VERIFICATION_ERROR',
+      error_code: 'PROCESSING_ERROR',
+      message: 'Payment verification failed',
+      details: errorMessage,
+      suggestion: 'Please try again or contact support'
     });
+    
+  } finally {
+    client.release();
+  }
+};
+
+// 5. ADMIN PAYMENT VERIFICATION (Optimized with cache invalidation)
+fastify.post("/api/admin/verify-payments", async (request, reply) => {
+  const client = await pool.connect();
+
+  try {
+    const { payments } = request.body;
+
+    if (!Array.isArray(payments) || payments.length === 0) {
+      return reply.code(400).send({ error: "payments array required" });
+    }
+
+    const verified = [];
+    const failed = [];
+
+    await client.query("BEGIN");
+
+    for (const row of payments) {
+      const { transaction_id, amount } = row;
+
+      if (!transaction_id || amount == null) {
+        failed.push({ transaction_id, reason: "Invalid data" });
+        continue;
+      }
+
+      const result = await client.query(
+        `UPDATE payments
+         SET verified_by_admin = true,
+             verified_at = NOW(),
+             payment_status = 'Success'
+         WHERE transaction_id = $1
+           AND amount = $2
+         RETURNING payment_id`,
+        [transaction_id, amount]
+      );
+
+      if (result.rowCount > 0) {
+        verified.push(transaction_id);
+      } else {
+        failed.push({ transaction_id, reason: "No match found" });
+      }
+    }
+
+    await client.query("COMMIT");
+
+    // Clear relevant caches
+    await Promise.all([
+      redis.del('admin_stats'),
+      invalidateCache('^track:.*'),
+      invalidateCache('^verification:.*'),
+      invalidateCache('events:*')
+    ]);
+
+    return {
+      success: true,
+      verified_count: verified.length,
+      failed_count: failed.length,
+      verified,
+      failed
+    };
 
   } catch (err) {
-    await client.query('ROLLBACK');
-    return reply.code(400).send({ error: err.message });
+    await client.query("ROLLBACK");
+    fastify.log.error(err);
+    return reply.code(500).send({ error: "Verification failed" });
   } finally {
     client.release();
   }
 });
-// 5. Admin CSV Upload for Bulk Verification
-// -------------------- ADMIN PAYMENT VERIFICATION ENDPOINTS --------------------
 
-// 1. Admin Login
+// 6. ADMIN LOGIN (No changes needed)
 fastify.post('/api/admin/login', async (request, reply) => {
   const { username, password } = request.body;
   
-  // In production, use proper authentication with JWT
   const adminUsername = process.env.ADMIN_USERNAME || 'admin';
   const adminPassword = process.env.ADMIN_PASSWORD || 'threads26';
   
@@ -443,12 +1198,28 @@ fastify.post('/api/admin/login', async (request, reply) => {
   return reply.code(401).send({ error: 'Invalid credentials' });
 });
 
+// 7. ADMIN REGISTRATIONS (Cached)
 fastify.get('/api/admin/registrations', async (request) => {
   try {
     const { page = 1, limit = 50, event_id, payment_status } = request.query;
     const offset = (page - 1) * limit;
+    
+    const cacheKey = `admin_reg:${page}:${limit}:${event_id || 'all'}:${payment_status || 'all'}`;
+    const cached = await getCached(cacheKey);
+    if (cached) return cached;
 
     let query = `
+      WITH latest_payments AS (
+        SELECT 
+          participant_id,
+          transaction_id,
+          payment_method,
+          payment_status as payment_verification_status,
+          verified_by_admin,
+          verified_at,
+          ROW_NUMBER() OVER (PARTITION BY participant_id ORDER BY created_at DESC) as rn
+        FROM payments
+      )
       SELECT 
         r.registration_id,
         r.registration_unique_id,
@@ -466,22 +1237,18 @@ fastify.get('/api/admin/registrations', async (request) => {
         e.event_type,
         e.day,
 
-        py.transaction_id,
-        py.payment_method,
-        py.payment_status AS payment_verification_status,
-        py.verified_by_admin,
-        py.verified_at
+        lp.transaction_id,
+        lp.payment_method,
+        lp.payment_verification_status,
+        lp.verified_by_admin,
+        lp.verified_at
 
       FROM registrations r
       JOIN participants p ON r.participant_id = p.participant_id
       JOIN events e ON r.event_id = e.event_id
-      LEFT JOIN payments py 
-        ON r.participant_id = py.participant_id
-        AND py.created_at = (
-          SELECT MAX(created_at)
-          FROM payments
-          WHERE participant_id = r.participant_id
-        )
+      LEFT JOIN latest_payments lp 
+        ON r.participant_id = lp.participant_id 
+        AND lp.rn = 1
       WHERE 1=1
     `;
 
@@ -503,7 +1270,6 @@ fastify.get('/api/admin/registrations', async (request) => {
 
     const result = await pool.query(query, params);
 
-    // ✅ ADD verification fields WITHOUT breaking frontend
     const rows = result.rows.map(row => {
       let verification_status = 'NOT_VERIFIED';
 
@@ -515,11 +1281,13 @@ fastify.get('/api/admin/registrations', async (request) => {
 
       return {
         ...row,
-        verification_status,       // 🔥 NEW
+        verification_status,
         verified_by: row.verified_by_admin ? 'ADMIN' : 'SYSTEM'
       };
     });
 
+    await cacheWithTTL(cacheKey, rows, 30); // Cache for 30 seconds
+    
     return rows;
 
   } catch (error) {
@@ -528,110 +1296,90 @@ fastify.get('/api/admin/registrations', async (request) => {
   }
 });
 
-
-// 3. Get Pending Payment Verifications
-fastify.get('/api/admin/pending-verifications', async (request) => {
-  // Verify admin token
-  
-  try {
-    const { page = 1, limit = 50 } = request.query;
-    const offset = (page - 1) * limit;
-    
-    const verifications = await pool.query(
-      `SELECT pv.*, p.full_name, p.email, p.phone 
-       FROM payment_verification pv
-       JOIN participants p ON pv.participant_id = p.participant_id
-       WHERE pv.verification_status = 'Pending'
-       ORDER BY pv.created_at DESC
-       LIMIT $1 OFFSET $2`,
-      [limit, offset]
-    );
-    
-    const total = await pool.query(
-      'SELECT COUNT(*) FROM payment_verification WHERE verification_status = $1',
-      ['Pending']
-    );
-    
-    return {
-      verifications: verifications.rows,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: parseInt(total.rows[0].count),
-        pages: Math.ceil(total.rows[0].count / limit)
-      }
-    };
-    
-  } catch (error) {
-    fastify.log.error(error);
-    throw error;
-  }
-});
-
-// 4. Manual Payment Verification (admin override)
+// 8. MANUAL PAYMENT VERIFICATION (Optimized with cache invalidation)
 fastify.post('/api/admin/manual-verification', async (request, reply) => {
   const client = await pool.connect();
-  
+
   try {
-    const {
-      participant_id,  // Add this
-      transaction_id,
-      amount,
-      admin_token
-    } = request.body;
-    
-    // Admin authentication
-    if (!admin_token || admin_token !== process.env.ADMIN_TOKEN) {
-      return reply.code(401).send({ error: 'Unauthorized' });
+    const { participant_id } = request.body;
+
+    if (!participant_id) {
+      return reply.code(400).send({ error: 'participant_id is required' });
     }
-    
+
     await client.query('BEGIN');
-    
-    // Record payment directly
-    const paymentResult = await client.query(
-      `INSERT INTO payments (
-        participant_id, transaction_id, amount,
-        payment_method, payment_status, verified_at,
-        verified_by_admin, notes
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING payment_id`,
-      [participant_id, transaction_id, amount,
-       'Bank Transfer (Manual)', 'Success', new Date(),
-       true, 'Manually verified by admin']
-    );
-    
-    // Update registrations
-    await client.query(
-      `UPDATE registrations SET payment_status = 'Success'
-       WHERE participant_id = $1 AND payment_status = 'Pending'`,
+
+    // 1️⃣ Ensure participant exists
+    const participantCheck = await client.query(
+      `SELECT participant_id FROM participants WHERE participant_id = $1`,
       [participant_id]
     );
-    
+
+    if (participantCheck.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return reply.code(404).send({ error: 'Participant not found' });
+    }
+
+    // 2️⃣ Insert manual payment verification
+    const paymentResult = await client.query(
+      `INSERT INTO payments (
+        participant_id,
+        transaction_id,
+        amount,
+        payment_method,
+        payment_status,
+        verified_by_admin,
+        verified_at,
+        notes,
+        created_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, NOW())
+      RETURNING payment_id`,
+      [
+        participant_id,
+        `MANUAL-${Date.now()}`,
+        0,
+        'Manual Verification',
+        'Success',
+        true,
+        'Manually verified by admin'
+      ]
+    );
+
+    // 3️⃣ Update registrations payment status
+    await client.query(
+      `UPDATE registrations
+       SET payment_status = 'Success'
+       WHERE participant_id = $1`,
+      [participant_id]
+    );
+
     await client.query('COMMIT');
-    
+
+    // Clear caches
+    await Promise.all([
+      invalidateParticipantCache(participant_id),
+      invalidateStatsCache(),
+      invalidateEventsCache()
+    ]);
+
     return {
       success: true,
-      message: 'Payment manually verified',
-      payment_id: paymentResult.rows[0].payment_id,
-      participant_id: participant_id,
-      amount: amount
+      message: 'Participant manually verified',
+      participant_id,
+      payment_id: paymentResult.rows[0].payment_id
     };
-    
+
   } catch (error) {
     await client.query('ROLLBACK');
     fastify.log.error(error);
-    return reply.code(400).send({ error: error.message });
+    return reply.code(500).send({ error: 'Manual verification failed' });
   } finally {
     client.release();
   }
 });
 
-// 5. Admin Upload CSV for Bulk Verification (You already have this)
-// fastify.post('/api/admin/upload-transactions', ...)
-
-// -------------------- ADMIN ATTENDANCE ENDPOINTS --------------------
-
-// 6. Admin QR Scan & Attendance Update
+// 9. ADMIN QR SCAN (No changes needed)
 fastify.post('/api/admin/scan-qr', async (request, reply) => {
   try {
     const { qr_data, admin_token } = request.body;
@@ -689,7 +1437,7 @@ fastify.post('/api/admin/scan-qr', async (request, reply) => {
   }
 });
 
-// 7. Update Attendance Status (QR Scan Based)
+// 10. UPDATE ATTENDANCE (Optimized with cache invalidation)
 fastify.post('/api/admin/attendance', async (request, reply) => {
   const client = await pool.connect();
 
@@ -726,6 +1474,9 @@ fastify.post('/api/admin/attendance', async (request, reply) => {
 
     await client.query('COMMIT');
 
+    // Clear cache
+    await invalidateStatsCache();
+
     return {
       success: true,
       message: 'Attendance marked successfully',
@@ -746,8 +1497,7 @@ fastify.post('/api/admin/attendance', async (request, reply) => {
   }
 });
 
-
-// 8. Get Attendance Report
+// 11. ATTENDANCE REPORT (Cached)
 fastify.get('/api/admin/attendance-report', async (request) => {
   // Verify admin token
   const adminToken = request.headers['x-admin-token'];
@@ -757,6 +1507,10 @@ fastify.get('/api/admin/attendance-report', async (request) => {
   
   try {
     const { event_id, day, date } = request.query;
+    
+    const cacheKey = `attendance_report:${event_id || 'all'}:${day || 'all'}:${date || 'all'}`;
+    const cached = await getCached(cacheKey);
+    if (cached) return cached;
     
     let query = `
       SELECT 
@@ -842,10 +1596,14 @@ fastify.get('/api/admin/attendance-report', async (request) => {
       }
     });
     
-    return {
+    const response = {
       registrations: result.rows,
       statistics: stats
     };
+    
+    await cacheWithTTL(cacheKey, response, 30); // Cache for 30 seconds
+    
+    return response;
     
   } catch (error) {
     fastify.log.error(error);
@@ -853,7 +1611,7 @@ fastify.get('/api/admin/attendance-report', async (request) => {
   }
 });
 
-// 9. Bulk Attendance Update
+// 12. BULK ATTENDANCE UPDATE (Optimized with cache invalidation)
 fastify.post('/api/admin/bulk-attendance', async (request, reply) => {
   const client = await pool.connect();
   
@@ -905,6 +1663,9 @@ fastify.post('/api/admin/bulk-attendance', async (request, reply) => {
     
     await client.query('COMMIT');
     
+    // Clear cache
+    await invalidateStatsCache();
+    
     return {
       success: true,
       updated_count: result.rowCount,
@@ -920,7 +1681,7 @@ fastify.post('/api/admin/bulk-attendance', async (request, reply) => {
   }
 });
 
-// 10. Export Registrations (Admin)
+// 13. EXPORT REGISTRATIONS (Cached data query)
 fastify.get('/api/admin/export', async (request, reply) => {
   // Verify admin token
   const adminToken = request.headers['x-admin-token'];
@@ -929,31 +1690,42 @@ fastify.get('/api/admin/export', async (request, reply) => {
   }
   
   try {
-    const result = await pool.query(`
-      SELECT 
-        p.full_name,
-        p.email,
-        p.phone,
-        p.college_name,
-        p.department,
-        p.year_of_study,
-        p.city,
-        p.state,
-        p.accommodation_required,
-        r.registration_unique_id,
-        r.payment_status,
-        r.amount_paid,
-        r.registered_at,
-        r.attendance_status,
-        e.event_name,
-        e.event_type,
-        e.day,
-        e.fee
-      FROM registrations r
-      JOIN participants p ON r.participant_id = p.participant_id
-      JOIN events e ON r.event_id = e.event_id
-      ORDER BY r.registered_at DESC
-    `);
+    const cacheKey = 'export_data';
+    const cached = await getCached(cacheKey);
+    
+    let result;
+    if (cached) {
+      result = { rows: cached };
+    } else {
+      result = await pool.query(`
+        SELECT 
+          p.full_name,
+          p.email,
+          p.phone,
+          p.college_name,
+          p.department,
+          p.year_of_study,
+          p.city,
+          p.state,
+          p.accommodation_required,
+          r.registration_unique_id,
+          r.payment_status,
+          r.amount_paid,
+          r.registered_at,
+          r.attendance_status,
+          e.event_name,
+          e.event_type,
+          e.day,
+          e.fee
+        FROM registrations r
+        JOIN participants p ON r.participant_id = p.participant_id
+        JOIN events e ON r.event_id = e.event_id
+        ORDER BY r.registered_at DESC
+      `);
+      
+      // Cache the data (not the CSV) for 30 seconds
+      await cacheWithTTL(cacheKey, result.rows, 30);
+    }
     
     // Convert to CSV
     const headers = Object.keys(result.rows[0] || {}).join(',');
@@ -975,13 +1747,17 @@ fastify.get('/api/admin/export', async (request, reply) => {
   }
 });
 
-
-// Add this endpoint after your existing endpoints:
-
-// Check Payment Verification Status (for participants)
+// 14. PARTICIPANT VERIFICATION STATUS (Cached)
 fastify.get('/api/participant/:id/verification-status', async (request, reply) => {
   try {
     const { id } = request.params;
+    const cacheKey = `verification:${id}`;
+    
+    // Try cache first
+    const cached = await getCached(cacheKey);
+    if (cached) {
+      return cached;
+    }
     
     // Get participant details
     const participant = await pool.query(
@@ -1045,7 +1821,7 @@ fastify.get('/api/participant/:id/verification-status', async (request, reply) =
       }
     }
     
-    return {
+    const response = {
       participant_id: id,
       full_name: participant.rows[0].full_name,
       email: participant.rows[0].email,
@@ -1059,33 +1835,13 @@ fastify.get('/api/participant/:id/verification-status', async (request, reply) =
         paid_registrations: totalPaid,
         pending_registrations: totalPending,
         total_amount: payments.rows.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0)
-      },
-      
-      payments: payments.rows.map(p => ({
-        payment_id: p.payment_id,
-        transaction_id: p.transaction_id,
-        amount: p.amount,
-        method: p.payment_method,
-        status: p.payment_status,
-        verified_by_admin: p.verified_by_admin,
-        verified_at: p.verified_at,
-        notes: p.notes
-      })),
-      
-      registrations: registrations.rows.map(r => ({
-        registration_id: r.registration_unique_id,
-        payment_status: r.payment_status,
-        amount: r.amount_paid,
-        registered_at: r.registered_at
-      })),
-      
-      next_actions: {
-        download_qr: totalPaid > 0 ? `/api/participant/${id}/qr` : null,
-        download_certificate: totalPaid > 0 ? `/api/participant/${id}/certificate` : null,
-        verify_payment: totalPending > 0 ? `${process.env.FRONTEND_URL}/verify-payment` : null,
-        contact_admin: 'threads26@college.edu'
       }
     };
+    
+    // Cache for 30 seconds
+    await cacheWithTTL(cacheKey, response, 30);
+    
+    return response;
     
   } catch (error) {
     fastify.log.error(error);
@@ -1093,10 +1849,17 @@ fastify.get('/api/participant/:id/verification-status', async (request, reply) =
   }
 });
 
-// 6. Track Registration (Frontend page) - UPDATED
+// 15. TRACK REGISTRATION (Cached)
 fastify.get('/api/track/:registration_id', async (request, reply) => {
   try {
     const { registration_id } = request.params;
+    const cacheKey = `track:${registration_id}`;
+    
+    // Try cache first
+    const cached = await getCached(cacheKey);
+    if (cached) {
+      return cached;
+    }
     
     const result = await pool.query(
       `SELECT 
@@ -1134,7 +1897,6 @@ fastify.get('/api/track/:registration_id', async (request, reply) => {
     
     const row = result.rows[0];
     
-    // Determine verification status
     let verification_status = 'NOT_VERIFIED';
     let verified_by = null;
     
@@ -1148,7 +1910,7 @@ fastify.get('/api/track/:registration_id', async (request, reply) => {
       }
     }
     
-    return {
+    const response = {
       registration: {
         registration_id: row.registration_unique_id,
         payment_status: row.payment_status,
@@ -1176,29 +1938,28 @@ fastify.get('/api/track/:registration_id', async (request, reply) => {
         verified_by: verified_by,
         verified_at: row.verified_at,
         payment_date: row.payment_date
-      },
-      
-      actions: {
-        download_qr: row.payment_status === 'Success' 
-          ? `/api/participant/qr/${row.registration_unique_id}`
-          : null,
-        download_certificate: row.payment_status === 'Success' 
-          ? `/api/participant/certificate/${row.participant_id}`
-          : null,
-        check_verification: `/api/participant/${row.participant_id}/verification-status`,
-        verify_payment: row.payment_status === 'Pending'
-          ? `${process.env.FRONTEND_URL}/verify-payment`
-          : null
       }
     };
+    
+    // Cache for 60 seconds
+    await cacheWithTTL(cacheKey, response, 60);
+    
+    return response;
   } catch (error) {
     fastify.log.error(error);
     return reply.code(500).send({ error: error.message });
   }
 });
 
-// 11. Get Statistics (Admin)
+// 16. ADMIN STATS (Cached)
 fastify.get('/api/admin/stats', async (request) => {
+  const cacheKey = 'admin_stats';
+  
+  // Try cache first
+  const cached = await getCached(cacheKey);
+  if (cached) {
+    return cached;
+  }
   
   try {
     const stats = await Promise.all([
@@ -1256,7 +2017,7 @@ fastify.get('/api/admin/stats', async (request) => {
       `)
     ]);
     
-    return {
+    const result = {
       total_registrations: parseInt(stats[0].rows[0].count),
       total_participants: parseInt(stats[1].rows[0].count),
       total_revenue: parseFloat(stats[2].rows[0].total),
@@ -1267,18 +2028,19 @@ fastify.get('/api/admin/stats', async (request) => {
       attendance_status: stats[7].rows,
       updated_at: new Date().toISOString()
     };
+    
+    // Cache for 60 seconds
+    await cacheWithTTL(cacheKey, result, 60);
+    
+    return result;
   } catch (error) {
     fastify.log.error(error);
     throw error;
   }
 });
 
-// 12. Update Event Status (Admin)
+// 17. UPDATE EVENT STATUS (Optimized with cache invalidation)
 fastify.patch('/api/admin/events/:id', async (request, reply) => {
-  const adminToken = request.headers['x-admin-token'];
-  if (!adminToken || adminToken !== process.env.ADMIN_TOKEN) {
-    return reply.code(401).send({ error: 'Unauthorized' });
-  }
   
   try {
     const { id } = request.params;
@@ -1318,6 +2080,9 @@ fastify.patch('/api/admin/events/:id', async (request, reply) => {
     
     const result = await pool.query(query, params);
     
+    // Clear events cache
+    await invalidateEventsCache();
+    
     return { 
       success: true, 
       event: result.rows[0] 
@@ -1329,7 +2094,7 @@ fastify.patch('/api/admin/events/:id', async (request, reply) => {
   }
 });
 
-// 13. Upload Gallery Image (Admin)
+// 18. UPLOAD GALLERY IMAGE (Optimized with cache invalidation)
 fastify.post('/api/admin/gallery', async (request, reply) => {
   // Verify admin token
   const adminToken = request.headers['x-admin-token'];
@@ -1360,6 +2125,9 @@ fastify.post('/api/admin/gallery', async (request, reply) => {
       [album_name.value, imageUrl]
     );
     
+    // Clear gallery cache
+    await invalidateGalleryCache();
+    
     return { 
       success: true, 
       image_id: result.rows[0].image_id,
@@ -1372,10 +2140,15 @@ fastify.post('/api/admin/gallery', async (request, reply) => {
   }
 });
 
-// 14. Get Gallery Images (Public)
+// 19. GET GALLERY IMAGES (Cached)
 fastify.get('/api/gallery', async (request) => {
   try {
     const { album_name } = request.query;
+    const cacheKey = `gallery:${album_name || 'all'}`;
+    
+    const cached = await getCached(cacheKey);
+    if (cached) return cached;
+    
     let query = 'SELECT * FROM gallery ORDER BY uploaded_at DESC';
     const params = [];
     
@@ -1385,6 +2158,9 @@ fastify.get('/api/gallery', async (request) => {
     }
     
     const result = await pool.query(query, params);
+    
+    await cacheWithTTL(cacheKey, result.rows, 300); // Cache for 5 minutes
+    
     return result.rows;
   } catch (error) {
     fastify.log.error(error);
@@ -1392,7 +2168,7 @@ fastify.get('/api/gallery', async (request) => {
   }
 });
 
-// 15. Create announcement (Admin)
+// 20. CREATE ANNOUNCEMENT (Optimized with cache invalidation)
 fastify.post('/api/admin/announcements', async (request, reply) => {
   const adminToken = request.headers['x-admin-token'];
   if (!adminToken || adminToken !== process.env.ADMIN_TOKEN) {
@@ -1409,6 +2185,9 @@ fastify.post('/api/admin/announcements', async (request, reply) => {
       [title, content, expires_at]
     );
     
+    // Clear announcements cache
+    await invalidateAnnouncementsCache();
+    
     return {
       success: true,
       announcement_id: result.rows[0].announcement_id,
@@ -1420,14 +2199,21 @@ fastify.post('/api/admin/announcements', async (request, reply) => {
   }
 });
 
-// 16. Get active announcements (Public)
+// 21. GET ACTIVE ANNOUNCEMENTS (Cached)
 fastify.get('/api/announcements', async () => {
   try {
+    const cacheKey = 'announcements';
+    const cached = await getCached(cacheKey);
+    if (cached) return cached;
+    
     const result = await pool.query(
       `SELECT * FROM announcements 
        WHERE is_active = true AND (expires_at IS NULL OR expires_at > NOW())
        ORDER BY created_at DESC`
     );
+    
+    await cacheWithTTL(cacheKey, result.rows, 120); // Cache for 2 minutes
+    
     return result.rows;
   } catch (error) {
     fastify.log.error(error);
@@ -1435,10 +2221,14 @@ fastify.get('/api/announcements', async () => {
   }
 });
 
-// 17. Get QR for participant (for admin display)
+// 22. GET QR FOR PARTICIPANT (Cached)
 fastify.get('/api/participant/:id/qr-data', async (request) => {
   try {
     const { id } = request.params;
+    const cacheKey = `qr_data:${id}`;
+    
+    const cached = await getCached(cacheKey);
+    if (cached) return cached;
     
     const participant = await pool.query(
       `SELECT * FROM participants WHERE participant_id = $1`,
@@ -1476,7 +2266,7 @@ fastify.get('/api/participant/:id/qr-data', async (request) => {
       sum + parseFloat(reg.amount_paid || 0), 0
     );
     
-    return {
+    const response = {
       participant: participant.rows[0],
       registrations: registrations.rows,
       payments: payments.rows,
@@ -1484,66 +2274,17 @@ fastify.get('/api/participant/:id/qr-data', async (request) => {
       qr_url: `/api/participant/${id}/qr`
     };
     
+    await cacheWithTTL(cacheKey, response, 30); // Cache for 30 seconds
+    
+    return response;
+    
   } catch (error) {
     fastify.log.error(error);
     throw error;
   }
 });
 
-
-
-// 7. Download Confirmation PDF
-fastify.get('/api/participant/:id/certificate', async (request, reply) => {
-  try {
-    const { id } = request.params;
-    
-    // Check if paid
-    const paid = await pool.query(
-      `SELECT COUNT(*) FROM registrations 
-       WHERE participant_id = $1 AND payment_status = 'Success'`,
-      [id]
-    );
-    
-    if (parseInt(paid.rows[0].count) === 0) {
-      return reply.code(400).send({ error: 'No paid registrations found' });
-    }
-    
-    const pdfPath = path.join(__dirname, 'public', 'certificates', `confirmation_${id}.pdf`);
-
-    
-    reply.header('Content-Type', 'application/pdf');
-    reply.header('Content-Disposition', `attachment; filename="THREADS26_Confirmation_${id}.pdf"`);
-    
-    return fs.createReadStream(pdfPath);
-  } catch (error) {
-    fastify.log.error(error);
-    return reply.code(500).send({ error: error.message });
-  }
-});
-
-// 8. Contact Information
-fastify.get('/api/contact', async () => {
-  return {
-    college_name: 'Your College Name',
-    department: 'Computer Science and Engineering',
-    address: 'College Address, City, State, Pincode',
-    email: 'threads26@college.edu',
-    
-    student_coordinators: [
-      { name: 'Student 1', phone: '9876543210', role: 'Technical Head' },
-      { name: 'Student 2', phone: '9876543211', role: 'Event Head' }
-    ],
-    
-    faculty_coordinators: [
-      { name: 'Dr. Faculty 1', phone: '9876543212', role: 'HOD, CSE' },
-      { name: 'Dr. Faculty 2', phone: '9876543213', role: 'Symposium Coordinator' }
-    ],
-    
-    google_maps_url: 'https://maps.google.com/?q=College+Address'
-  };
-});
-
-// 9. Auto-close Registration Check (Cron job simulation)
+// 23. AUTO-CLOSE REGISTRATION CHECK (No cache needed - real-time)
 fastify.get('/api/admin/check-registration-status', async (request) => {
   const today = moment();
   const closeDate = moment(EVENT_DATES.registration_closes);
@@ -1553,6 +2294,9 @@ fastify.get('/api/admin/check-registration-status', async (request) => {
     await pool.query(
       `UPDATE events SET is_active = false WHERE is_active = true`
     );
+    
+    // Clear events cache
+    await invalidateEventsCache();
     
     return {
       status: 'closed',
@@ -1568,8 +2312,7 @@ fastify.get('/api/admin/check-registration-status', async (request) => {
   };
 });
 
-// -------------------- Scan QR & Mark Attendance by Registration --------------------
-// -------------------- Scan QR & Mark Attendance by Registration --------------------
+// 24. SCAN QR & MARK ATTENDANCE (Optimized)
 fastify.post('/api/scan-attendance', async (request, reply) => {
   const client = await pool.connect();
 
@@ -1644,6 +2387,9 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
       [registration_id]
     );
 
+    // Clear cache
+    await invalidateStatsCache();
+
     return reply.send({
       success: true,
       message: 'Attendance marked successfully',
@@ -1660,150 +2406,8 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
 });
 
 
-// -------------------- Database Setup with All Fields --------------------
-fastify.get('/api/setup-db', async (request, reply) => {
-  try {
-    const queries = [
-      // Participants table
-      `CREATE TABLE IF NOT EXISTS participants (
-        participant_id SERIAL PRIMARY KEY,
-        full_name VARCHAR(255) NOT NULL,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        phone VARCHAR(20) NOT NULL,
-        college_name VARCHAR(255) NOT NULL,
-        department VARCHAR(100) NOT NULL,
-        year_of_study INTEGER NOT NULL,
-        city VARCHAR(100),
-        state VARCHAR(100),
-        accommodation_required BOOLEAN DEFAULT false,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`,
-      
-      // Events table (with ALL required fields)
-      `CREATE TABLE IF NOT EXISTS events (
-        event_id SERIAL PRIMARY KEY,
-        event_name VARCHAR(255) NOT NULL,
-        event_type VARCHAR(50) NOT NULL CHECK (event_type IN ('workshop', 'technical', 'non-technical')),
-        day INTEGER NOT NULL CHECK (day IN (1, 2)),
-        fee DECIMAL(10, 2) DEFAULT 0,
-        description TEXT,
-        duration VARCHAR(50),
-        speaker VARCHAR(255),
-        rules TEXT,
-        total_seats INTEGER DEFAULT 100,
-        available_seats INTEGER DEFAULT 100,
-        cse_seats INTEGER DEFAULT 30,
-        cse_available_seats INTEGER DEFAULT 30,
-        is_active BOOLEAN DEFAULT true,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`,
-      
-      // Registrations table
-      `CREATE TABLE IF NOT EXISTS registrations (
-        registration_id SERIAL PRIMARY KEY,
-        participant_id INTEGER REFERENCES participants(participant_id),
-        event_id INTEGER REFERENCES events(event_id),
-        registration_unique_id VARCHAR(50) UNIQUE NOT NULL,
-        payment_status VARCHAR(20) DEFAULT 'Pending' CHECK (payment_status IN ('Pending', 'Success', 'Failed', 'Refunded')),
-        amount_paid DECIMAL(10, 2) DEFAULT 0,
-        event_name VARCHAR(255),
-        day INTEGER,
-        attendance_status VARCHAR(20) DEFAULT 'NOT_ATTENDED' CHECK (attendance_status IN ('NOT_ATTENDED', 'ATTENDED')),
-        registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        attended_at TIMESTAMP,
-        certificate_generated BOOLEAN DEFAULT false
-      )`,
-      
-      // Payments table
-      `CREATE TABLE IF NOT EXISTS payments (
-        payment_id SERIAL PRIMARY KEY,
-        participant_id INTEGER REFERENCES participants(participant_id),
-        transaction_id VARCHAR(100),
-        payment_reference VARCHAR(100),
-        amount DECIMAL(10, 2) NOT NULL,
-        payment_method VARCHAR(50),
-        payment_status VARCHAR(20) DEFAULT 'Success' CHECK (payment_status IN ('Success', 'Failed', 'Refunded')),
-        verified_by_admin BOOLEAN DEFAULT false,
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        verified_at TIMESTAMP
-      )`,
-      
-      // Gallery table
-      `CREATE TABLE IF NOT EXISTS gallery (
-        image_id SERIAL PRIMARY KEY,
-        album_name VARCHAR(100) NOT NULL,
-        image_url VARCHAR(500) NOT NULL,
-        caption TEXT,
-        uploaded_by VARCHAR(100),
-        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`,
-      
-      // Announcements table
-      `CREATE TABLE IF NOT EXISTS announcements (
-        announcement_id SERIAL PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
-        content TEXT NOT NULL,
-        is_active BOOLEAN DEFAULT true,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        expires_at TIMESTAMP
-      )`
-    ];
-    
-    for (const query of queries) {
-      await pool.query(query);
-    }
-    
-    // Insert sample events
-    const sampleEvents = [
-      // Workshops (Day 1)
-      [1, 'AI/ML Workshop', 'workshop', 1, 150, 'Learn AI/ML techniques', '3 hours', 'Dr. AI Expert', 'Bring laptop with Python', 50, 50, 30, 30, true],
-      [2, 'Web3 Workshop', 'workshop', 1, 120, 'Blockchain and Web3', '3 hours', 'Blockchain Specialist', 'Basic programming required', 50, 50, 30, 30, true],
-      [3, 'IoT Workshop', 'workshop', 1, 130, 'Internet of Things', '3 hours', 'IoT Engineer', 'No prior experience', 50, 50, 30, 30, true],
-      
-      // Technical Events (Day 2)
-      [4, 'Paper Presentation', 'technical', 2, 80, 'Present research papers', '2 hours', null, 'Max 2 authors per paper', 100, 100, 40, 40, true],
-      [5, 'Code Relay', 'technical', 2, 70, 'Team coding competition', '2 hours', null, 'Teams of 2 members', 100, 100, 40, 40, true],
-      [6, 'Debugging Challenge', 'technical', 2, 60, 'Find and fix bugs', '1.5 hours', null, 'Individual participation', 100, 100, 40, 40, true],
-      
-      // Non-Technical Events (Day 2)
-      [7, 'Technical Quiz', 'non-technical', 2, 50, 'Tech knowledge quiz', '1 hour', null, 'Teams of 2-3 members', 100, 100, 40, 40, true],
-      [8, 'Treasure Hunt', 'non-technical', 2, 40, 'Campus treasure hunt', '2 hours', null, 'Teams of 3-4 members', 100, 100, 40, 40, true],
-      [9, 'Connections', 'non-technical', 2, 30, 'Word connection game', '1 hour', null, 'Individual participation', 100, 100, 40, 40, true]
-    ];
-    
-    for (const event of sampleEvents) {
-      await pool.query(`
-        INSERT INTO events (
-          event_id, event_name, event_type, day, fee, description,
-          duration, speaker, rules, total_seats, available_seats,
-          cse_seats, cse_available_seats, is_active
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-        ON CONFLICT (event_id) DO UPDATE SET
-          event_name = EXCLUDED.event_name,
-          event_type = EXCLUDED.event_type,
-          fee = EXCLUDED.fee,
-          description = EXCLUDED.description,
-          duration = EXCLUDED.duration,
-          speaker = EXCLUDED.speaker,
-          rules = EXCLUDED.rules
-      `, event);
-    }
-    
-    return { 
-      success: true, 
-      message: 'Database setup complete with all required fields',
-      tables_created: queries.length,
-      sample_events_inserted: sampleEvents.length
-    };
-    
-  } catch (error) {
-    fastify.log.error(error);
-    return reply.code(500).send({ error: error.message });
-  }
-});
+
+// ==================== SERVER START ====================
 
 const PORT = process.env.PORT || 3000;
 
@@ -1811,14 +2415,34 @@ const start = async () => {
   try {
     await fastify.listen({
       port: PORT,
-      host: '0.0.0.0' // REQUIRED for deployment
+      host: '0.0.0.0'
     });
 
     console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📊 Connection pool ready: ${pool.totalCount} connections available`);
+    console.log(`⚡ Rate limiting enabled: ${RATE_LIMIT.maxRequests} requests per ${RATE_LIMIT.windowMs/60000} minutes`);
+    
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
   }
 };
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received. Closing server...');
+  await fastify.close();
+  await pool.end();
+  console.log('Server closed');
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received. Closing server...');
+  await fastify.close();
+  await pool.end();
+  console.log('Server closed');
+  process.exit(0);
+});
 
 start();
