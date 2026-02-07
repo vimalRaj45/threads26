@@ -2,86 +2,199 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Verify Payments by CSV/XLS/XLSX</title>
+<title>Verify Payments (CSV / XLS / XLSX)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
-  body { font-family: Arial, sans-serif; background: #f4f6f8; padding: 40px; }
-  .box { max-width: 600px; background: #fff; padding: 25px; margin: auto; border-radius: 8px; box-shadow: 0 10px 20px rgba(0,0,0,.1); }
-  h2 { margin-bottom: 15px; }
-  input, button { width: 100%; padding: 10px; margin-top: 12px; }
-  button { background: #0b3c5d; color: #fff; border: none; cursor: pointer; }
-  button:hover { background: #09324c; }
-  pre { background: #eee; padding: 10px; margin-top: 15px; max-height: 250px; overflow: auto; }
+  body {
+    font-family: Arial, sans-serif;
+    background: #f4f6f8;
+    padding: 40px;
+  }
+  .box {
+    max-width: 700px;
+    background: #fff;
+    padding: 25px;
+    margin: auto;
+    border-radius: 8px;
+    box-shadow: 0 10px 20px rgba(0,0,0,.1);
+  }
+  input, button {
+    width: 100%;
+    padding: 10px;
+    margin-top: 12px;
+  }
+  button {
+    background: #0b3c5d;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+  }
+  pre {
+    background: #eee;
+    padding: 10px;
+    margin-top: 15px;
+    max-height: 300px;
+    overflow: auto;
+  }
 </style>
 </head>
 
 <body>
+
 <div class="box">
-  <h2>Payment Verification (CSV / XLS / XLSX)</h2>
-  <input type="file" id="fileInput" accept=".csv, .xls, .xlsx">
-  <button onclick="processFile()">Verify Payments</button>
+  <h2>Payment Verification</h2>
+  <input type="file" id="fileInput" accept=".csv,.xls,.xlsx">
+  <button onclick="processFile()">Verify</button>
   <pre id="result"></pre>
 </div>
 
-<!-- SheetJS Library -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
 <script>
 async function processFile() {
-  const fileInput = document.getElementById("fileInput");
+
+  console.clear();
+  const file = document.getElementById("fileInput").files[0];
   const resultBox = document.getElementById("result");
 
-  if (!fileInput.files.length) { alert("Please select a file"); return; }
+  if (!file) {
+    alert("Select file");
+    return;
+  }
 
-  const file = fileInput.files[0];
   const reader = new FileReader();
 
-  reader.onload = async function(e) {
-    let payments = [];
+  reader.onload = async (e) => {
     try {
-      if (file.name.endsWith(".csv")) {
-        const text = e.target.result.trim();
-        const lines = text.split("\n");
-        for (let i = 1; i < lines.length; i++) {
-          const [transaction_id, amount] = lines[i].split(",");
-          if (transaction_id && amount) payments.push({ transaction_id: transaction_id.trim(), amount: Number(amount.trim()) });
-        }
-      } else {  // XLS/XLSX
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json(sheet);
+      let payments = [];
 
-        rows.forEach(row => {
-          if (row.transaction_id && row.amount !== undefined) {
-            payments.push({ transaction_id: String(row.transaction_id).trim(), amount: Number(row.amount) });
+      /* =================== EXCEL =================== */
+      if (!file.name.toLowerCase().endsWith(".csv")) {
+
+        const wb = XLSX.read(e.target.result, { type: "array" });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+
+        // Read as 2D array (IMPORTANT)
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+        console.log("ALL ROWS");
+        console.table(rows);
+
+        // 🔍 FIND HEADER ROW
+        let headerRowIndex = -1;
+        let headers = [];
+
+        for (let i = 0; i < rows.length; i++) {
+          const rowText = rows[i].join(" ").toLowerCase();
+          if (rowText.includes("deposit") && rowText.includes("remark")) {
+            headerRowIndex = i;
+            headers = rows[i];
+            console.log("✔ Header row found at:", i + 1);
+            break;
           }
-        });
+        }
+
+        if (headerRowIndex === -1) {
+          alert("Transaction table not found");
+          return;
+        }
+
+        const depositIndex = headers.findIndex(h =>
+          h.toLowerCase().includes("deposit")
+        );
+
+        const remarksIndex = headers.findIndex(h =>
+          h.toLowerCase().includes("remark")
+        );
+
+        console.log("Deposit index:", depositIndex);
+        console.log("Remarks index:", remarksIndex);
+
+        // 📊 DATA ROWS
+        for (let i = headerRowIndex + 1; i < rows.length; i++) {
+
+          const row = rows[i];
+          const deposit = Number(String(row[depositIndex]).replace(/,/g, ""));
+          const remarks = row[remarksIndex];
+
+          if (!deposit || deposit <= 0) continue;
+
+          const match = remarks?.match(/UPI\/(?:CR|DR)\/(\d+)\//);
+          if (!match) continue;
+
+          payments.push({
+            transaction_id: match[1],
+            amount: deposit
+          });
+        }
       }
 
-      if (payments.length === 0) { alert("No valid rows found"); return; }
+      /* =================== CSV =================== */
+      else {
+        const lines = e.target.result.split("\n").map(l => l.trim()).filter(Boolean);
 
-      resultBox.textContent = "Verifying...";
+        let headerIndex = -1;
+        let headers = [];
 
-      const res = await fetch("https://threads26-2-fdem.onrender.com/api/admin/verify-payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payments })
-      });
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].toLowerCase().includes("deposit") &&
+              lines[i].toLowerCase().includes("remark")) {
+            headerIndex = i;
+            headers = lines[i].split(",");
+            break;
+          }
+        }
+
+        const dIndex = headers.findIndex(h => h.toLowerCase().includes("deposit"));
+        const rIndex = headers.findIndex(h => h.toLowerCase().includes("remark"));
+
+        for (let i = headerIndex + 1; i < lines.length; i++) {
+          const cols = lines[i].split(",").map(v => v.replace(/"/g, "").trim());
+          const deposit = Number(cols[dIndex]);
+          const remarks = cols[rIndex];
+
+          if (!deposit || deposit <= 0) continue;
+          const match = remarks?.match(/UPI\/(?:CR|DR)\/(\d+)\//);
+          if (!match) continue;
+
+          payments.push({
+            transaction_id: match[1],
+            amount: deposit
+          });
+        }
+      }
+
+      console.table(payments);
+
+      if (!payments.length) {
+        alert("No valid deposits found");
+        return;
+      }
+
+      const res = await fetch(
+        "https://threads26-2-fdem.onrender.com/api/admin/verify-payments",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ payments })
+        }
+      );
 
       const data = await res.json();
       resultBox.textContent = JSON.stringify(data, null, 2);
 
     } catch (err) {
-      resultBox.textContent = "Error: " + err.message;
+      console.error(err);
+      resultBox.textContent = err.message;
     }
   };
 
-  if (file.name.endsWith(".csv")) reader.readAsText(file);
-  else reader.readAsArrayBuffer(file);
+  file.name.endsWith(".csv")
+    ? reader.readAsText(file)
+    : reader.readAsArrayBuffer(file);
 }
 </script>
+
 </body>
 </html>
