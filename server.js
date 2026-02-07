@@ -517,7 +517,7 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
 
     await client.query('BEGIN');
 
-    // 1. Get ALL verified payments in one query (inside transaction)
+    // 1. Get ALL verified payments
     const allVerifiedQuery = await client.query(
       `SELECT transaction_id 
        FROM payments 
@@ -526,7 +526,7 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
        ORDER BY verified_at DESC`
     );
 
-    // 2. Get pending payments
+    // 2. Get pending payments (exclude already verified ones)
     const pendingPayments = await client.query(
       `SELECT 
         p.payment_id,
@@ -538,7 +538,13 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
        FROM payments p
        JOIN participants pt ON p.participant_id = pt.participant_id
        WHERE p.verified_by_admin = false
-       AND p.payment_status = 'Success'`
+       AND p.payment_status = 'Success'
+       AND NOT EXISTS (
+         SELECT 1 FROM payments p2 
+         WHERE p2.participant_id = p.participant_id 
+         AND p2.verified_by_admin = true
+         AND p2.payment_status = 'Success'
+       )`
     );
 
     const newlyVerified = [];
@@ -569,12 +575,24 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
         participantIdsToUpdate.push(dbPayment.participant_id);
         newlyVerified.push(dbPayment.transaction_id);
       } else {
-        failed.push({
-          transaction_id: dbPayment.transaction_id,
-          participant_id: dbPayment.participant_id,
-          name: dbPayment.full_name,
-          phone: dbPayment.phone
-        });
+        // Check if this participant already has verified payment
+        const participantHasVerified = await client.query(
+          `SELECT 1 FROM payments 
+           WHERE participant_id = $1 
+           AND verified_by_admin = true
+           AND payment_status = 'Success'`,
+          [dbPayment.participant_id]
+        );
+        
+        // Only add to failed if participant has NO verified payment
+        if (participantHasVerified.rowCount === 0) {
+          failed.push({
+            transaction_id: dbPayment.transaction_id,
+            participant_id: dbPayment.participant_id,
+            name: dbPayment.full_name,
+            phone: dbPayment.phone
+          });
+        }
       }
     }
 
@@ -608,6 +626,8 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
       ...newlyVerified
     ];
 
+    const uniqueVerified = [...new Set(allVerified)];
+
     return {
       success: true,
       summary: {
@@ -615,9 +635,10 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
         csv_uploaded: csvPayments.length,
         newly_verified: newlyVerified.length,
         failed: failed.length,
-        total_verified_now: allVerified.length
+        total_verified_now: uniqueVerified.length,
+        previously_verified: allVerifiedQuery.rowCount
       },
-      verified: allVerified,
+      verified: uniqueVerified,
       failed
     };
 
@@ -629,7 +650,6 @@ fastify.post("/api/admin/verify-payments", async (request, reply) => {
     client.release();
   }
 });
-
 
 fastify.post('/api/verify-payment', async (request, reply) => {
   const client = await pool.connect();
@@ -1142,9 +1162,9 @@ fastify.post('/api/admin/manual-verification', async (request, reply) => {
 
     await client.query('BEGIN');
 
-    // 1️⃣ Ensure participant exists
+    // 1. Ensure participant exists
     const participantCheck = await client.query(
-      `SELECT participant_id FROM participants WHERE participant_id = $1`,
+      `SELECT participant_id, full_name, email FROM participants WHERE participant_id = $1`,
       [participant_id]
     );
 
@@ -1153,53 +1173,100 @@ fastify.post('/api/admin/manual-verification', async (request, reply) => {
       return reply.code(404).send({ error: 'Participant not found' });
     }
 
-    // 2️⃣ Insert manual payment verification
-    const paymentResult = await client.query(
-      `INSERT INTO payments (
-        participant_id,
-        transaction_id,
-        amount,
-        payment_method,
-        payment_status,
-        verified_by_admin,
-        verified_at,
-        notes,
-        created_at
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, NOW())
-      RETURNING payment_id`,
-      [
-        participant_id,
-        `MANUAL-${Date.now()}`,
-        0,
-        'Manual Verification',
-        'Success',
-        true,
-        'Manually verified by admin'
-      ]
+    // 2. Check for existing payment for this participant
+    const existingPayment = await client.query(
+      `SELECT payment_id, transaction_id, verified_by_admin 
+       FROM payments 
+       WHERE participant_id = $1 
+       AND payment_status = 'Success'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [participant_id]
     );
 
-    // 3️⃣ Update registrations payment status
+    let payment_id;
+    let transaction_id;
+
+    if (existingPayment.rowCount > 0) {
+      const payment = existingPayment.rows[0];
+      
+      // If already verified, return info
+      if (payment.verified_by_admin) {
+        await client.query('ROLLBACK');
+        return reply.code(400).send({ 
+          error: 'Payment already verified',
+          payment_id: payment.payment_id,
+          transaction_id: payment.transaction_id
+        });
+      }
+      
+      // Update existing payment to verified
+      await client.query(
+        `UPDATE payments 
+         SET verified_by_admin = true,
+             verified_at = NOW(),
+             notes = COALESCE(notes || ', ', '') || 'Manually verified by admin'
+         WHERE payment_id = $1
+         RETURNING payment_id, transaction_id`,
+        [payment.payment_id]
+      );
+      
+      payment_id = payment.payment_id;
+      transaction_id = payment.transaction_id;
+    } else {
+      // 3. Create new manual payment only if no payment exists
+      const paymentResult = await client.query(
+        `INSERT INTO payments (
+          participant_id,
+          transaction_id,
+          amount,
+          payment_method,
+          payment_status,
+          verified_by_admin,
+          verified_at,
+          notes,
+          created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, NOW())
+        RETURNING payment_id, transaction_id`,
+        [
+          participant_id,
+          `MANUAL-${Date.now()}`,
+          0,
+          'Manual Verification',
+          'Success',
+          true,
+          `Manually verified by admin for participant ${participant_id}`
+        ]
+      );
+      
+      payment_id = paymentResult.rows[0].payment_id;
+      transaction_id = paymentResult.rows[0].transaction_id;
+    }
+
+    // 4. Update registrations payment status
     await client.query(
       `UPDATE registrations
        SET payment_status = 'Success'
-       WHERE participant_id = $1`,
+       WHERE participant_id = $1
+       AND payment_status = 'Pending'`,
       [participant_id]
     );
 
     await client.query('COMMIT');
 
-    Promise.all([
-  invalidateParticipantCache(participant_id),
-  invalidateStatsCache()
-]).catch(err => console.error('Cache invalidation error:', err));
-
+    // Invalidate caches
+    await invalidateParticipantCache(participant_id);
+    await invalidateStatsCache();
 
     return {
       success: true,
       message: 'Participant manually verified',
       participant_id,
-      payment_id: paymentResult.rows[0].payment_id
+      participant_name: participantCheck.rows[0].full_name,
+      payment_id,
+      transaction_id,
+      action: existingPayment.rowCount > 0 ? 'updated_existing_payment' : 'created_new_payment'
     };
 
   } catch (error) {
@@ -1210,7 +1277,6 @@ fastify.post('/api/admin/manual-verification', async (request, reply) => {
     client.release();
   }
 });
-
 
 // -------------------- ADMIN ATTENDANCE ENDPOINTS --------------------
 
