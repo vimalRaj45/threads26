@@ -1718,16 +1718,106 @@ fastify.get('/api/participant/:id/verification-status', async (request, reply) =
   }
 });
 
+// SIMPLE ALL-IN-ONE PARTICIPANT ENDPOINT
+fastify.get('/api/participant/:id/all', async (request, reply) => {
+  try {
+    const { id } = request.params;
+    
+    // 1. Get participant basic info
+    const participant = await pool.query(
+      'SELECT participant_id, full_name, email, phone, college_name, department, year_of_study, city, state FROM participants WHERE participant_id = $1',
+      [id]
+    );
+    
+    if (participant.rows.length === 0) {
+      return reply.code(404).send({ 
+        error: 'Participant not found',
+        participant_id: id 
+      });
+    }
+    
+    // 2. Get all registrations with event details
+    const registrations = await pool.query(
+      `SELECT 
+        r.registration_unique_id,
+        r.payment_status,
+        r.amount_paid,
+        r.registered_at,
+        r.attendance_status,
+        e.event_name,
+        e.event_type,
+        e.day,
+        e.fee
+       FROM registrations r
+       JOIN events e ON r.event_id = e.event_id
+       WHERE r.participant_id = $1
+       ORDER BY e.day, e.event_name`,
+      [id]
+    );
+    
+    // 3. Get payment info
+    const payments = await pool.query(
+      `SELECT 
+        transaction_id,
+        amount,
+        payment_method,
+        payment_status,
+        verified_by_admin,
+        verified_at,
+        created_at
+       FROM payments 
+       WHERE participant_id = $1
+       ORDER BY created_at DESC`,
+      [id]
+    );
+    
+    // 4. Calculate simple status
+    const paymentStatus = payments.rows.length > 0 ? 
+      (payments.rows[0].verified_by_admin ? 'ADMIN_VERIFIED' : 
+       payments.rows[0].payment_status === 'Success' ? 'AUTO_VERIFIED' : 'NOT_VERIFIED') 
+      : 'NOT_VERIFIED';
+    
+    // 5. Calculate totals
+    const totalPaid = registrations.rows.filter(r => r.payment_status === 'Success').length;
+    const totalPending = registrations.rows.filter(r => r.payment_status === 'Pending').length;
+    const totalAmount = payments.rows.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+    
+    // 6. Group registrations by day for easier display
+    const registrationsByDay = {
+      day1: registrations.rows.filter(r => r.day === 1),
+      day2: registrations.rows.filter(r => r.day === 2)
+    };
+    
+    // 7. Return everything in one response
+    return {
+      success: true,
+      participant: participant.rows[0],
+      verification_status: paymentStatus,
+      payment_summary: {
+        total_registrations: registrations.rows.length,
+        paid_registrations: totalPaid,
+        pending_registrations: totalPending,
+        total_amount: totalAmount
+      },
+      registrations: registrations.rows,
+      registrations_by_day: registrationsByDay,
+      payments: payments.rows,
+      last_updated: new Date().toISOString()
+    };
+    
+  } catch (error) {
+    fastify.log.error(error);
+    return reply.code(500).send({ 
+      error: 'Failed to load participant data',
+      details: error.message 
+    });
+  }
+});
+
+// SIMPLE TRACK ENDPOINT (for registration IDs)
 fastify.get('/api/track/:registration_id', async (request, reply) => {
   try {
     const { registration_id } = request.params;
-    const cacheKey = `track:${registration_id}`;
-    
-    // Try cache first
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      return JSON.parse(cached);
-    }
     
     const result = await pool.query(
       `SELECT 
@@ -1743,19 +1833,11 @@ fastify.get('/api/track/:registration_id', async (request, reply) => {
         e.event_name,
         e.event_type,
         e.day,
-        e.fee,
-        py.transaction_id,
-        py.payment_method,
-        py.payment_status as payment_verification_status,
-        py.verified_by_admin,
-        py.verified_at,
-        py.created_at as payment_date
+        e.fee
        FROM registrations r
        JOIN participants p ON r.participant_id = p.participant_id
        JOIN events e ON r.event_id = e.event_id
-       LEFT JOIN payments py ON r.participant_id = py.participant_id
-       WHERE r.registration_unique_id = $1
-       ORDER BY py.created_at DESC LIMIT 1`,
+       WHERE r.registration_unique_id = $1`,
       [registration_id]
     );
     
@@ -1763,56 +1845,11 @@ fastify.get('/api/track/:registration_id', async (request, reply) => {
       return reply.code(404).send({ error: 'Registration not found' });
     }
     
-    const row = result.rows[0];
-    
-    let verification_status = 'NOT_VERIFIED';
-    let verified_by = null;
-    
-    if (row.payment_verification_status === 'Success') {
-      if (row.verified_by_admin) {
-        verification_status = 'ADMIN_VERIFIED';
-        verified_by = 'Administrator';
-      } else {
-        verification_status = 'AUTO_VERIFIED';
-        verified_by = 'System';
-      }
-    }
-    
-    const response = {
-      registration: {
-        registration_id: row.registration_unique_id,
-        payment_status: row.payment_status,
-        registered_at: row.registered_at,
-        attendance_status: row.attendance_status,
-        event_name: row.event_name,
-        event_type: row.event_type,
-        day: row.day,
-        fee: row.fee
-      },
-      
-      participant: {
-        full_name: row.full_name,
-        email: row.email,
-        phone: row.phone,
-        college_name: row.college_name,
-        department: row.department
-      },
-      
-      payment: {
-        transaction_id: row.transaction_id,
-        payment_method: row.payment_method,
-        payment_status: row.payment_verification_status,
-        verification_status: verification_status,
-        verified_by: verified_by,
-        verified_at: row.verified_at,
-        payment_date: row.payment_date
-      }
+    return {
+      registration: result.rows[0],
+      found: true
     };
     
-    // Cache for 60 seconds (tracking doesn't change often)
-    await redis.setex(cacheKey, 60, JSON.stringify(response));
-    
-    return response;
   } catch (error) {
     fastify.log.error(error);
     return reply.code(500).send({ error: error.message });
