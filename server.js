@@ -270,39 +270,36 @@ fastify.post('/api/register', async (request, reply) => {
       throw new Error('NO_EVENTS_SELECTED: Please select at least one workshop or event');
     }
     
-    // 6. DEFINE SEAT CHECK FUNCTION (JUST CHECKS, NO DECREMENT)
-    const checkSeatAvailability = async (eventId, department) => {
-      const cacheKey = `seats:${eventId}`;
-      const cached = await redis.get(cacheKey);
-      
-      if (cached) {
-        const eventData = JSON.parse(cached);
-        
-        if (department === 'CSE') {
-          if (eventData.cse_available_seats <= 0) {
-            throw new Error(`CSE_SEATS_FULL: No CSE seats available for event ID ${eventId}. CSE seats: ${eventData.cse_available_seats}/${eventData.cse_seats}`);
-          }
-        } else {
-          if (eventData.available_seats <= 0) {
-            throw new Error(`GENERAL_SEATS_FULL: No general seats available for event ID ${eventId}. General seats: ${eventData.available_seats}/${eventData.total_seats}`);
-          }
-        }
-        return true;
-      }
-      
-      // Fallback to DB
+    // 6. DEFINE SEAT CHECK FUNCTION - DIRECT DATABASE QUERY (NO REDIS)
+    const checkSeatAvailability = async (eventId, dept) => {
+      // Direct database query - no cache
       const event = await client.query(
-        'SELECT * FROM events WHERE event_id = $1 AND is_active = true',
+        `SELECT 
+          event_id,
+          event_name,
+          total_seats,
+          available_seats,
+          cse_seats,
+          cse_available_seats,
+          is_active,
+          event_type,
+          day
+         FROM events 
+         WHERE event_id = $1`,
         [eventId]
       );
       
       if (!event.rows[0]) {
-        throw new Error(`EVENT_NOT_FOUND: Event ID ${eventId} not found or inactive`);
+        throw new Error(`EVENT_NOT_FOUND: Event ID ${eventId} not found`);
       }
       
       const eventData = event.rows[0];
       
-      if (department === 'CSE') {
+      if (!eventData.is_active) {
+        throw new Error(`EVENT_INACTIVE: Event "${eventData.event_name}" is no longer available`);
+      }
+      
+      if (dept === 'CSE') {
         if (eventData.cse_available_seats <= 0) {
           throw new Error(`CSE_SEATS_FULL: No CSE seats available for "${eventData.event_name}". CSE seats: ${eventData.cse_available_seats}/${eventData.cse_seats}`);
         }
@@ -337,7 +334,7 @@ fastify.post('/api/register', async (request, reply) => {
         throw new Error(`NOT_A_WORKSHOP: Event ID ${eventId} is not a workshop (type: ${event.rows[0].event_type})`);
       }
       
-      // CHECK seat availability (but don't decrement yet)
+      // CHECK seat availability (direct DB query)
       await checkSeatAvailability(eventId, department);
       
       // Generate registration ID
@@ -393,7 +390,7 @@ fastify.post('/api/register', async (request, reply) => {
         throw new Error(`NOT_DAY2_EVENT: Event ID ${eventId} is not a Day 2 event (day: ${event.rows[0].day})`);
       }
       
-      // CHECK seat availability (but don't decrement yet)
+      // CHECK seat availability (direct DB query)
       await checkSeatAvailability(eventId, department);
       
       // Generate registration ID
@@ -487,6 +484,28 @@ fastify.post('/api/register', async (request, reply) => {
         message: 'General seats are full for selected workshop/event',
         details: errorMessage.replace('GENERAL_SEATS_FULL: ', ''),
         suggestion: 'Please select different events'
+      });
+    }
+    
+    if (errorMessage.includes('EVENT_NOT_FOUND')) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'EVENT_ERROR',
+        error_code: 'EVENT_NOT_FOUND',
+        message: 'Selected event not found',
+        details: errorMessage.replace('EVENT_NOT_FOUND: ', ''),
+        suggestion: 'Please refresh the event list and try again'
+      });
+    }
+    
+    if (errorMessage.includes('EVENT_INACTIVE')) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'EVENT_ERROR',
+        error_code: 'EVENT_INACTIVE',
+        message: 'Selected event is no longer available',
+        details: errorMessage.replace('EVENT_INACTIVE: ', ''),
+        suggestion: 'Please select a different event'
       });
     }
     
