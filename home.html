@@ -10,7 +10,9 @@
         let currentParticipantId = null;
         let currentRegistrationIds = [];
         let currentTotalAmount = 0;
-        let currentEventNames = []; // Store event names for QR code
+        let currentEventNames = [];
+        let userProfile = null;
+        let eventQRCode = null;
         
         // Helper functions
         async function fetchAPI(endpoint, options = {}) {
@@ -52,13 +54,16 @@
                 'register-page': 'Register for Events',
                 'payment-page': 'Make Payment',
                 'verify-page': 'Verify Payment',
-                'track-page': 'Track Registration',
-                'status-page': 'Registration Status',
-                'download-page': 'Download Documents'
+                'profile-page': 'My Profile'
             };
             
             if (pageTitles[pageId]) {
                 document.title = pageTitles[pageId];
+            }
+            
+            // Load profile data if showing profile page
+            if (pageId === 'profile-page' && currentParticipantId) {
+                loadUserProfile();
             }
         }
         
@@ -67,13 +72,15 @@
             // Load event dates
             loadEventDates();
             
-            // Check URL for registration ID
-            const urlParams = new URLSearchParams(window.location.search);
-            const regId = urlParams.get('track');
+            // Check if we have participant ID in local storage
+            const savedParticipantId = localStorage.getItem('threads26_participant_id');
+            const savedQRCode = localStorage.getItem('threads26_qr_code');
             
-            if (regId) {
-                showPage('track-page');
-                loadRegistration(regId);
+            if (savedParticipantId) {
+                currentParticipantId = savedParticipantId;
+                if (savedQRCode) {
+                    eventQRCode = savedQRCode;
+                }
             }
             
             // Show home page initially
@@ -87,12 +94,10 @@
                 return;
             }
             
-            // Get event names (shortened for QR code)
             const eventShortNames = currentEventNames.map(name => 
                 name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 6)
             );
             
-            // Create UPI payment URL with auto-filled amount
             const upiUrl = 
                 `upi://pay?pa=8807099288@upi` +
                 `&pn=THREADS26` +
@@ -100,11 +105,11 @@
                 `&cu=INR` +
                 `&tn=THREADS26|${eventShortNames.join(',')}|REF:${currentParticipantId}`;
             
-            // Generate QR code using external API
             const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(upiUrl)}`;
             
-            // Display QR code
             const qrDiv = document.getElementById('qr-code-container');
+            if (!qrDiv) return;
+            
             qrDiv.innerHTML = `
                 <div style="text-align: center; margin: 20px;">
                     <h4>Scan QR Code to Pay</h4>
@@ -114,21 +119,7 @@
                     <p><strong>Reference: THREADS26-${currentParticipantId}</strong></p>
                     <p style="color: green;">Scan with Google Pay, PhonePe, or Paytm</p>
                     <button onclick="copyUPIURL()">Copy UPI Link</button>
-                    <button onclick="downloadQR()">Download QR Code</button>
                 </div>
-            `;
-            
-            // Also generate direct UPI link
-            const upiLinkDiv = document.getElementById('upi-link');
-            upiLinkDiv.innerHTML = `
-                <h4>Direct UPI Payment Link:</h4>
-                <p><a href="${upiUrl}" target="_blank">Click here to open in UPI app</a></p>
-                <p><strong>Or copy this text to any UPI app:</strong></p>
-                <textarea readonly style="width: 100%; height: 60px; font-family: monospace;">
-UPI ID: 8807099288@upi
-Amount: ₹${currentTotalAmount}
-Note: THREADS26 Registration ${currentParticipantId}
-                </textarea>
             `;
         }
         
@@ -139,16 +130,6 @@ Note: THREADS26 Registration ${currentParticipantId}
                 .catch(err => console.error('Copy failed:', err));
         }
         
-        function downloadQR() {
-            const qrImg = document.querySelector('#qr-code-container img');
-            if (qrImg) {
-                const link = document.createElement('a');
-                link.download = `THREADS26_PAYMENT_QR_${currentParticipantId}.png`;
-                link.href = qrImg.src;
-                link.click();
-            }
-        }
-        
         // -------------------- PAGE 1: HOME --------------------
         async function loadEventDates() {
             try {
@@ -157,7 +138,7 @@ Note: THREADS26 Registration ${currentParticipantId}
                 const datesDiv = document.getElementById('event-dates');
                 datesDiv.innerHTML = `
                     <h3>Event Dates</h3>
-                    <table border="1">
+                    <table border="1" style="width: 100%;">
                         <tr><td>Workshop Day (Day 1)</td><td>${data.workshop_day}</td></tr>
                         <tr><td>Event Day (Day 2)</td><td>${data.event_day}</td></tr>
                         <tr><td>Registration Closes</td><td>${data.registration_closes}</td></tr>
@@ -180,12 +161,18 @@ Note: THREADS26 Registration ${currentParticipantId}
             showPage('register-page');
         }
         
-        function navigateToTrack() {
-            const regId = document.getElementById('track-input').value.trim();
-            if (regId) {
-                window.location.href = `?track=${regId}`;
+        function navigateToProfile() {
+            if (currentParticipantId) {
+                showPage('profile-page');
+                loadUserProfile();
             } else {
-                alert('Please enter a registration ID');
+                const pid = prompt('Enter your Participant ID:');
+                if (pid) {
+                    currentParticipantId = pid;
+                    localStorage.setItem('threads26_participant_id', pid);
+                    showPage('profile-page');
+                    loadUserProfile();
+                }
             }
         }
         
@@ -196,35 +183,32 @@ Note: THREADS26 Registration ${currentParticipantId}
                 
                 let html = '<h3>Available Events</h3>';
                 
-                // Group by day
                 const day1Events = data.events.filter(e => e.day === 1);
                 const day2Events = data.events.filter(e => e.day === 2);
                 
-                // Day 1 - Workshops
                 html += '<h4>📅 Day 1: Workshops</h4>';
                 day1Events.forEach(event => {
                     html += `
-                        <div style="border: 1px solid #ccc; padding: 10px; margin: 10px 0;">
+                        <div class="event-card">
                             <strong>${event.event_name}</strong><br>
                             Type: ${event.event_type}<br>
                             Fee: ₹${event.fee}<br>
                             Seats: ${event.available_seats} available<br>
-                            Status: ${event.seat_status}<br>
+                            Status: <span class="seat-status ${event.seat_status === 'Available' ? 'available' : 'limited'}">${event.seat_status}</span><br>
                             <button onclick="addEventToForm(${event.event_id}, '${event.event_name}', ${event.fee}, ${event.day})">Select</button>
                         </div>
                     `;
                 });
                 
-                // Day 2 - Events
                 html += '<h4>📅 Day 2: Technical & Non-Technical Events</h4>';
                 day2Events.forEach(event => {
                     html += `
-                        <div style="border: 1px solid #ccc; padding: 10px; margin: 10px 0;">
+                        <div class="event-card">
                             <strong>${event.event_name}</strong><br>
                             Type: ${event.event_type}<br>
                             Fee: ₹${event.fee}<br>
                             Seats: ${event.available_seats} available<br>
-                            Status: ${event.seat_status}<br>
+                            Status: <span class="seat-status ${event.seat_status === 'Available' ? 'available' : 'limited'}">${event.seat_status}</span><br>
                             <button onclick="addEventToForm(${event.event_id}, '${event.event_name}', ${event.fee}, ${event.day})">Select</button>
                         </div>
                     `;
@@ -232,7 +216,6 @@ Note: THREADS26 Registration ${currentParticipantId}
                 
                 document.getElementById('events-list').innerHTML = html;
                 
-                // Update registration status
                 document.getElementById('registration-status').innerHTML = 
                     data.registration_open ? 
                     '<span style="color: green;">✓ Registration OPEN</span>' : 
@@ -245,32 +228,25 @@ Note: THREADS26 Registration ${currentParticipantId}
         }
         
         function addEventToForm(eventId, eventName, fee, day) {
-            // Add to selections
             const selectId = day === 1 ? 'workshop-selection' : 'event-selection';
             const select = document.getElementById(selectId);
             
-            // Check if already selected
             for (let option of select.options) {
                 if (option.value == eventId) {
-                    return; // Already selected
+                    return;
                 }
             }
             
-            // Add new option
             const option = document.createElement('option');
             option.value = eventId;
             option.text = `${eventName} - ₹${fee}`;
             option.selected = true;
             select.appendChild(option);
             
-            // Store event name for QR code
             currentEventNames.push(eventName);
-            
-            // Calculate running total
             currentTotalAmount += fee;
             updateTotalAmount();
             
-            // Show registration page
             showPage('register-page');
         }
         
@@ -282,7 +258,6 @@ Note: THREADS26 Registration ${currentParticipantId}
         }
         
         function removeSelectedEvents() {
-            // Clear workshop selections
             const workshopSelect = document.getElementById('workshop-selection');
             for (let i = workshopSelect.options.length - 1; i >= 0; i--) {
                 if (workshopSelect.options[i].selected) {
@@ -292,7 +267,6 @@ Note: THREADS26 Registration ${currentParticipantId}
                 }
             }
             
-            // Clear event selections
             const eventSelect = document.getElementById('event-selection');
             for (let i = eventSelect.options.length - 1; i >= 0; i--) {
                 if (eventSelect.options[i].selected) {
@@ -309,7 +283,6 @@ Note: THREADS26 Registration ${currentParticipantId}
         async function submitRegistration() {
             const form = document.getElementById('registration-form');
             
-            // Get form data - FIXED: Use proper form field names
             const formData = {
                 full_name: form.elements['full_name'].value,
                 email: form.elements['email'].value,
@@ -320,18 +293,15 @@ Note: THREADS26 Registration ${currentParticipantId}
                 city: form.elements['city'].value,
                 state: form.elements['state'].value,
                 accommodation_required: form.elements['accommodation_required'].checked,
-                // FIXED: Get values directly from the select elements
                 workshop_selections: getSelectedValues('workshop-selection'),
                 event_selections: getSelectedValues('event-selection')
             };
             
-            // Helper function to get selected values
             function getSelectedValues(selectId) {
                 const select = document.getElementById(selectId);
                 return Array.from(select.selectedOptions).map(opt => opt.value);
             }
             
-            // Validation
             if (!formData.full_name || !formData.email || !formData.phone) {
                 alert('Please fill all required fields');
                 return;
@@ -343,21 +313,21 @@ Note: THREADS26 Registration ${currentParticipantId}
             }
             
             try {
-                console.log('Submitting registration:', formData);
                 const result = await fetchAPI('/register', {
                     method: 'POST',
                     body: JSON.stringify(formData)
                 });
                 
-                // Save for next pages
                 currentParticipantId = result.participant_id;
                 currentRegistrationIds = result.registration_ids;
                 currentTotalAmount = result.total_amount;
+                userProfile = result;
                 
-                // Show payment details
+                localStorage.setItem('threads26_participant_id', currentParticipantId);
+                
                 document.getElementById('payment-details').innerHTML = `
                     <h3>✅ Registration Successful!</h3>
-                    <table border="1">
+                    <table border="1" style="width: 100%;">
                         <tr><td>Participant ID</td><td><strong>${result.participant_id}</strong></td></tr>
                         <tr><td>Registration IDs</td><td>${result.registration_ids.join('<br>')}</td></tr>
                         <tr><td>Total Amount</td><td><strong>₹${result.total_amount}</strong></td></tr>
@@ -373,26 +343,30 @@ Note: THREADS26 Registration ${currentParticipantId}
                     </ol>
                 `;
                 
-                // Auto-generate QR code
-                setTimeout(() => generateUPIQRCode(), 500);
-                
                 showPage('payment-page');
                 
+                setTimeout(() => {
+                    if (document.getElementById('qr-code-container')) {
+                        generateUPIQRCode();
+                    }
+                }, 100);
+                
             } catch (error) {
-                console.error('Registration error:', error);
                 alert('Registration failed: ' + error.message);
             }
         }
         
         // -------------------- PAGE 4: PAYMENT --------------------
         function showPaymentMethods() {
-            document.getElementById('payment-methods').innerHTML = `
+            const paymentMethodsDiv = document.getElementById('payment-methods');
+            if (!paymentMethodsDiv) return;
+            
+            paymentMethodsDiv.innerHTML = `
                 <h3>💳 Payment Methods</h3>
                 
                 <div id="qr-code-container"></div>
-                <div id="upi-link"></div>
                 
-                <table border="1">
+                <table border="1" style="width: 100%;">
                     <tr><th>Method</th><th>Details</th></tr>
                     <tr>
                         <td>QR Code</td>
@@ -409,14 +383,6 @@ Note: THREADS26 Registration ${currentParticipantId}
                             <p><strong>Reference:</strong> THREADS26-${currentParticipantId}</p>
                         </td>
                     </tr>
-                    <tr>
-                        <td>Bank Transfer</td>
-                        <td>
-                            <p><strong>Account:</strong> 1234567890</p>
-                            <p><strong>IFSC:</strong> SBIN0001234</p>
-                            <p><strong>Reference:</strong> THREADS26-${currentParticipantId}</p>
-                        </td>
-                    </tr>
                 </table>
                 
                 <h4>After Payment:</h4>
@@ -427,9 +393,8 @@ Note: THREADS26 Registration ${currentParticipantId}
                 <button onclick="showPage('verify-page')">✅ I've Made Payment</button>
             `;
             
-            // Generate QR code if we have the data
             if (currentParticipantId && currentTotalAmount > 0) {
-                generateUPIQRCode();
+                setTimeout(() => generateUPIQRCode(), 100);
             }
         }
         
@@ -460,33 +425,53 @@ Note: THREADS26 Registration ${currentParticipantId}
                     body: JSON.stringify(verificationData)
                 });
                 
-                document.getElementById('verification-result').innerHTML = `
-                    <h3 style="color: green;">✅ Payment Verified Successfully!</h3>
-                    <table border="1">
-                        <tr><td>Payment ID</td><td>${result.payment_details.payment_id}</td></tr>
-                        <tr><td>Payment Date</td><td>${new Date(result.payment_details.payment_date).toLocaleString()}</td></tr>
-                        <tr><td>Transaction ID</td><td>${verificationData.transaction_id}</td></tr>
-                        <tr><td>Amount</td><td>₹${result.payment_details.amount}</td></tr>
-                    </table>
+                const verificationResultDiv = document.getElementById('verification-result');
+                if (!verificationResultDiv) return;
+                
+                if (result.qr_code) {
+                    eventQRCode = result.qr_code;
+                    localStorage.setItem('threads26_qr_code', result.qr_code);
                     
-                    <h4>🎟 Event Entry QR Code</h4>
-                    <div style="text-align:center; margin:15px 0;">
-                      <img src="${result.qr_code}" 
-                           alt="Event QR Code"
-                           style="max-width:260px; border:1px solid #ccc; padding:10px;">
-                      <p><strong>Use this QR for ALL events</strong></p>
-                      <button onclick="downloadEventQR('${result.qr_code}')">
-                        ⬇ Download QR
-                      </button>
-                    </div>
-                    
-                    <button onclick="showPage('status-page')">Check Registration Status</button>
-                    <button onclick="showPage('download-page')">Download All Documents</button>
-                `;
+                    verificationResultDiv.innerHTML = `
+                        <h3 style="color: green;">✅ Payment Verified Successfully!</h3>
+                        <table border="1" style="width: 100%;">
+                            <tr><td>Payment ID</td><td>${result.payment_details.payment_id}</td></tr>
+                            <tr><td>Payment Date</td><td>${new Date(result.payment_details.payment_date).toLocaleString()}</td></tr>
+                            <tr><td>Transaction ID</td><td>${verificationData.transaction_id}</td></tr>
+                            <tr><td>Amount</td><td>₹${result.payment_details.amount}</td></tr>
+                        </table>
+                        
+                        <h4>🎟 Event Entry QR Code</h4>
+                        <div style="text-align:center; margin:15px 0;">
+                          <img src="${result.qr_code}" 
+                               alt="Event QR Code"
+                               style="max-width:260px; border:1px solid #ccc; padding:10px;">
+                          <p><strong>Use this QR for ALL events</strong></p>
+                          <p><em>This QR code has been saved to your profile</em></p>
+                          <button onclick="downloadEventQR('${result.qr_code}')">
+                            ⬇ Download QR
+                          </button>
+                        </div>
+                        
+                        <div style="text-align: center; margin-top: 20px;">
+                            <button onclick="showPage('profile-page')" style="background: #2196F3; padding: 12px 24px; font-size: 16px;">
+                                🎫 Go to My Profile to View QR Code
+                            </button>
+                        </div>
+                    `;
+                }
+                
+                if (userProfile) {
+                    userProfile.qr_code = result.qr_code;
+                    userProfile.payment_verified = true;
+                }
                 
             } catch (error) {
-                document.getElementById('verification-result').innerHTML = 
-                    `<p style="color: red;">❌ Verification failed: ${error.message}</p>`;
+                const verificationResultDiv = document.getElementById('verification-result');
+                if (verificationResultDiv) {
+                    verificationResultDiv.innerHTML = 
+                        `<p style="color: red;">❌ Verification failed: ${error.message}</p>`;
+                }
             }
         }
         
@@ -497,126 +482,191 @@ Note: THREADS26 Registration ${currentParticipantId}
             link.click();
         }
 
-        // -------------------- PAGE 6: TRACK REGISTRATION --------------------
-        async function loadRegistration(registrationId) {
+        // -------------------- PAGE 6: MY PROFILE --------------------
+        async function loadUserProfile() {
+            if (!currentParticipantId) {
+                const pid = prompt('Enter your Participant ID:');
+                if (pid) {
+                    currentParticipantId = pid;
+                    localStorage.setItem('threads26_participant_id', pid);
+                } else {
+                    document.getElementById('profile-content').innerHTML = 
+                        '<p>Please enter your Participant ID to view profile</p>';
+                    return;
+                }
+            }
+            
             try {
-                const data = await fetchAPI(`/track/${registrationId}`);
+                // Get participant data
+                const data = await fetchAPI(`/participant/${currentParticipantId}/all`);
                 
+                // Get saved QR code
+                const savedQRCode = localStorage.getItem('threads26_qr_code');
+                
+                // Build profile HTML
                 let html = `
-                    <h3>Registration Details</h3>
-                    <table border="1">
-                        <tr><th>Field</th><th>Value</th></tr>
-                        <tr><td>Registration ID</td><td>${data.registration.registration_id}</td></tr>
-                        <tr><td>Participant Name</td><td>${data.participant.full_name}</td></tr>
-                        <tr><td>Event</td><td>${data.registration.event_name}</td></tr>
-                        <tr><td>Fee</td><td>₹${data.registration.fee}</td></tr>
-                        <tr><td>Payment Status</td><td>${data.registration.payment_status}</td></tr>
-                        <tr><td>Attendance Status</td><td>${data.registration.attendance_status}</td></tr>
+                    <h2>👤 My Profile</h2>
+                    <div class="profile-header">
+                        <div class="profile-info">
+                            <h3>${data.participant.full_name}</h3>
+                            <p>📧 ${data.participant.email}</p>
+                            <p>🎓 ${data.participant.college_name}</p>
+                            <p>📱 Participant ID: <strong>${currentParticipantId}</strong></p>
+                        </div>
+                        <div class="verification-status">
+                            <h4>Verification Status:</h4>
+                            <span class="status-badge ${data.verification_status === 'NOT_VERIFIED' ? 'pending' : 'verified'}">
+                                ${data.verification_status}
+                            </span>
+                        </div>
+                    </div>
                 `;
                 
-                if (data.payment && data.payment.transaction_id) {
+                // Payment Summary
+                html += `
+                    <div class="section">
+                        <h3>💰 Payment Summary</h3>
+                        <table border="1" style="width: 100%;">
+                            <tr><td>Total Registrations</td><td>${data.payment_summary.total_registrations}</td></tr>
+                            <tr><td>Paid Registrations</td><td>${data.payment_summary.paid_registrations}</td></tr>
+                            <tr><td>Pending Registrations</td><td>${data.payment_summary.pending_registrations}</td></tr>
+                            <tr><td>Total Amount Paid</td><td>₹${data.payment_summary.total_amount}</td></tr>
+                        </table>
+                    </div>
+                `;
+                
+                // Registered Events
+                if (data.registrations.length > 0) {
                     html += `
-                        <tr><td>Transaction ID</td><td>${data.payment.transaction_id}</td></tr>
-                        <tr><td>Verification Status</td><td>${data.payment.verification_status}</td></tr>
-                        <tr><td>Verified By</td><td>${data.payment.verified_by || 'Not verified'}</td></tr>
+                        <div class="section">
+                            <h3>📅 Registered Events (${data.registrations.length})</h3>
+                            <table border="1" style="width: 100%;">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Event Name</th>
+                                    <th>Day</th>
+                                    <th>Type</th>
+                                    <th>Fee</th>
+                                    <th>Payment Status</th>
+                                    <th>Attendance</th>
+                                </tr>
                     `;
-                }
-                
-                html += `</table>`;
-                
-                // Add action buttons
-                html += '<h4>Actions:</h4>';
-                
-                if (data.qr_code) {
-                    html += `<p><button onclick="downloadEventQR('${data.qr_code}')">Download QR Code</button></p>`;
-                }
-                
-                html += `<p><button onclick="showPage('verify-page')">Verify Payment</button></p>`;
-                
-                document.getElementById('tracking-result').innerHTML = html;
-                
-            } catch (error) {
-                document.getElementById('tracking-result').innerHTML = 
-                    `<p>Error loading registration: ${error.message}</p>`;
-            }
-        }
-        
-        // -------------------- PAGE 7: STATUS --------------------
-        async function loadStatus() {
-            const pid = document.getElementById('status-pid').value || currentParticipantId;
-            
-            if (!pid) {
-                alert('Please enter Participant ID');
-                return;
-            }
-            
-            try {
-                const data = await fetchAPI(`/participant/${pid}/verification-status`);
-                
-                let html = `
-                    <h3>Registration Status for ${data.full_name}</h3>
-                    <table border="1">
-                        <tr><th>Verification Status</th><td>${data.verification_status}</td></tr>
-                        <tr><th>Verified By</th><td>${data.verified_by}</td></tr>
-                        <tr><th>Verified At</th><td>${data.verified_at ? new Date(data.verified_at).toLocaleString() : 'Not verified'}</td></tr>
-                        <tr><th>Total Registrations</th><td>${data.payment_summary.total_registrations}</td></tr>
-                        <tr><th>Paid Registrations</th><td>${data.payment_summary.paid_registrations}</td></tr>
-                        <tr><th>Total Amount Paid</th><td>₹${data.payment_summary.total_amount}</td></tr>
-                    </table>
-                `;
-                
-                if (data.payments && data.payments.length > 0) {
-                    html += '<h4>Payment History:</h4><table border="1"><tr><th>Transaction ID</th><th>Amount</th><th>Status</th><th>Date</th></tr>';
-                    data.payments.forEach(payment => {
+                    
+                    data.registrations.forEach((reg, index) => {
                         html += `
                             <tr>
-                                <td>${payment.transaction_id}</td>
-                                <td>₹${payment.amount}</td>
-                                <td>${payment.payment_status}</td>
-                                <td>${new Date(payment.created_at).toLocaleString()}</td>
+                                <td>${index + 1}</td>
+                                <td>${reg.event_name}</td>
+                                <td>Day ${reg.day}</td>
+                                <td>${reg.event_type}</td>
+                                <td>₹${reg.fee || reg.amount_paid || 0}</td>
+                                <td><span class="status-badge ${reg.payment_status === 'Success' ? 'paid' : 'pending'}">${reg.payment_status}</span></td>
+                                <td><span class="status-badge ${reg.attendance_status === 'ATTENDED' ? 'attended' : 'not-attended'}">${reg.attendance_status || 'NOT_ATTENDED'}</span></td>
                             </tr>
                         `;
                     });
-                    html += '</table>';
-                } else {
-                    html += '<p>No payments found</p>';
+                    
+                    html += `</table></div>`;
                 }
                 
-                // Actions
-                html += '<h4>Actions:</h4>';
-                html += `<p><button onclick="downloadDocument('qr')">Download Event QR Code</button></p>`;
+                // QR Code Section
+                if (savedQRCode && data.verification_status !== 'NOT_VERIFIED') {
+                    html += `
+                        <div class="section">
+                            <h3>🎟 Event Entry QR Code</h3>
+                            <div style="text-align: center; margin: 20px;">
+                                <img src="${savedQRCode}" 
+                                     alt="Event QR Code" 
+                                     style="max-width: 250px; border: 2px solid #4CAF50; padding: 15px; background: white; border-radius: 8px;">
+                                <p><strong>Show this QR code at event entry</strong></p>
+                                <p><em>This QR code is valid for ALL your registered events</em></p>
+                                <button onclick="downloadProfileQR('${savedQRCode}')">⬇ Download QR Code</button>
+                                <button onclick="showQRHelp()">ℹ️ How to Use</button>
+                            </div>
+                        </div>
+                    `;
+                } else if (data.verification_status !== 'NOT_VERIFIED') {
+                    html += `
+                        <div class="section">
+                            <h3>🎟 Event Entry QR Code</h3>
+                            <div style="text-align: center; padding: 20px;">
+                                <p style="color: orange;">⚠ QR code not available</p>
+                                <p>Your payment is verified but QR code is missing.</p>
+                                <button onclick="showPage('verify-page')">Verify Payment Again</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    html += `
+                        <div class="section">
+                            <h3>💳 Complete Payment</h3>
+                            <div style="text-align: center; padding: 20px;">
+                                <p>Your payment is pending. Complete payment to get your event QR code.</p>
+                                <button onclick="showPage('payment-page')">Go to Payment</button>
+                                <button onclick="showPage('verify-page')">Verify Payment</button>
+                            </div>
+                        </div>
+                    `;
+                }
                 
-                document.getElementById('status-details').innerHTML = html;
+                // Action Buttons
+                html += `
+                    <div class="section action-buttons">
+                        <h3>Quick Actions</h3>
+                        <button onclick="showPage('events-page')">Browse More Events</button>
+                        <button onclick="showPage('verify-page')">Verify Payment</button>
+                        <button onclick="refreshProfile()">Refresh Profile</button>
+                        ${savedQRCode && data.verification_status !== 'NOT_VERIFIED' ? 
+                            '<button onclick="downloadProfileQR(\'' + savedQRCode + '\')">Download QR Code</button>' : ''}
+                    </div>
+                `;
+                
+                document.getElementById('profile-content').innerHTML = html;
                 
             } catch (error) {
-                document.getElementById('status-details').innerHTML = 
-                    `<p>Error loading status: ${error.message}</p>`;
+                console.error('Error loading profile:', error);
+                document.getElementById('profile-content').innerHTML = 
+                    `<div class="error-message">
+                        <p><strong>Error loading profile:</strong> ${error.message}</p>
+                        <p>Please check your Participant ID and try again.</p>
+                        <button onclick="clearProfileCache()">Clear Cache & Retry</button>
+                    </div>`;
             }
         }
         
-        // -------------------- PAGE 8: DOWNLOAD --------------------
-        async function downloadDocument(type) {
-            const pid = document.getElementById('download-pid').value || currentParticipantId;
-            
-            if (!pid) {
-                alert('Please enter Participant ID');
+        // Helper functions
+        function downloadProfileQR(base64QR) {
+            if (!base64QR) {
+                alert('QR code not available for download');
                 return;
             }
             
-            try {
-                const data = await fetchAPI(`/participant/${pid}/qr-data`);
-                
-                if (type === 'qr' && data.qr_code) {
-                    const link = document.createElement('a');
-                    link.href = data.qr_code;
-                    link.download = `THREADS26_QR_${pid}.png`;
-                    link.click();
-                } else {
-                    alert('Document not available');
-                }
-            } catch (error) {
-                alert('Error downloading document: ' + error.message);
-            }
+            const link = document.createElement('a');
+            link.href = base64QR;
+            link.download = `THREADS26_EVENT_QR_${currentParticipantId}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        function showQRHelp() {
+            alert('How to use your QR code:\n\n' +
+                  '1. Save this QR code to your phone\n' +
+                  '2. Show it at the event registration desk\n' +
+                  '3. This QR code works for ALL your registered events\n' +
+                  '4. Keep it handy throughout the event');
+        }
+        
+        function refreshProfile() {
+            loadUserProfile();
+        }
+        
+        function clearProfileCache() {
+            localStorage.removeItem('threads26_participant_id');
+            localStorage.removeItem('threads26_qr_code');
+            currentParticipantId = null;
+            eventQRCode = null;
+            showPage('profile-page');
         }
         
         function resetRegistration() {
@@ -624,26 +674,34 @@ Note: THREADS26 Registration ${currentParticipantId}
             currentRegistrationIds = [];
             currentTotalAmount = 0;
             currentEventNames = [];
+            userProfile = null;
+            eventQRCode = null;
             
-            // Clear form selections
+            localStorage.removeItem('threads26_participant_id');
+            localStorage.removeItem('threads26_qr_code');
+            
             document.getElementById('workshop-selection').innerHTML = '';
             document.getElementById('event-selection').innerHTML = '';
             
             updateTotalAmount();
             showPage('home-page');
         }
+        
+        function logout() {
+            resetRegistration();
+            alert('Logged out successfully');
+        }
     </script>
 </head>
 <body>
     <!-- Navigation -->
-    <div style="background: #f0f0f0; padding: 10px; margin-bottom: 20px;">
+    <div class="navbar">
         <button onclick="showPage('home-page')">🏠 Home</button>
         <button onclick="navigateToEvents()">📅 Events</button>
         <button onclick="navigateToRegister()">📝 Register</button>
-        <button onclick="showPage('payment-page')">💳 Payment</button>
-        <button onclick="showPage('track-page')">🔍 Track</button>
-        <button onclick="showPage('status-page')">📊 Status</button>
-        <button onclick="resetRegistration()">🔄 Reset</button>
+        <button onclick="navigateToProfile()">👤 My Profile</button>
+        <button onclick="showPage('verify-page')">✅ Verify Payment</button>
+        <button onclick="logout()" style="margin-left: auto;">🚪 Logout</button>
     </div>
 
     <!-- PAGE 1: HOME -->
@@ -651,38 +709,37 @@ Note: THREADS26 Registration ${currentParticipantId}
         <h1>THREADS'26 - Participant Portal</h1>
         <div id="event-dates">Loading event dates...</div>
         
-        <h3>Quick Actions:</h3>
-        <table border="1">
-            <tr>
-                <td>
-                    <h4>🎯 Register for Events</h4>
-                    <p>Register for workshops and events</p>
-                    <button onclick="navigateToEvents()">Browse Events</button>
-                    <button onclick="navigateToRegister()">Register Now</button>
-                </td>
-                <td>
-                    <h4>🔍 Track Registration</h4>
-                    <p>Check your registration status</p>
-                    <input type="text" id="track-input" placeholder="Enter Registration ID">
-                    <button onclick="navigateToTrack()">Track</button>
-                </td>
-            </tr>
-            <tr>
-                <td>
-                    <h4>💳 Make Payment</h4>
-                    <p>Complete your payment</p>
-                    <button onclick="showPage('payment-page')">Payment Methods</button>
-                </td>
-                <td>
-                    <h4>✅ Verify Payment</h4>
-                    <p>Submit transaction details</p>
-                    <button onclick="showPage('verify-page')">Verify Payment</button>
-                </td>
-            </tr>
-        </table>
+        <div class="quick-actions">
+            <div class="action-card">
+                <h3>🎯 Register for Events</h3>
+                <p>Register for workshops and events</p>
+                <button onclick="navigateToEvents()">Browse Events</button>
+                <button onclick="navigateToRegister()">Register Now</button>
+            </div>
+            
+            <div class="action-card">
+                <h3>👤 My Profile</h3>
+                <p>View your registrations, payments, and QR codes</p>
+                <button onclick="navigateToProfile()">Go to My Profile</button>
+            </div>
+            
+            <div class="action-card">
+                <h3>💳 Make Payment</h3>
+                <p>Complete your payment</p>
+                <button onclick="showPage('payment-page')">Payment Methods</button>
+            </div>
+            
+            <div class="action-card">
+                <h3>✅ Verify Payment</h3>
+                <p>Submit transaction details</p>
+                <button onclick="showPage('verify-page')">Verify Payment</button>
+            </div>
+        </div>
         
-        <h3>Current Selection:</h3>
-        <div id="total-amount">No events selected</div>
+        <div class="current-selection">
+            <h3>Current Selection:</h3>
+            <div id="total-amount">No events selected</div>
+        </div>
     </div>
 
     <!-- PAGE 2: EVENTS -->
@@ -699,86 +756,89 @@ Note: THREADS26 Registration ${currentParticipantId}
         <button onclick="showPage('events-page')">← Back to Events</button>
         
         <form id="registration-form">
-            <h3>Personal Details</h3>
-            <table>
-                <tr>
-                    <td>Full Name*:</td>
-                    <td><input type="text" name="full_name" required size="30"></td>
-                </tr>
-                <tr>
-                    <td>Email*:</td>
-                    <td><input type="email" name="email" required size="30"></td>
-                </tr>
-                <tr>
-                    <td>Phone*:</td>
-                    <td><input type="tel" name="phone" required size="30"></td>
-                </tr>
-                <tr>
-                    <td>College Name*:</td>
-                    <td><input type="text" name="college_name" required size="30"></td>
-                </tr>
-                <tr>
-                    <td>Department*:</td>
-                    <td>
-                        <select name="department" required>
-                            <option value="">Select Department</option>
-                            <option value="CSE">Computer Science & Engineering</option>
-                            <option value="ECE">Electronics & Communication</option>
-                            <option value="EEE">Electrical & Electronics</option>
-                            <option value="MECH">Mechanical</option>
-                            <option value="OTH">Other</option>
-                        </select>
-                    </td>
-                </tr>
-                <tr>
-                    <td>Year of Study*:</td>
-                    <td>
-                        <select name="year_of_study" required>
-                            <option value="">Select Year</option>
-                            <option value="1">1st Year</option>
-                            <option value="2">2nd Year</option>
-                            <option value="3">3rd Year</option>
-                            <option value="4">4th Year</option>
-                        </select>
-                    </td>
-                </tr>
-                <tr>
-                    <td>City:</td>
-                    <td><input type="text" name="city" size="30"></td>
-                </tr>
-                <tr>
-                    <td>State:</td>
-                    <td><input type="text" name="state" size="30"></td>
-                </tr>
-                <tr>
-                    <td>Need Accommodation:</td>
-                    <td><input type="checkbox" name="accommodation_required"></td>
-                </tr>
-            </table>
+            <div class="form-section">
+                <h3>Personal Details</h3>
+                <table>
+                    <tr>
+                        <td>Full Name*:</td>
+                        <td><input type="text" name="full_name" required></td>
+                    </tr>
+                    <tr>
+                        <td>Email*:</td>
+                        <td><input type="email" name="email" required></td>
+                    </tr>
+                    <tr>
+                        <td>Phone*:</td>
+                        <td><input type="tel" name="phone" required></td>
+                    </tr>
+                    <tr>
+                        <td>College Name*:</td>
+                        <td><input type="text" name="college_name" required></td>
+                    </tr>
+                    <tr>
+                        <td>Department*:</td>
+                        <td>
+                            <select name="department" required>
+                                <option value="">Select Department</option>
+                                <option value="CSE">Computer Science & Engineering</option>
+                                <option value="ECE">Electronics & Communication</option>
+                                <option value="EEE">Electrical & Electronics</option>
+                                <option value="MECH">Mechanical</option>
+                                <option value="OTH">Other</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Year of Study*:</td>
+                        <td>
+                            <select name="year_of_study" required>
+                                <option value="">Select Year</option>
+                                <option value="1">1st Year</option>
+                                <option value="2">2nd Year</option>
+                                <option value="3">3rd Year</option>
+                                <option value="4">4th Year</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>City:</td>
+                        <td><input type="text" name="city"></td>
+                    </tr>
+                    <tr>
+                        <td>State:</td>
+                        <td><input type="text" name="state"></td>
+                    </tr>
+                    <tr>
+                        <td>Need Accommodation:</td>
+                        <td><input type="checkbox" name="accommodation_required"></td>
+                    </tr>
+                </table>
+            </div>
             
-            <h3>Selected Events:</h3>
-            <div id="total-amount">No events selected</div>
-            
-            <p>Day 1 Workshops (Select at least one):</p>
-            <select id="workshop-selection" multiple size="5" style="width: 100%;">
-                <!-- Options will be added by JavaScript -->
-            </select>
-            
-            <p>Day 2 Events (Select any):</p>
-            <select id="event-selection" multiple size="8" style="width: 100%;">
-                <!-- Options will be added by JavaScript -->
-            </select>
-            
-            <br><br>
-            <button type="button" onclick="removeSelectedEvents()">Remove Selected Events</button>
-            <button type="button" onclick="submitRegistration()">✅ Submit Registration</button>
+            <div class="form-section">
+                <h3>Selected Events:</h3>
+                <div id="total-amount">No events selected</div>
+                
+                <p>Day 1 Workshops (Select at least one):</p>
+                <select id="workshop-selection" multiple size="5" style="width: 100%;">
+                </select>
+                
+                <p>Day 2 Events (Select any):</p>
+                <select id="event-selection" multiple size="8" style="width: 100%;">
+                </select>
+                
+                <div class="form-actions">
+                    <button type="button" onclick="removeSelectedEvents()">Remove Selected Events</button>
+                    <button type="button" onclick="submitRegistration()">✅ Submit Registration</button>
+                </div>
+            </div>
         </form>
     </div>
 
     <!-- PAGE 4: PAYMENT -->
     <div id="payment-page" class="page" style="display: none;">
         <h2>💳 Make Payment</h2>
-        <button onclick="showPage('register-page')">← Back to Registration</button>
+        <button onclick="showPage('profile-page')">← Back to Profile</button>
         
         <div id="payment-details">
             <p>Please complete your registration first</p>
@@ -792,170 +852,345 @@ Note: THREADS26 Registration ${currentParticipantId}
     <!-- PAGE 5: VERIFY PAYMENT -->
     <div id="verify-page" class="page" style="display: none;">
         <h2>✅ Verify Payment</h2>
-        <button onclick="showPage('payment-page')">← Back to Payment</button>
+        <button onclick="showPage('profile-page')">← Back to Profile</button>
         
         <form id="verification-form">
-            <h3>Enter Payment Details</h3>
-            <table>
-                <tr>
-                    <td>Participant ID*:</td>
-                    <td><input type="text" name="participant_id" value="${currentParticipantId || ''}" required size="30"></td>
-                </tr>
-                <tr>
-                    <td>Transaction ID*:</td>
-                    <td><input type="text" name="transaction_id" required size="30" placeholder="e.g., UPIR123456789"></td>
-                </tr>
-                <tr>
-                    <td>Payment Reference:</td>
-                    <td><input type="text" name="payment_reference" value="THREADS26-${currentParticipantId || ''}" size="30"></td>
-                </tr>
-                <tr>
-                    <td>Payment Method:</td>
-                    <td>
-                        <select name="payment_method">
-                            <option value="UPI">UPI</option>
-                            <option value="Bank Transfer">Bank Transfer</option>
-                            <option value="Cash">Cash</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </td>
-                </tr>
-            </table>
-            
-            <br>
-            <button type="button" onclick="submitVerification()">✅ Submit Verification</button>
+            <div class="form-section">
+                <h3>Enter Payment Details</h3>
+                <table>
+                    <tr>
+                        <td>Participant ID*:</td>
+                        <td><input type="text" name="participant_id" value="${currentParticipantId || ''}" required></td>
+                    </tr>
+                    <tr>
+                        <td>Transaction ID*:</td>
+                        <td><input type="text" name="transaction_id" required placeholder="e.g., UPIR123456789"></td>
+                    </tr>
+                    <tr>
+                        <td>Payment Reference:</td>
+                        <td><input type="text" name="payment_reference" value="THREADS26-${currentParticipantId || ''}"></td>
+                    </tr>
+                    <tr>
+                        <td>Payment Method:</td>
+                        <td>
+                            <select name="payment_method">
+                                <option value="UPI">UPI</option>
+                                <option value="Bank Transfer">Bank Transfer</option>
+                                <option value="Cash">Cash</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </td>
+                    </tr>
+                </table>
+                
+                <div class="form-actions">
+                    <button type="button" onclick="submitVerification()">✅ Submit Verification</button>
+                </div>
+            </div>
         </form>
         
         <div id="verification-result"></div>
     </div>
 
-    <!-- PAGE 6: TRACK REGISTRATION -->
-    <div id="track-page" class="page" style="display: none;">
-        <h2>🔍 Track Registration</h2>
-        <button onclick="showPage('home-page')">← Back to Home</button>
-        
-        <div>
-            <input type="text" id="new-track-input" placeholder="Enter Registration ID" size="30">
-            <button onclick="loadRegistration(document.getElementById('new-track-input').value)">Track</button>
-        </div>
-        
-        <div id="tracking-result">
-            <p>Enter a registration ID to track your status</p>
-        </div>
-    </div>
-
-    <!-- PAGE 7: STATUS -->
-    <div id="status-page" class="page" style="display: none;">
-        <h2>📊 Registration Status</h2>
-        <button onclick="showPage('home-page')">← Back to Home</button>
-        
-        <div>
-            <input type="text" id="status-pid" placeholder="Enter Participant ID" size="30" value="${currentParticipantId || ''}">
-            <button onclick="loadStatus()">Check Status</button>
-        </div>
-        
-        <div id="status-details">
-            <p>Enter Participant ID and click "Check Status"</p>
-        </div>
-    </div>
-
-    <!-- PAGE 8: DOWNLOAD -->
-    <div id="download-page" class="page" style="display: none;">
-        <h2>📥 Download Documents</h2>
-        <button onclick="showPage('status-page')">← Back to Status</button>
-        
-        <div>
-            <h3>Available Downloads:</h3>
-            <table border="1">
-                <tr>
-                    <td>
-                        <h4>📱 Event QR Code</h4>
-                        <p>For event entry</p>
-                        <button onclick="downloadDocument('qr')">Download QR</button>
-                    </td>
-                </tr>
-            </table>
-            
-            <p>Participant ID: <input type="text" id="download-pid" placeholder="Enter Participant ID" size="30" value="${currentParticipantId || ''}"></p>
+    <!-- PAGE 6: MY PROFILE -->
+    <div id="profile-page" class="page" style="display: none;">
+        <div id="profile-content">
+            <p>Loading profile...</p>
         </div>
     </div>
 
     <!-- Footer -->
-    <div style="margin-top: 50px; border-top: 1px solid #ccc; padding: 10px; text-align: center;">
+    <div class="footer">
         <p>THREADS'26 - Department of Computer Science and Engineering</p>
         <p>📧 threads26@college.edu | 📱 9876543210 | 💳 UPI: 8807099288@upi</p>
         <p>Payment Reference Format: THREADS26-[Your Participant ID]</p>
     </div>
 
     <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        
         .page {
             padding: 20px;
-            max-width: 1000px;
+            max-width: 1200px;
             margin: 0 auto;
+            background-color: white;
+            min-height: calc(100vh - 160px);
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
         }
-        button {
+        
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 10px 20px;
+            display: flex;
+            gap: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .navbar button {
             padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .navbar button:hover {
+            background: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        button {
+            padding: 10px 20px;
             margin: 5px;
             cursor: pointer;
             background: #4CAF50;
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s ease;
         }
+        
         button:hover {
             background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
         }
+        
         input, select {
-            padding: 8px;
+            padding: 10px;
             margin: 5px 0;
-            border: 1px solid #ccc;
+            border: 1px solid #ddd;
             border-radius: 4px;
             font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
         }
+        
         table {
             border-collapse: collapse;
-            margin: 10px 0;
+            margin: 20px 0;
             width: 100%;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
+        
         td, th {
-            padding: 10px;
+            padding: 12px;
             border: 1px solid #ddd;
             text-align: left;
-            vertical-align: top;
         }
+        
         th {
-            background: #f2f2f2;
+            background: #f8f9fa;
             font-weight: bold;
         }
+        
         h1, h2, h3, h4 {
             color: #333;
             margin-top: 20px;
+            margin-bottom: 15px;
         }
-        textarea {
-            font-family: monospace;
-            padding: 10px;
-            border: 1px solid #ccc;
+        
+        h1 {
+            color: #4CAF50;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .action-card {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .action-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .event-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            background: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .seat-status {
+            padding: 3px 8px;
             border-radius: 4px;
-            resize: vertical;
+            font-size: 12px;
+            font-weight: bold;
         }
-        #total-amount {
-            padding: 10px;
+        
+        .seat-status.available {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .seat-status.limited {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        
+        .form-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .form-actions {
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .profile-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .verification-status {
+            text-align: center;
+        }
+        
+        .status-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            display: inline-block;
+            margin: 5px 0;
+        }
+        
+        .status-badge.verified {
+            background-color: #d4edda;
+            color: #155724;
+            border: 2px solid #155724;
+        }
+        
+        .status-badge.pending {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 2px solid #856404;
+        }
+        
+        .status-badge.paid {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .status-badge.attended {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .action-buttons {
+            text-align: center;
+        }
+        
+        .current-selection {
             background: #e7f3fe;
             border: 1px solid #2196F3;
-            border-radius: 4px;
-            margin: 10px 0;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
         }
+        
         #qr-code-container {
             text-align: center;
             margin: 20px 0;
             padding: 20px;
             background: white;
-            border: 1px solid #ccc;
+            border: 1px solid #ddd;
             border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
+        
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            border-top: 1px solid #ddd;
+            padding: 20px;
+            background: #f8f9fa;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .error-message {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #f5c6cb;
+            text-align: center;
+        }
+        
+        @media (max-width: 768px) {
+            .navbar {
+                flex-wrap: wrap;
+            }
+            
+            .profile-header {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            .verification-status {
+                margin-top: 20px;
+            }
+            
+            .quick-actions {
+                grid-template-columns: 1fr;
+            }
+            
+            table {
+                display: block;
+                overflow-x: auto;
+            }
+        }
+        
         select[multiple] {
             min-height: 120px;
+            background: white;
         }
     </style>
 </body>
