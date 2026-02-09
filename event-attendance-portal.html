@@ -20,6 +20,7 @@
 
             <div style="background:#f5f5f5; padding:15px; border-radius:5px;">
                 <h4>QR Code Scanner</h4>
+                <small style="color:#666;">Scan QR codes from Threads26 registration emails/confirmation.</small>
                 <div id="reader" style="width:100%;"></div>
                 <div style="margin-top:10px;">
                     <button onclick="startScanner()">Start Scanner</button>
@@ -118,14 +119,44 @@ async function onScanSuccess(decodedText) {
             .filter(Boolean);
     }
 
-    // ✅ CHECK LAST PART OF ID (AFTER LAST '-')
+    // Debug logging
+    console.log('Scanned text:', decodedText);
+    console.log('Parsed IDs:', scannedIds);
+    console.log('Current Event ID:', eventId);
+
+    // ✅ FIXED: Better validation for registration IDs
     const validIds = scannedIds.filter(id => {
-        const lastPart = id.split('-').pop();   // "1", "12"
-        return lastPart === String(eventId);    // eventId should be "1", "12"
+        try {
+            // Check if it's a Threads26 ID
+            const isThreadsId = id.startsWith('THREADS26-');
+            
+            if (!isThreadsId) return false;
+            
+            // Extract event ID from registration_unique_id format
+            // Format examples:
+            // - THREADS26-SONA-123-1 (SONACSE student for event 1)
+            // - THREADS26-OTHER-456-12 (Other college for event 12)
+            const parts = id.split('-');
+            
+            if (parts.length < 4) return false;
+            
+            const extractedEventId = parts[parts.length - 1];
+            
+            // Validate numeric event ID
+            if (!/^\d+$/.test(extractedEventId)) return false;
+            
+            return extractedEventId === String(eventId);
+            
+        } catch (error) {
+            console.log('Error parsing ID:', id, error);
+            return false;
+        }
     });
 
+    console.log('Valid IDs:', validIds);
+
     if (validIds.length === 0) {
-        scanDiv.innerHTML = '<p style="color:red">❌ Invalid QR (Event mismatch)</p>';
+        scanDiv.innerHTML = '<p style="color:red">❌ Invalid QR (Event mismatch or invalid format)</p>';
         setTimeout(startScanner, 1500);
         return;
     }
@@ -143,11 +174,32 @@ async function onScanSuccess(decodedText) {
         if (data.success) {
             p.style.color = 'green';
             p.textContent = `✅ ${id} - ${data.message}`;
+            if (data.participant) {
+                p.textContent += ` (${data.participant.full_name})`;
+            }
             const r = allRegistrations.find(x => x.registration_unique_id === id);
-            if (r) r.attendance_status = 'ATTENDED';
+            if (r) {
+                r.attendance_status = 'ATTENDED';
+                r.verification_status = data.payment_info?.admin_verified ? 'Verified' : 'Pending';
+            }
         } else {
             p.style.color = 'red';
             p.textContent = `❌ ${id} - ${data.message}`;
+            // Show backend error details
+            if (data.details) {
+                const details = document.createElement('div');
+                details.style.fontSize = '0.8em';
+                details.style.color = 'orange';
+                details.textContent = `Reason: ${data.details}`;
+                p.appendChild(details);
+            }
+            if (data.suggestion) {
+                const suggestion = document.createElement('div');
+                suggestion.style.fontSize = '0.8em';
+                suggestion.style.color = 'blue';
+                suggestion.textContent = `Suggestion: ${data.suggestion}`;
+                p.appendChild(suggestion);
+            }
         }
 
         scanDiv.appendChild(p);
@@ -162,53 +214,100 @@ async function onScanSuccess(decodedText) {
     }, 3000);
 }
 
-
 /* ---------------- DATA ---------------- */
 async function loadEventRegistrations() {
-    const res = await fetch(
-        `${BASE_URL}/api/admin/registrations?event_id=${eventId}`,
-        { headers: { 'x-admin-token': token } }
-    );
-    allRegistrations = await res.json();
-    displayRegistrations(allRegistrations);
-    updateStats();
+    try {
+        const res = await fetch(
+            `${BASE_URL}/api/admin/registrations?event_id=${eventId}`,
+            { headers: { 'x-admin-token': token } }
+        );
+        
+        if (!res.ok) {
+            throw new Error(`Failed to load registrations: ${res.status}`);
+        }
+        
+        allRegistrations = await res.json();
+        displayRegistrations(allRegistrations);
+        updateStats();
+    } catch (error) {
+        console.error('Error loading registrations:', error);
+        alert('Failed to load registrations. Please try again.');
+    }
 }
 
 function displayRegistrations(list) {
-    let html = `<table border="1" cellpadding="8" width="100%">
+    if (list.length === 0) {
+        document.getElementById('registrationsContainer').innerHTML = 
+            '<p style="color:#666; text-align:center;">No registrations found for this event.</p>';
+        return;
+    }
+
+    let html = `<table border="1" cellpadding="8" width="100%" style="border-collapse:collapse;">
+        <thead style="background-color:#f2f2f2;">
         <tr>
             <th>Name</th>
-            <th>ID</th>
+            <th>Registration ID</th>
             <th>College</th>
-            <th>Status</th>
+            <th>Event Type</th>
+            <th>Payment Status</th>
             <th>Admin Verified</th>
-        </tr>`;
+            <th>Attendance</th>
+        </tr>
+        </thead>
+        <tbody>`;
 
     list.forEach(r => {
-        html += `<tr>
-            <td>${r.full_name}</td>
-            <td>${r.registration_unique_id}</td>
-            <td>${r.college_name}</td>
-            <td>${r.attendance_status}</td>
-            <td>${r.verification_status}</td>
+        const isPresent = r.attendance_status === 'ATTENDED';
+        html += `<tr style="${isPresent ? 'background-color: #d4edda;' : 'background-color: #fff;'}">
+            <td><strong>${r.full_name || 'N/A'}</strong></td>
+            <td><small style="font-family:monospace;">${r.registration_unique_id || 'N/A'}</small></td>
+            <td>${r.college_name || 'N/A'}</td>
+            <td>${r.event_type || 'N/A'}</td>
+            <td>
+                <span style="padding:2px 8px; border-radius:3px; 
+                    background-color:${r.payment_status === 'Success' ? '#d4edda' : 
+                                     r.payment_status === 'Pending' ? '#fff3cd' : 
+                                     r.payment_status === 'Failed' ? '#f8d7da' : '#f2f2f2'};">
+                    ${r.payment_status || 'N/A'}
+                </span>
+            </td>
+            <td>
+                <span style="padding:2px 8px; border-radius:3px; 
+                    background-color:${r.verification_status === 'Verified' ? '#d4edda' : '#fff3cd'};">
+                    ${r.verification_status || 'Pending'}
+                </span>
+            </td>
+            <td>
+                <strong style="color:${isPresent ? '#155724' : '#721c24'};">
+                    ${r.attendance_status || 'PENDING'}
+                </strong>
+            </td>
         </tr>`;
     });
 
-    html += '</table>';
+    html += '</tbody></table>';
     document.getElementById('registrationsContainer').innerHTML = html;
 }
 
 function updateStats() {
     const total = allRegistrations.length;
     const present = allRegistrations.filter(r => r.attendance_status === 'ATTENDED').length;
+    const absent = total - present;
+    
     document.getElementById('totalRegistered').textContent = total;
     document.getElementById('presentCount').textContent = present;
-    document.getElementById('absentCount').textContent = total - present;
-    document.getElementById('attendancePercent').textContent =
-        total ? ((present / total) * 100).toFixed(1) + '%' : '0%';
+    document.getElementById('absentCount').textContent = absent;
+    
+    const percent = total ? ((present / total) * 100).toFixed(1) : 0;
+    document.getElementById('attendancePercent').textContent = `${percent}%`;
+    
+    // Update color based on attendance percentage
+    const percentSpan = document.getElementById('attendancePercent');
+    percentSpan.style.color = percent >= 80 ? '#155724' : 
+                              percent >= 50 ? '#856404' : '#721c24';
 }
 
-/* ---------------- SEARCH (ADDED) ---------------- */
+/* ---------------- SEARCH ---------------- */
 function filterRegistrations() {
     const q = document.getElementById('searchBox').value.toLowerCase().trim();
 
@@ -220,7 +319,8 @@ function filterRegistrations() {
     const filtered = allRegistrations.filter(r =>
         (r.full_name && r.full_name.toLowerCase().includes(q)) ||
         (r.registration_unique_id && r.registration_unique_id.toLowerCase().includes(q)) ||
-        (r.college_name && r.college_name.toLowerCase().includes(q))
+        (r.college_name && r.college_name.toLowerCase().includes(q)) ||
+        (r.email && r.email.toLowerCase().includes(q))
     );
 
     displayRegistrations(filtered);
@@ -228,8 +328,18 @@ function filterRegistrations() {
 
 /* ---------------- UTIL ---------------- */
 function refreshRegistrations() {
+    const searchBox = document.getElementById('searchBox');
+    searchBox.value = ''; // Clear search on refresh
     loadEventRegistrations();
 }
+
+// Handle page close/refresh
+window.addEventListener('beforeunload', () => {
+    if (scanning) {
+        stopScanner();
+    }
+});
+
 </script>
 
 </body>
