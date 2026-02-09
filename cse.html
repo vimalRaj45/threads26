@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SONACSE Student Registration - THREADS'26</title>
+    <style>
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .sonacse-badge { background: linear-gradient(45deg, #FFD700, #FFA500); color: #000; }
+        .form-card { box-shadow: 0 10px 40px rgba(0,0,0,0.1); transition: all 0.3s ease; }
+        .form-card:hover { box-shadow: 0 15px 50px rgba(0,0,0,0.15); }
+        .card-hover:hover { transform: translateY(-5px); transition: transform 0.3s ease; }
+        .event-free-badge { background: linear-gradient(45deg, #10b981, #34d399); }
+        .workshop-paid-badge { background: linear-gradient(45deg, #3b82f6, #60a5fa); }
+        .sold-out-badge { background: linear-gradient(45deg, #dc2626, #ef4444); }
+        .limited-seats-badge { background: linear-gradient(45deg, #f59e0b, #fbbf24); }
+        .cse-seat-indicator { border-left: 4px solid #f59e0b; background-color: #fffbeb; }
+        .bg-purple { background-color: #8b5cf6 !important; }
+        .bg-pink { background-color: #ec4899 !important; }
+        .cursor-pointer { cursor: pointer; }
+        .payment-pending { background: linear-gradient(45deg, #f59e0b, #fbbf24); }
+        .payment-verified { background: linear-gradient(45deg, #10b981, #34d399); }
+    </style>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+</head>
+<body class="bg-light">
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg gradient-bg text-white">
+        <div class="container">
+            <a class="navbar-brand text-white d-flex align-items-center" href="#">
+                <i class="fas fa-graduation-cap fa-2x me-3"></i>
+                <div>
+                    <h4 class="mb-0 fw-bold">THREADS'26</h4>
+                    <small class="opacity-90">Technical Festival</small>
+                </div>
+            </a>
+            <div>
+                <span class="sonacse-badge px-3 py-2 rounded-pill fw-bold">
+                    <i class="fas fa-crown me-2"></i> SONACSE STUDENTS
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-lg-10">
+                <!-- Header -->
+                <div class="text-center mb-5">
+                    <h1 class="fw-bold text-dark mb-3">SONACSE Student Registration</h1>
+                    <p class="lead text-muted mb-4">
+                        Exclusive registration portal for SONACSE members. Events are <span class="fw-bold text-success">FREE</span> for SONACSE students!
+                    </p>
+                    <div class="alert alert-warning text-start mx-auto" style="max-width: 800px;">
+                        <div class="d-flex">
+                            <i class="fas fa-star text-warning mt-1 me-3"></i>
+                            <div>
+                                <h6 class="fw-bold text-warning mb-2">Benefits:</h6>
+                                <ul class="mb-0">
+                                    <li>Events are completely FREE for SONACSE students</li>
+                                    <li>Automatic confirmation for events (no payment needed)</li>
+                                    <li>Priority CSE seats reserved for you</li>
+                                    <li>Workshops available at regular rates</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form -->
+                <div class="card form-card border-0 mb-5">
+                    <div class="card-body p-4 p-md-5">
+                        <form id="sonacseRegistrationForm">
+                            <!-- Personal Details Section -->
+                            <div class="mb-5">
+                                <h3 class="text-dark mb-4 border-bottom pb-3">
+                                    <i class="fas fa-user-circle me-2"></i>Personal Details
+                                </h3>
+                                
+                                <!-- SONACSE Roll Number -->
+                                <div class="mb-4">
+                                    <label class="form-label fw-bold" for="roll_number">
+                                        SONACSE Roll Number <span class="text-danger">*</span>
+                                    </label>
+                                    <div class="input-group">
+                                        <input 
+                                            type="text" 
+                                            id="roll_number" 
+                                            name="roll_number" 
+                                            placeholder="e.g., 22CSE001" 
+                                            required
+                                            class="form-control form-control-lg"
+                                            pattern="^\d{2}CSE\d{3}$"
+                                            title="Format: YYCSEXXX (e.g., 22CSE001)"
+                                        >
+                                        <span class="input-group-text">
+                                            <i class="fas fa-id-card"></i>
+                                        </span>
+                                    </div>
+                                    <div class="form-text">Your SONACSE roll number (e.g., 22CSE001, 21CSE005)</div>
+                                </div>
+
+                                <div class="row g-4 mb-4">
+                                    <!-- Full Name -->
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold" for="full_name">
+                                            Full Name <span class="text-danger">*</span>
+                                        </label>
+                                        <input 
+                                            type="text" 
+                                            id="full_name" 
+                                            name="full_name" 
+                                            required
+                                            class="form-control"
+                                            placeholder="John Doe"
+                                        >
+                                    </div>
+
+                                    <!-- Email -->
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold" for="email">
+                                            Email Address <span class="text-danger">*</span>
+                                        </label>
+                                        <input 
+                                            type="email" 
+                                            id="email" 
+                                            name="email" 
+                                            required
+                                            class="form-control"
+                                            placeholder="john@example.com"
+                                        >
+                                    </div>
+
+                                    <!-- Phone -->
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold" for="phone">
+                                            Phone Number <span class="text-danger">*</span>
+                                        </label>
+                                        <input 
+                                            type="tel" 
+                                            id="phone" 
+                                            name="phone" 
+                                            required
+                                            class="form-control"
+                                            placeholder="9876543210"
+                                            pattern="[0-9]{10}"
+                                            title="10 digit phone number"
+                                        >
+                                    </div>
+
+                                    <!-- Year of Study -->
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold" for="year_of_study">
+                                            Year of Study <span class="text-danger">*</span>
+                                        </label>
+                                        <select 
+                                            id="year_of_study" 
+                                            name="year_of_study" 
+                                            required
+                                            class="form-select"
+                                        >
+                                            <option value="">Select Year</option>
+                                            <option value="1">First Year</option>
+                                            <option value="2">Second Year</option>
+                                            <option value="3">Third Year</option>
+                                            <option value="4">Fourth Year</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- City -->
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold" for="city">
+                                            City
+                                        </label>
+                                        <input 
+                                            type="text" 
+                                            id="city" 
+                                            name="city"
+                                            class="form-control"
+                                            placeholder="Chennai"
+                                            value="Chennai"
+                                        >
+                                    </div>
+
+                                    <!-- State -->
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold" for="state">
+                                            State
+                                        </label>
+                                        <input 
+                                            type="text" 
+                                            id="state" 
+                                            name="state"
+                                            class="form-control"
+                                            placeholder="Tamil Nadu"
+                                            value="Tamil Nadu"
+                                        >
+                                    </div>
+                                </div>
+
+                                <!-- Note: College and Department are fixed for SONACSE -->
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    <strong>College:</strong> Saveetha Engineering College (SONACSE) | 
+                                    <strong>Department:</strong> CSE (Computer Science & Engineering)
+                                </div>
+                            </div>
+
+                            <!-- Events & Workshops Section -->
+                            <div class="mb-5">
+                                <h3 class="text-dark mb-4 border-bottom pb-3">
+                                    <i class="fas fa-calendar-alt me-2"></i>Events & Workshops Selection
+                                </h3>
+                                
+                                <!-- Note about SONACSE benefits -->
+                                <div class="alert alert-success mb-4">
+                                    <div class="d-flex">
+                                        <i class="fas fa-gift text-success mt-1 me-3"></i>
+                                        <div>
+                                            <h6 class="fw-bold text-success mb-2">SONACSE Benefit:</h6>
+                                            <p class="mb-0">All events are <span class="fw-bold">FREE</span> for SONACSE students! Workshops require payment verification.</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Workshops -->
+                                <div class="mb-5">
+                                    <h4 class="text-dark mb-4">
+                                        <i class="fas fa-laptop-code me-2"></i> Workshops (Require Payment)
+                                    </h4>
+                                    <div class="row g-4" id="workshops-container">
+                                        <div class="col-12 text-center py-5">
+                                            <div class="spinner-border text-primary" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <p class="text-muted mt-3">Loading workshops...</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Events -->
+                                <div>
+                                    <h4 class="text-dark mb-4">
+                                        <i class="fas fa-trophy me-2"></i> Events (FREE for SONACSE)
+                                    </h4>
+                                    <div class="row g-4" id="events-container">
+                                        <div class="col-12 text-center py-5">
+                                            <div class="spinner-border text-success" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <p class="text-muted mt-3">Loading events...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Submit Button -->
+                            <div class="text-center">
+                                <button 
+                                    type="submit" 
+                                    id="submitBtn"
+                                    class="btn gradient-bg text-white btn-lg px-5 py-3 fw-bold"
+                                >
+                                    <i class="fas fa-paper-plane me-2"></i> Register as SONACSE Student
+                                </button>
+                                <p class="text-muted mt-3 small">
+                                    By registering, you agree to the event terms and conditions
+                                </p>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Footer Note -->
+                <div class="text-center text-muted small">
+                    <p>Having issues with registration? Contact SONACSE team lead</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+
+    <script>
+        // Frontend JavaScript code
+        const BASE_URL = 'https://threads26-2-fdem.onrender.com';
+        let currentRegistrationData = null;
+        
+        async function loadEvents() {
+            try {
+                const response = await fetch(`${BASE_URL}/api/events`);
+                if (!response.ok) throw new Error('Failed to load events');
+                
+                const data = await response.json();
+                
+                if (data.events && Array.isArray(data.events)) {
+                    const workshops = data.events.filter(e => e.event_type === 'workshop');
+                    const events = data.events.filter(e => e.event_type !== 'workshop');
+                    
+                    displayWorkshops(workshops);
+                    displayEvents(events);
+                    
+                    if (data.registration_open === false) {
+                        const submitBtn = document.getElementById('submitBtn');
+                        submitBtn.disabled = true;
+                        submitBtn.innerHTML = '<i class="fas fa-lock me-2"></i> Registration Closed';
+                        submitBtn.classList.remove('gradient-bg');
+                        submitBtn.classList.add('btn-secondary');
+                        
+                        Swal.fire({
+                            icon: 'warning',
+                            title: 'Registration Closed',
+                            text: 'Registration period has ended. Please contact organizers.',
+                            confirmButtonColor: '#dc2626',
+                            confirmButtonText: 'OK'
+                        });
+                    }
+                } else {
+                    throw new Error('Invalid events data received');
+                }
+            } catch (error) {
+                console.error('Error loading events:', error);
+                
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Failed to Load Events',
+                    text: 'Please refresh the page to try again.',
+                    confirmButtonColor: '#dc2626',
+                    confirmButtonText: 'Refresh',
+                    showCancelButton: true,
+                    cancelButtonText: 'Cancel'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        loadEvents();
+                    }
+                });
+                
+                document.getElementById('workshops-container').innerHTML = 
+                    '<div class="col-12"><div class="alert alert-danger">Failed to load workshops. Please refresh.</div></div>';
+                document.getElementById('events-container').innerHTML = 
+                    '<div class="col-12"><div class="alert alert-danger">Failed to load events. Please refresh.</div></div>';
+            }
+        }
+        
+        function displayWorkshops(workshops) {
+            const container = document.getElementById('workshops-container');
+            if (workshops.length === 0) {
+                container.innerHTML = '<div class="col-12"><p class="text-muted text-center py-4">No workshops available at the moment.</p></div>';
+                return;
+            }
+            
+            container.innerHTML = workshops.map(workshop => {
+                let seatStatus = 'Available';
+                if (workshop.available_seats === 0) {
+                    seatStatus = 'Sold Out';
+                } else if (workshop.available_seats <= 5) {
+                    seatStatus = 'Limited Seats';
+                }
+                
+                let seatBadgeClass = 'badge bg-primary';
+                if (seatStatus === 'Sold Out') {
+                    seatBadgeClass = 'badge sold-out-badge text-white';
+                } else if (seatStatus === 'Limited Seats') {
+                    seatBadgeClass = 'badge limited-seats-badge text-dark';
+                }
+                
+                const isDisabled = workshop.available_seats === 0;
+                
+                return `
+                    <div class="col-lg-6 mb-4">
+                        <div class="card h-100 border card-hover ${isDisabled ? 'opacity-75' : ''}">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start mb-3">
+                                    <h5 class="card-title fw-bold">${workshop.event_name}</h5>
+                                    <div class="text-end">
+                                        <span class="${seatBadgeClass} mb-1">${seatStatus}</span>
+                                        <div class="badge workshop-paid-badge text-white">₹${parseFloat(workshop.fee).toFixed(2)}</div>
+                                    </div>
+                                </div>
+                                
+                                ${workshop.description ? `<p class="card-text text-muted mb-3">${workshop.description}</p>` : ''}
+                                
+                                <div class="row g-2 mb-3">
+                                    ${workshop.duration ? `
+                                        <div class="col-auto">
+                                            <small class="text-muted"><i class="far fa-clock me-1"></i> ${workshop.duration}</small>
+                                        </div>
+                                    ` : ''}
+                                    ${workshop.speaker ? `
+                                        <div class="col-auto">
+                                            <small class="text-muted"><i class="fas fa-chalkboard-teacher me-1"></i> ${workshop.speaker}</small>
+                                        </div>
+                                    ` : ''}
+                                    <div class="col-auto">
+                                        <small class="text-muted"><i class="fas fa-calendar-day me-1"></i> Day ${workshop.day}</small>
+                                    </div>
+                                    <div class="col-auto">
+                                        <small class="text-muted"><i class="fas fa-users me-1"></i> ${workshop.available_seats}/${workshop.total_seats} seats</small>
+                                    </div>
+                                </div>
+                                
+                                <div class="cse-seat-indicator p-2 rounded mb-3">
+                                    <small class="text-dark"><i class="fas fa-crown me-1"></i> CSE seats: ${workshop.cse_available_seats || 0}/${workshop.cse_seats || 0} available</small>
+                                </div>
+                                
+                                <div class="form-check">
+                                    <input 
+                                        type="checkbox" 
+                                        class="form-check-input workshop-checkbox" 
+                                        value="${workshop.event_id}"
+                                        data-fee="${workshop.fee}"
+                                        data-name="${workshop.event_name}"
+                                        ${isDisabled ? 'disabled' : ''}
+                                        id="workshop-${workshop.event_id}"
+                                    >
+                                    <label class="form-check-label ${isDisabled ? 'text-muted' : ''}" for="workshop-${workshop.event_id}">
+                                        ${isDisabled ? 'Sold Out' : 'Select this workshop'}
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function displayEvents(events) {
+            const container = document.getElementById('events-container');
+            if (events.length === 0) {
+                container.innerHTML = '<div class="col-12"><p class="text-muted text-center py-4">No events available at the moment.</p></div>';
+                return;
+            }
+            
+            container.innerHTML = events.map(event => {
+                let seatStatus = 'Available';
+                if (event.available_seats === 0) {
+                    seatStatus = 'Sold Out';
+                } else if (event.available_seats <= 5) {
+                    seatStatus = 'Limited Seats';
+                }
+                
+                let seatBadgeClass = 'badge bg-success';
+                if (seatStatus === 'Sold Out') {
+                    seatBadgeClass = 'badge sold-out-badge text-white';
+                } else if (seatStatus === 'Limited Seats') {
+                    seatBadgeClass = 'badge limited-seats-badge text-dark';
+                }
+                
+                let eventTypeClass = 'badge bg-secondary';
+                let eventTypeText = event.event_type;
+                
+                if (event.event_type === 'technical') {
+                    eventTypeClass = 'badge bg-purple text-white';
+                } else if (event.event_type === 'non-technical') {
+                    eventTypeClass = 'badge bg-pink text-white';
+                }
+                
+                const isDisabled = event.available_seats === 0;
+                
+                return `
+                    <div class="col-lg-4 col-md-6 mb-4">
+                        <div class="card h-100 border card-hover ${isDisabled ? 'opacity-75' : ''}">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start mb-3">
+                                    <h6 class="card-title fw-bold mb-0">${event.event_name}</h6>
+                                    <div class="text-end">
+                                        <span class="${eventTypeClass} mb-1">${eventTypeText}</span>
+                                        <div>
+                                            <span class="${seatBadgeClass} mb-1 me-1">${seatStatus}</span>
+                                            <span class="badge event-free-badge text-white">FREE</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                ${event.description ? `<p class="card-text text-muted small mb-3">${event.description}</p>` : ''}
+                                
+                                <div class="row g-2 mb-3">
+                                    ${event.duration ? `
+                                        <div class="col-auto">
+                                            <small class="text-muted"><i class="far fa-clock me-1"></i> ${event.duration}</small>
+                                        </div>
+                                    ` : ''}
+                                    ${event.speaker ? `
+                                        <div class="col-auto">
+                                            <small class="text-muted"><i class="fas fa-chalkboard-teacher me-1"></i> ${event.speaker}</small>
+                                        </div>
+                                    ` : ''}
+                                    <div class="col-auto">
+                                        <small class="text-muted"><i class="fas fa-calendar-day me-1"></i> Day ${event.day}</small>
+                                    </div>
+                                    <div class="col-auto">
+                                        <small class="text-muted"><i class="fas fa-users me-1"></i> ${event.available_seats}/${event.total_seats} seats</small>
+                                    </div>
+                                </div>
+                                
+                                <div class="cse-seat-indicator p-2 rounded mb-3">
+                                    <small class="text-dark"><i class="fas fa-crown me-1"></i> CSE seats: ${event.cse_available_seats || 0}/${event.cse_seats || 0} available</small>
+                                </div>
+                                
+                                <div class="form-check">
+                                    <input 
+                                        type="checkbox" 
+                                        class="form-check-input event-checkbox" 
+                                        value="${event.event_id}"
+                                        data-name="${event.event_name}"
+                                        ${isDisabled ? 'disabled' : ''}
+                                        id="event-${event.event_id}"
+                                    >
+                                    <label class="form-check-label ${isDisabled ? 'text-muted' : ''}" for="event-${event.event_id}">
+                                        ${isDisabled ? 'Sold Out' : 'Select this event'}
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Form submission
+        document.getElementById('sonacseRegistrationForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const originalBtnText = submitBtn.innerHTML;
+            
+            const workshopSelections = Array.from(document.querySelectorAll('.workshop-checkbox:checked'))
+                .map(cb => cb.value);
+            const eventSelections = Array.from(document.querySelectorAll('.event-checkbox:checked'))
+                .map(cb => cb.value);
+            
+            if (workshopSelections.length === 0 && eventSelections.length === 0) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Selection Required',
+                    text: 'Please select at least one workshop or event.',
+                    confirmButtonColor: '#3b82f6',
+                    confirmButtonText: 'OK'
+                });
+                return;
+            }
+            
+            const formData = {
+                roll_number: document.getElementById('roll_number').value.trim().toUpperCase(),
+                full_name: document.getElementById('full_name').value.trim(),
+                email: document.getElementById('email').value.trim(),
+                phone: document.getElementById('phone').value.trim(),
+                year_of_study: document.getElementById('year_of_study').value,
+                city: document.getElementById('city').value.trim(),
+                state: document.getElementById('state').value.trim(),
+                accommodation_required: false, // Default for SONACSE
+                workshop_selections: workshopSelections,
+                event_selections: eventSelections
+            };
+            
+            const sonacseId = formData.roll_number;
+            if (!/^\d{2}CSE\d{3}$/.test(sonacseId)) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Invalid SONACSE Roll Number',
+                    text: 'SONACSE Roll Number must be in format: YYCSEXXX (e.g., 22CSE001)',
+                    confirmButtonColor: '#dc2626',
+                    confirmButtonText: 'OK'
+                });
+                submitBtn.innerHTML = originalBtnText;
+                submitBtn.disabled = false;
+                return;
+            }
+            
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Registering...';
+            submitBtn.disabled = true;
+            
+            try {
+                const response = await fetch(`${BASE_URL}/api/sonacse/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    currentRegistrationData = data;
+                    
+                    if (data.registration_type === 'EVENTS_ONLY_FREE' || !data.payment?.required) {
+                        // EVENTS ONLY - FREE
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Registration Successful!',
+                            html: `
+                                <div class="text-start">
+                                    <p class="mb-2"><i class="fas fa-check-circle text-success me-2"></i><strong>Name:</strong> ${data.participant_details?.participant_name}</p>
+                                    <p class="mb-2"><i class="fas fa-crown text-warning me-2"></i><strong>SONACSE Roll:</strong> ${data.participant_details?.roll_number}</p>
+                                    <p class="mb-2"><i class="fas fa-id-card text-primary me-2"></i><strong>Participant ID:</strong> ${data.participant_details?.participant_id}</p>
+                                    <p class="mb-2"><i class="fas fa-calendar-check text-success me-2"></i><strong>Events Registered:</strong> ${data.registrations?.events?.length || 0}</p>
+                                    <div class="alert alert-success mt-3 mb-0">
+                                        <i class="fas fa-gift me-2"></i>All events confirmed - No payment required!
+                                    </div>
+                                </div>
+                            `,
+                            confirmButtonColor: '#10b981',
+                            confirmButtonText: 'Generate QR Code',
+                            showCancelButton: true,
+                            cancelButtonText: 'Close',
+                            width: 500
+                        }).then((result) => {
+                            if (result.isConfirmed) {
+                                showQRCode(data);
+                            }
+                            document.getElementById('sonacseRegistrationForm').reset();
+                        });
+                    } else {
+                        // WITH WORKSHOPS - NEEDS PAYMENT
+                        Swal.fire({
+                            icon: 'info',
+                            title: 'Payment Required for Workshops',
+                            html: `
+                                <div class="text-start">
+                                    <p class="mb-2"><i class="fas fa-check-circle text-success me-2"></i><strong>Name:</strong> ${data.participant_details?.participant_name}</p>
+                                    <p class="mb-2"><i class="fas fa-crown text-warning me-2"></i><strong>SONACSE Roll:</strong> ${data.participant_details?.roll_number}</p>
+                                    <p class="mb-2"><i class="fas fa-id-card text-primary me-2"></i><strong>Participant ID:</strong> ${data.participant_details?.participant_id}</p>
+                                    <p class="mb-2"><i class="fas fa-calendar-check text-success me-2"></i><strong>Events:</strong> ${data.registrations?.events?.length || 0} confirmed (FREE)</p>
+                                    <p class="mb-2"><i class="fas fa-laptop-code text-primary me-2"></i><strong>Workshops:</strong> ${data.registrations?.workshops?.length || 0} selected</p>
+                                    <p class="mb-2"><i class="fas fa-rupee-sign text-warning me-2"></i><strong>Total Amount:</strong> ₹${data.payment?.amount || 0}</p>
+                                    <p class="mb-2"><i class="fas fa-hashtag text-info me-2"></i><strong>Payment Reference:</strong> ${data.payment?.payment_reference}</p>
+                                    <div class="alert alert-info mt-3 mb-0">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        Complete payment for workshops to confirm your registration.
+                                    </div>
+                                </div>
+                            `,
+                            confirmButtonColor: '#3b82f6',
+                            confirmButtonText: 'Verify Payment Now',
+                            showCancelButton: true,
+                            cancelButtonText: 'Verify Later',
+                            showDenyButton: true,
+                            denyButtonText: 'Copy Payment Details',
+                            denyButtonColor: '#f59e0b',
+                            width: 500
+                        }).then((result) => {
+                            if (result.isConfirmed) {
+                                showPaymentForm(data);
+                            } else if (result.isDenied) {
+                                const paymentDetails = `Payment Reference: ${data.payment?.payment_reference}\nAmount: ₹${data.payment?.amount}\nUPI ID: ${data.payment_options?.upi_id || 'threads26@okaxis'}\nParticipant ID: ${data.participant_details?.participant_id}`;
+                                navigator.clipboard.writeText(paymentDetails).then(() => {
+                                    Swal.fire({
+                                        icon: 'success',
+                                        title: 'Copied!',
+                                        text: 'Payment details copied to clipboard',
+                                        confirmButtonColor: '#10b981',
+                                        confirmButtonText: 'OK',
+                                        timer: 1500
+                                    }).then(() => {
+                                        showPaymentForm(data);
+                                    });
+                                });
+                            }
+                            document.getElementById('sonacseRegistrationForm').reset();
+                        });
+                    }
+                } else {
+                    let errorMsg = data.message || 'Registration failed';
+                    let errorDetails = data.details || '';
+                    let suggestion = data.suggestion || 'Please try again.';
+                    
+                    if (errorMsg.includes('INVALID_SONACSE_ROLL')) {
+                        errorMsg = 'Invalid SONACSE Roll Number';
+                        errorDetails = 'Only SONACSE students can use this registration portal';
+                        suggestion = 'Please use the regular registration portal';
+                    } else if (errorMsg.includes('EMAIL_EXISTS')) {
+                        errorMsg = 'Email Already Registered';
+                        suggestion = 'Please use a different email address';
+                    } else if (errorMsg.includes('SEAT_UNAVAILABLE')) {
+                        errorMsg = 'Seats Not Available';
+                        suggestion = 'Please select different events/workshops';
+                    } else if (errorMsg.includes('SONACSE_SEATS_FULL')) {
+                        errorMsg = 'CSE Seats Full';
+                        suggestion = 'CSE seats are full. Please select different events or contact organizers.';
+                    } else if (errorMsg.includes('GENERAL_SEATS_FULL')) {
+                        errorMsg = 'General Seats Full';
+                        suggestion = 'General seats are full. Please select different events.';
+                    }
+                    
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Registration Failed',
+                        html: `
+                            <div class="text-start">
+                                <p class="mb-2"><strong>Error:</strong> ${errorMsg}</p>
+                                ${errorDetails ? `<p class="mb-2">${errorDetails}</p>` : ''}
+                                <p class="text-primary">${suggestion}</p>
+                            </div>
+                        `,
+                        confirmButtonColor: '#dc2626',
+                        confirmButtonText: 'OK',
+                        width: 500
+                    });
+                }
+            } catch (error) {
+                console.error('Registration error:', error);
+                
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Network Error',
+                    text: 'Please check your connection and try again.',
+                    confirmButtonColor: '#dc2626',
+                    confirmButtonText: 'OK'
+                });
+            } finally {
+                submitBtn.innerHTML = originalBtnText;
+                submitBtn.disabled = false;
+            }
+        });
+        
+        function showPaymentForm(data) {
+            Swal.fire({
+                title: 'Verify Workshop Payment',
+                html: `
+                    <div class="text-start">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Payment Details</label>
+                            <div class="card bg-light p-3">
+                                <p class="mb-1"><strong>Participant ID:</strong> ${data.participant_details?.participant_id}</p>
+                                <p class="mb-1"><strong>Amount to Pay:</strong> ₹${data.payment?.amount || 0}</p>
+                                <p class="mb-1"><strong>Payment Reference:</strong> ${data.payment?.payment_reference}</p>
+                                <p class="mb-1"><strong>UPI ID:</strong> ${data.payment_options?.upi_id || 'threads26@okaxis'}</p>
+                                <p class="mb-0 text-muted small">Complete payment and enter transaction details below</p>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold" for="swal-transaction-id">Transaction ID *</label>
+                            <input type="text" id="swal-transaction-id" class="form-control" placeholder="Enter UPI/Transaction ID" required>
+                            <div class="form-text">Transaction ID from your payment (minimum 5 characters)</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold" for="swal-payment-reference">Payment Reference</label>
+                            <input type="text" id="swal-payment-reference" class="form-control" placeholder="Optional payment reference" value="${data.payment?.payment_reference}">
+                            <div class="form-text">Optional: Additional payment reference or note</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold" for="swal-payment-method">Payment Method</label>
+                            <select id="swal-payment-method" class="form-select">
+                                <option value="UPI">UPI</option>
+                                <option value="Cash">Cash</option>
+                                <option value="Card">Card</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        
+                        <input type="hidden" id="swal-participant-id" value="${data.participant_details?.participant_id}">
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Verify Payment',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#10b981',
+                cancelButtonColor: '#6c757d',
+                width: 500,
+                preConfirm: () => {
+                    const transactionId = document.getElementById('swal-transaction-id').value.trim();
+                    if (!transactionId) {
+                        Swal.showValidationMessage('Please enter Transaction ID');
+                        return false;
+                    }
+                    if (transactionId.length < 5) {
+                        Swal.showValidationMessage('Transaction ID must be at least 5 characters');
+                        return false;
+                    }
+                    return {
+                        participant_id: document.getElementById('swal-participant-id').value,
+                        transaction_id: transactionId,
+                        payment_reference: document.getElementById('swal-payment-reference').value.trim(),
+                        payment_method: document.getElementById('swal-payment-method').value
+                    };
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    verifySONACSEPayment(result.value);
+                }
+            });
+        }
+        
+        async function verifySONACSEPayment(paymentDetails) {
+            Swal.fire({
+                title: 'Verifying Payment...',
+                text: 'Please wait while we verify your workshop payment.',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+            
+            try {
+                const response = await fetch(`${BASE_URL}/api/sonacse/verify-payment`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(paymentDetails)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    Swal.close();
+                    
+                    currentRegistrationData = {
+                        ...currentRegistrationData,
+                        ...data
+                    };
+                    
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Payment Verified Successfully!',
+                        html: `
+                            <div class="text-start">
+                                <p class="mb-2"><i class="fas fa-check-circle text-success me-2"></i><strong>Name:</strong> ${data.participant_details?.participant_name}</p>
+                                <p class="mb-2"><i class="fas fa-id-card text-primary me-2"></i><strong>Participant ID:</strong> ${data.participant_details?.participant_id}</p>
+                                <p class="mb-2"><i class="fas fa-rupee-sign text-warning me-2"></i><strong>Amount Paid:</strong> ₹${data.payment_details?.amount || 0}</p>
+                                <p class="mb-2"><i class="fas fa-check-circle text-success me-2"></i><strong>Transaction ID:</strong> ${data.payment_details?.transaction_id}</p>
+                                <p class="mb-2"><i class="fas fa-check-circle text-success me-2"></i><strong>Events:</strong> ${data.registrations?.events?.length || 0} confirmed (Free)</p>
+                                <p class="mb-2"><i class="fas fa-check-circle text-success me-2"></i><strong>Workshops:</strong> ${data.registrations?.workshops?.length || 0} confirmed (Paid)</p>
+                                <div class="alert alert-success mt-3 mb-0">
+                                    <i class="fas fa-trophy me-2"></i>Your registration is now complete!
+                                </div>
+                            </div>
+                        `,
+                        confirmButtonColor: '#10b981',
+                        confirmButtonText: 'Show QR Code',
+                        showCancelButton: true,
+                        cancelButtonText: 'Close',
+                        width: 500
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            showQRCode(data);
+                        }
+                    });
+                } else {
+                    let errorMsg = data.message || 'Payment verification failed';
+                    let errorDetails = data.details || '';
+                    let suggestion = data.suggestion || 'Please try again.';
+                    
+                    if (errorMsg.includes('NO_PENDING_WORKSHOPS')) {
+                        errorMsg = 'No Workshops Selected';
+                        suggestion = 'You have no workshops to verify. Check your registration.';
+                    } else if (errorMsg.includes('SONACSE_WORKSHOP_SEATS_FULL')) {
+                        errorMsg = 'CSE Seats Filled Before Payment';
+                        suggestion = 'CSE seats filled before payment completion. Contact organizers for assistance.';
+                    } else if (errorMsg.includes('TRANSACTION_ALREADY_USED')) {
+                        errorMsg = 'Transaction ID Already Used';
+                        suggestion = 'Please use a different transaction ID.';
+                    }
+                    
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Payment Verification Failed',
+                        html: `
+                            <div class="text-start">
+                                <p class="mb-2"><strong>Error:</strong> ${errorMsg}</p>
+                                ${errorDetails ? `<p class="mb-2">${errorDetails}</p>` : ''}
+                                <p class="text-primary">${suggestion}</p>
+                            </div>
+                        `,
+                        confirmButtonColor: '#dc2626',
+                        confirmButtonText: 'OK',
+                        width: 500
+                    });
+                }
+            } catch (error) {
+                console.error('Payment verification error:', error);
+                
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Network Error',
+                    text: 'Please check your connection and try again.',
+                    confirmButtonColor: '#dc2626',
+                    confirmButtonText: 'OK'
+                });
+            }
+        }
+        
+        function showQRCode(data) {
+            let qrImage = '';
+            let qrPayload = '';
+            
+            if (data.qr_code) {
+                qrImage = `<img src="${data.qr_code}" alt="QR Code" class="img-fluid mb-3" style="max-width: 250px;">`;
+                qrPayload = `<p class="text-muted small">Scan this QR code at the event venue</p>`;
+            } else if (data.participant_id) {
+                const qrData = {
+                    participant_id: data.participant_details?.participant_id,
+                    participant_name: data.participant_details?.participant_name,
+                    registration_ids: data.registration_ids || data.registrations?.events?.map(e => e.registration_id)?.concat(data.registrations?.workshops?.map(w => w.registration_id)) || [],
+                    event: "THREADS'26",
+                    type: "SONACSE_REGISTRATION",
+                    timestamp: new Date().toISOString()
+                };
+                
+                const canvas = document.createElement('canvas');
+                QRCode.toCanvas(canvas, JSON.stringify(qrData), {
+                    errorCorrectionLevel: 'H',
+                    margin: 1,
+                    width: 250,
+                    color: {
+                        dark: '#1a56db',
+                        light: '#ffffff'
+                    }
+                }, function(error) {
+                    if (error) console.error(error);
+                });
+                
+                qrImage = `<img src="${canvas.toDataURL()}" alt="QR Code" class="img-fluid mb-3" style="max-width: 250px;">`;
+                qrPayload = `<p class="text-muted small">Scan this QR code at the event venue</p>`;
+            } else {
+                qrImage = `
+                    <div class="bg-light p-4 rounded text-center mb-3">
+                        <i class="fas fa-qrcode fa-4x text-muted mb-3"></i>
+                        <p class="text-muted">QR Code not generated</p>
+                    </div>
+                `;
+                qrPayload = '<p class="text-muted small">QR code could not be generated. Please save your registration IDs.</p>';
+            }
+            
+            const eventsCount = data.registrations?.events?.length || 0;
+            const workshopsCount = data.registrations?.workshops?.length || 0;
+            
+            Swal.fire({
+                title: 'Registration Complete!',
+                html: `
+                    <div class="text-center">
+                        ${qrImage}
+                        ${qrPayload}
+                        
+                        <div class="card bg-light mt-4">
+                            <div class="card-body text-start">
+                                <h6 class="fw-bold mb-3">Registration Details:</h6>
+                                <p class="mb-2"><i class="fas fa-user me-2 text-primary"></i><strong>Name:</strong> ${data.participant_details?.participant_name}</p>
+                                <p class="mb-2"><i class="fas fa-id-card me-2 text-info"></i><strong>Participant ID:</strong> ${data.participant_details?.participant_id}</p>
+                                <p class="mb-2"><i class="fas fa-building me-2 text-secondary"></i><strong>College:</strong> ${data.participant_details?.college || 'Saveetha Engineering College (SONACSE)'}</p>
+                                
+                                <div class="mt-3 pt-3 border-top">
+                                    <p class="mb-1"><i class="fas fa-check-circle me-2 text-success"></i><strong>Events:</strong> ${eventsCount} confirmed (Free)</p>
+                                    ${workshopsCount > 0 ? `
+                                        <p class="mb-1"><i class="fas fa-laptop-code me-2 text-primary"></i><strong>Workshops:</strong> ${workshopsCount} confirmed (Paid)</p>
+                                    ` : ''}
+                                    ${data.payment_details?.amount > 0 ? `
+                                        <p class="mb-1"><i class="fas fa-rupee-sign me-2 text-warning"></i><strong>Amount Paid:</strong> ₹${data.payment_details?.amount}</p>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-success mt-3">
+                            <i class="fas fa-check-circle me-2"></i>${data.message || 'Registration successful!'}
+                        </div>
+                    </div>
+                `,
+                confirmButtonColor: '#10b981',
+                confirmButtonText: 'Download QR',
+                showCancelButton: true,
+                cancelButtonText: 'Close',
+                width: 500,
+                showDenyButton: true,
+                denyButtonText: 'Copy Registration IDs',
+                denyButtonColor: '#3b82f6'
+            }).then((result) => {
+                if (result.isConfirmed && data.qr_code) {
+                    const link = document.createElement('a');
+                    link.href = data.qr_code;
+                    link.download = `THREADS26-SONACSE-${data.participant_details?.participant_id}.png`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'QR Code Downloaded!',
+                        text: 'QR code has been saved to your device.',
+                        confirmButtonColor: '#10b981',
+                        confirmButtonText: 'OK',
+                        timer: 2000
+                    });
+                } else if (result.isDenied) {
+                    const registrationIds = data.registration_ids || 
+                        (data.registrations?.events || []).map(e => e.registration_id).concat(
+                        (data.registrations?.workshops || []).map(w => w.registration_id)
+                    ).join(', ');
+                    navigator.clipboard.writeText(registrationIds).then(() => {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Copied!',
+                            text: 'Registration IDs copied to clipboard',
+                            confirmButtonColor: '#10b981',
+                            confirmButtonText: 'OK',
+                            timer: 1500
+                        });
+                    });
+                }
+            });
+        }
+        
+        document.getElementById('phone').addEventListener('input', function(e) {
+            this.value = this.value.replace(/\D/g, '');
+        });
+        
+        document.getElementById('roll_number').addEventListener('input', function(e) {
+            this.value = this.value.toUpperCase();
+        });
+        
+        document.addEventListener('DOMContentLoaded', loadEvents);
+    </script>
+</body>
+</html>
