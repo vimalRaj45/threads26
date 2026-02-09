@@ -1369,7 +1369,7 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
       });
     }
 
-    // 1️⃣ Get registration, participant, event, and payment details
+    // 1️⃣ Get registration details
     const { rows } = await client.query(
       `SELECT 
           r.registration_unique_id,
@@ -1380,27 +1380,17 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
           r.amount_paid,
           r.event_name,
 
-          e.event_type,  -- Get event type: 'event' or 'workshop'
+          e.event_type,  -- Get event type: 'workshop', 'technical', 'non-technical', etc.
           e.fee,
 
           p.full_name,
           p.email,
           p.college_name,
-          p.department,
-          p.is_sonacse,  -- Check if SONACSE student
-
-          py.verified_by_admin
+          p.department
 
        FROM registrations r
        JOIN participants p ON r.participant_id = p.participant_id
        JOIN events e ON r.event_id = e.event_id
-       LEFT JOIN payments py
-         ON r.participant_id = py.participant_id
-         AND py.created_at = (
-           SELECT MAX(created_at)
-           FROM payments
-           WHERE participant_id = r.participant_id
-         )
        WHERE r.registration_unique_id = $1`,
       [registration_id]
     );
@@ -1413,8 +1403,7 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
     }
 
     const reg = rows[0];
-    const eventType = reg.event_type; // 'event' or 'workshop'
-    const isSonacse = reg.is_sonacse === true; // Check if SONACSE student
+    const eventType = reg.event_type;
 
     // 2️⃣ CHECK IF ATTENDANCE ALREADY MARKED
     if (reg.attendance_status === 'ATTENDED') {
@@ -1424,17 +1413,32 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
         registration_id: reg.registration_unique_id,
         participant_id: reg.participant_id,
         participant_name: reg.full_name,
-        event_type: eventType,
-        is_sonacse: isSonacse
+        event_type: eventType
       });
     }
 
-    // 3️⃣ DIFFERENT LOGIC BASED ON STUDENT TYPE AND EVENT TYPE
+    // 3️⃣ CHECK IF THIS IS A SONACSE REGISTRATION
+    const isSonacse = reg.registration_unique_id.startsWith('THREADS26-SONA-');
+    
+    // 4️⃣ GET ADMIN VERIFICATION STATUS (for both SONACSE and others)
+    const paymentCheck = await client.query(
+      `SELECT 
+        py.verified_by_admin
+       FROM payments py
+       WHERE py.participant_id = $1
+       ORDER BY py.created_at DESC
+       LIMIT 1`,
+      [reg.participant_id]
+    );
 
-    // -------------------- SONACSE STUDENTS --------------------
+    const verifiedByAdmin = paymentCheck.rows[0]?.verified_by_admin || false;
+
+    // 5️⃣ LOGIC BASED ON STUDENT TYPE AND EVENT TYPE
+    
+    // ------ SONACSE STUDENTS ------
     if (isSonacse) {
-      // SONACSE EVENT (Free) - No payment/admin checks
-      if (eventType === 'event') {
+      // SONACSE EVENT (non-workshop) - NO CHECKS
+      if (eventType !== 'workshop') {
         const result = await client.query(
           `UPDATE registrations
            SET attendance_status = 'ATTENDED',
@@ -1454,15 +1458,28 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
             participant_id: reg.participant_id,
             full_name: reg.full_name,
             college_name: reg.college_name,
-            department: reg.department,
-            is_sonacse: true
+            department: reg.department
           },
-          note: 'SONACSE events are free - no payment verification required'
+          note: 'SONACSE events are free - no verification required'
         });
       }
-      
-      // SONACSE WORKSHOP (Paid) - Check payment and admin verification
+      // SONACSE WORKSHOP - CHECK BOTH PAYMENT AND ADMIN VERIFICATION
       else if (eventType === 'workshop') {
+        // Check admin verification
+        if (!verifiedByAdmin) {
+          return reply.code(403).send({
+            success: false,
+            participant_type: 'SONACSE',
+            event_type: 'WORKSHOP',
+            message: 'SONACSE workshop payment not verified by admin',
+            details: 'Admin verification required for SONACSE workshop attendance',
+            registration_id: reg.registration_unique_id,
+            participant_id: reg.participant_id,
+            amount_paid: reg.amount_paid,
+            suggestion: 'Wait for admin verification or contact SONACSE coordinators'
+          });
+        }
+
         // Check payment status
         if (reg.payment_status !== 'Success') {
           return reply.code(403).send({
@@ -1475,20 +1492,6 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
             participant_id: reg.participant_id,
             amount_paid: reg.amount_paid,
             suggestion: 'Complete payment to attend workshop'
-          });
-        }
-
-        // Check admin verification for workshop
-        if (!reg.verified_by_admin) {
-          return reply.code(403).send({
-            success: false,
-            participant_type: 'SONACSE',
-            event_type: 'WORKSHOP',
-            message: 'SONACSE workshop payment not verified by admin',
-            details: 'Admin verification required for workshop attendance',
-            registration_id: reg.registration_unique_id,
-            participant_id: reg.participant_id,
-            suggestion: 'Wait for admin verification or contact SONACSE coordinators'
           });
         }
 
@@ -1511,84 +1514,138 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
             participant_id: reg.participant_id,
             full_name: reg.full_name,
             college_name: reg.college_name,
-            department: reg.department,
-            is_sonacse: true
+            department: reg.department
           },
           payment_info: {
             amount_paid: reg.amount_paid,
             payment_status: reg.payment_status,
-            admin_verified: reg.verified_by_admin
+            admin_verified: verifiedByAdmin
           }
         });
       }
     }
-    
-    // -------------------- OTHER DEPARTMENT STUDENTS --------------------
+    // ------ OTHER STUDENTS ------
     else {
-      // For ALL OTHER students (non-SONACSE), check admin verification for BOTH events and workshops
-      
-      // Check if payment is verified by admin
-      if (!reg.verified_by_admin) {
-        return reply.code(403).send({
-          success: false,
+      // OTHER STUDENTS EVENT - CHECK ONLY ADMIN VERIFICATION
+      if (eventType !== 'workshop') {
+        // Check admin verification
+        if (!verifiedByAdmin) {
+          return reply.code(403).send({
+            success: false,
+            participant_type: 'REGULAR',
+            event_type: 'EVENT',
+            message: 'Payment not verified by admin. Attendance cannot be marked.',
+            registration_id: reg.registration_unique_id,
+            participant_id: reg.participant_id,
+            details: 'Admin verification required for event attendance'
+          });
+        }
+
+        const result = await client.query(
+          `UPDATE registrations
+           SET attendance_status = 'ATTENDED',
+               attended_at = NOW()
+           WHERE registration_unique_id = $1
+           RETURNING registration_unique_id, attendance_status, event_id`,
+          [registration_id]
+        );
+
+        return reply.send({
+          success: true,
+          message: '✅ Event attendance marked successfully',
           participant_type: 'REGULAR',
-          event_type: eventType,
-          message: 'Payment not verified by admin. Attendance cannot be marked.',
-          registration_id: reg.registration_unique_id,
-          participant_id: reg.participant_id,
-          details: 'Admin verification required for all regular student registrations'
+          event_type: 'EVENT',
+          registration: result.rows[0],
+          participant: {
+            participant_id: reg.participant_id,
+            full_name: reg.full_name,
+            college_name: reg.college_name,
+            department: reg.department
+          },
+          payment_info: {
+            admin_verified: verifiedByAdmin
+          }
         });
       }
+      // OTHER STUDENTS WORKSHOP - CHECK BOTH PAYMENT AND ADMIN VERIFICATION
+      else if (eventType === 'workshop') {
+        // Check admin verification
+        if (!verifiedByAdmin) {
+          return reply.code(403).send({
+            success: false,
+            participant_type: 'REGULAR',
+            event_type: 'WORKSHOP',
+            message: 'Payment not verified by admin. Attendance cannot be marked.',
+            registration_id: reg.registration_unique_id,
+            participant_id: reg.participant_id,
+            details: 'Admin verification required for workshop attendance'
+          });
+        }
 
-      // Check payment status for workshops
-      if (eventType === 'workshop' && reg.payment_status !== 'Success') {
-        return reply.code(403).send({
-          success: false,
+        // Check payment status
+        if (reg.payment_status !== 'Success') {
+          return reply.code(403).send({
+            success: false,
+            participant_type: 'REGULAR',
+            event_type: 'WORKSHOP',
+            message: 'Workshop payment not completed',
+            details: `Payment status: ${reg.payment_status}`,
+            registration_id: reg.registration_unique_id,
+            participant_id: reg.participant_id,
+            amount_paid: reg.amount_paid
+          });
+        }
+
+        const result = await client.query(
+          `UPDATE registrations
+           SET attendance_status = 'ATTENDED',
+             attended_at = NOW()
+           WHERE registration_unique_id = $1
+           RETURNING registration_unique_id, attendance_status, event_id`,
+          [registration_id]
+        );
+
+        return reply.send({
+          success: true,
+          message: '✅ Workshop attendance marked successfully',
           participant_type: 'REGULAR',
           event_type: 'WORKSHOP',
-          message: 'Workshop payment not completed',
-          details: `Payment status: ${reg.payment_status}`,
-          registration_id: reg.registration_unique_id,
-          participant_id: reg.participant_id,
-          amount_paid: reg.amount_paid
+          registration: result.rows[0],
+          participant: {
+            participant_id: reg.participant_id,
+            full_name: reg.full_name,
+            college_name: reg.college_name,
+            department: reg.department
+          },
+          payment_info: {
+            amount_paid: reg.amount_paid,
+            payment_status: reg.payment_status,
+            admin_verified: verifiedByAdmin
+          }
         });
       }
-
-      const result = await client.query(
-        `UPDATE registrations
-         SET attendance_status = 'ATTENDED',
-             attended_at = NOW()
-         WHERE registration_unique_id = $1
-         RETURNING registration_unique_id, attendance_status, event_id`,
-        [registration_id]
-      );
-
-      return reply.send({
-        success: true,
-        message: `✅ ${eventType === 'event' ? 'Event' : 'Workshop'} attendance marked successfully`,
-        participant_type: 'REGULAR',
-        event_type: eventType,
-        registration: result.rows[0],
-        participant: {
-          participant_id: reg.participant_id,
-          full_name: reg.full_name,
-          college_name: reg.college_name,
-          department: reg.department,
-          is_sonacse: false
-        },
-        payment_info: eventType === 'workshop' ? {
-          amount_paid: reg.amount_paid,
-          payment_status: reg.payment_status,
-          admin_verified: reg.verified_by_admin
-        } : null
-      });
     }
 
-    // If event_type is neither 'event' nor 'workshop'
-    return reply.code(400).send({
-      success: false,
-      error: 'Invalid event type',
-      details: `Event type "${eventType}" is not recognized`
+    // If we reach here, event_type is valid but logic didn't match
+    const result = await client.query(
+      `UPDATE registrations
+       SET attendance_status = 'ATTENDED',
+           attended_at = NOW()
+       WHERE registration_unique_id = $1
+       RETURNING registration_unique_id, attendance_status, event_id`,
+      [registration_id]
+    );
+
+    return reply.send({
+      success: true,
+      message: '✅ Attendance marked successfully',
+      registration: result.rows[0],
+      participant: {
+        participant_id: reg.participant_id,
+        full_name: reg.full_name,
+        college_name: reg.college_name,
+        department: reg.department
+      }
     });
 
   } catch (error) {
@@ -1602,7 +1659,6 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
     client.release();
   }
 });
-
 
 // 7. Update Attendance Status (QR Scan Based)
 fastify.post('/api/admin/attendance', async (request, reply) => {
