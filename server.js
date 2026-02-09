@@ -1355,6 +1355,255 @@ fastify.post('/api/admin/scan-qr', async (request, reply) => {
 });
 
 
+// -------------------- Scan QR & Mark Attendance by Registration --------------------
+fastify.post('/api/scan-attendance', async (request, reply) => {
+  const client = await pool.connect();
+
+  try {
+    const { registration_id } = request.body;
+
+    if (!registration_id) {
+      return reply.code(400).send({ 
+        success: false,
+        error: 'registration_id is required' 
+      });
+    }
+
+    // 1️⃣ Get registration, participant, event, and payment details
+    const { rows } = await client.query(
+      `SELECT 
+          r.registration_unique_id,
+          r.attendance_status,
+          r.event_id,
+          r.participant_id,
+          r.payment_status,
+          r.amount_paid,
+          r.event_name,
+
+          e.event_type,  -- Get event type: 'event' or 'workshop'
+          e.fee,
+
+          p.full_name,
+          p.email,
+          p.college_name,
+          p.department,
+          p.is_sonacse,  -- Check if SONACSE student
+
+          py.verified_by_admin
+
+       FROM registrations r
+       JOIN participants p ON r.participant_id = p.participant_id
+       JOIN events e ON r.event_id = e.event_id
+       LEFT JOIN payments py
+         ON r.participant_id = py.participant_id
+         AND py.created_at = (
+           SELECT MAX(created_at)
+           FROM payments
+           WHERE participant_id = r.participant_id
+         )
+       WHERE r.registration_unique_id = $1`,
+      [registration_id]
+    );
+
+    if (rows.length === 0) {
+      return reply.code(404).send({ 
+        success: false,
+        error: 'Registration not found' 
+      });
+    }
+
+    const reg = rows[0];
+    const eventType = reg.event_type; // 'event' or 'workshop'
+    const isSonacse = reg.is_sonacse === true; // Check if SONACSE student
+
+    // 2️⃣ CHECK IF ATTENDANCE ALREADY MARKED
+    if (reg.attendance_status === 'ATTENDED') {
+      return reply.send({
+        success: true,
+        message: '✅ Attendance already marked',
+        registration_id: reg.registration_unique_id,
+        participant_id: reg.participant_id,
+        participant_name: reg.full_name,
+        event_type: eventType,
+        is_sonacse: isSonacse
+      });
+    }
+
+    // 3️⃣ DIFFERENT LOGIC BASED ON STUDENT TYPE AND EVENT TYPE
+
+    // -------------------- SONACSE STUDENTS --------------------
+    if (isSonacse) {
+      // SONACSE EVENT (Free) - No payment/admin checks
+      if (eventType === 'event') {
+        const result = await client.query(
+          `UPDATE registrations
+           SET attendance_status = 'ATTENDED',
+               attended_at = NOW()
+           WHERE registration_unique_id = $1
+           RETURNING registration_unique_id, attendance_status, event_id`,
+          [registration_id]
+        );
+
+        return reply.send({
+          success: true,
+          message: '✅ SONACSE Event attendance marked successfully',
+          participant_type: 'SONACSE',
+          event_type: 'EVENT',
+          registration: result.rows[0],
+          participant: {
+            participant_id: reg.participant_id,
+            full_name: reg.full_name,
+            college_name: reg.college_name,
+            department: reg.department,
+            is_sonacse: true
+          },
+          note: 'SONACSE events are free - no payment verification required'
+        });
+      }
+      
+      // SONACSE WORKSHOP (Paid) - Check payment and admin verification
+      else if (eventType === 'workshop') {
+        // Check payment status
+        if (reg.payment_status !== 'Success') {
+          return reply.code(403).send({
+            success: false,
+            participant_type: 'SONACSE',
+            event_type: 'WORKSHOP',
+            message: 'SONACSE workshop payment not completed',
+            details: `Payment status: ${reg.payment_status}`,
+            registration_id: reg.registration_unique_id,
+            participant_id: reg.participant_id,
+            amount_paid: reg.amount_paid,
+            suggestion: 'Complete payment to attend workshop'
+          });
+        }
+
+        // Check admin verification for workshop
+        if (!reg.verified_by_admin) {
+          return reply.code(403).send({
+            success: false,
+            participant_type: 'SONACSE',
+            event_type: 'WORKSHOP',
+            message: 'SONACSE workshop payment not verified by admin',
+            details: 'Admin verification required for workshop attendance',
+            registration_id: reg.registration_unique_id,
+            participant_id: reg.participant_id,
+            suggestion: 'Wait for admin verification or contact SONACSE coordinators'
+          });
+        }
+
+        const result = await client.query(
+          `UPDATE registrations
+           SET attendance_status = 'ATTENDED',
+               attended_at = NOW()
+           WHERE registration_unique_id = $1
+           RETURNING registration_unique_id, attendance_status, event_id`,
+          [registration_id]
+        );
+
+        return reply.send({
+          success: true,
+          message: '✅ SONACSE Workshop attendance marked successfully',
+          participant_type: 'SONACSE',
+          event_type: 'WORKSHOP',
+          registration: result.rows[0],
+          participant: {
+            participant_id: reg.participant_id,
+            full_name: reg.full_name,
+            college_name: reg.college_name,
+            department: reg.department,
+            is_sonacse: true
+          },
+          payment_info: {
+            amount_paid: reg.amount_paid,
+            payment_status: reg.payment_status,
+            admin_verified: reg.verified_by_admin
+          }
+        });
+      }
+    }
+    
+    // -------------------- OTHER DEPARTMENT STUDENTS --------------------
+    else {
+      // For ALL OTHER students (non-SONACSE), check admin verification for BOTH events and workshops
+      
+      // Check if payment is verified by admin
+      if (!reg.verified_by_admin) {
+        return reply.code(403).send({
+          success: false,
+          participant_type: 'REGULAR',
+          event_type: eventType,
+          message: 'Payment not verified by admin. Attendance cannot be marked.',
+          registration_id: reg.registration_unique_id,
+          participant_id: reg.participant_id,
+          details: 'Admin verification required for all regular student registrations'
+        });
+      }
+
+      // Check payment status for workshops
+      if (eventType === 'workshop' && reg.payment_status !== 'Success') {
+        return reply.code(403).send({
+          success: false,
+          participant_type: 'REGULAR',
+          event_type: 'WORKSHOP',
+          message: 'Workshop payment not completed',
+          details: `Payment status: ${reg.payment_status}`,
+          registration_id: reg.registration_unique_id,
+          participant_id: reg.participant_id,
+          amount_paid: reg.amount_paid
+        });
+      }
+
+      const result = await client.query(
+        `UPDATE registrations
+         SET attendance_status = 'ATTENDED',
+             attended_at = NOW()
+         WHERE registration_unique_id = $1
+         RETURNING registration_unique_id, attendance_status, event_id`,
+        [registration_id]
+      );
+
+      return reply.send({
+        success: true,
+        message: `✅ ${eventType === 'event' ? 'Event' : 'Workshop'} attendance marked successfully`,
+        participant_type: 'REGULAR',
+        event_type: eventType,
+        registration: result.rows[0],
+        participant: {
+          participant_id: reg.participant_id,
+          full_name: reg.full_name,
+          college_name: reg.college_name,
+          department: reg.department,
+          is_sonacse: false
+        },
+        payment_info: eventType === 'workshop' ? {
+          amount_paid: reg.amount_paid,
+          payment_status: reg.payment_status,
+          admin_verified: reg.verified_by_admin
+        } : null
+      });
+    }
+
+    // If event_type is neither 'event' nor 'workshop'
+    return reply.code(400).send({
+      success: false,
+      error: 'Invalid event type',
+      details: `Event type "${eventType}" is not recognized`
+    });
+
+  } catch (error) {
+    fastify.log.error(error);
+    return reply.code(500).send({ 
+      success: false,
+      error: 'Failed to mark attendance',
+      details: error.message 
+    });
+  } finally {
+    client.release();
+  }
+});
+
+
 // 7. Update Attendance Status (QR Scan Based)
 fastify.post('/api/admin/attendance', async (request, reply) => {
   const client = await pool.connect();
@@ -2236,153 +2485,9 @@ fastify.get('/api/admin/check-registration-status', async (request) => {
 });
 
 
-// -------------------- Scan QR & Mark Attendance by Registration --------------------
-// -------------------- Scan QR & Mark Attendance by Registration --------------------
-fastify.post('/api/scan-attendance', async (request, reply) => {
-  const client = await pool.connect();
 
-  try {
-    const { registration_id } = request.body;
 
-    if (!registration_id) {
-      return reply.code(400).send({ error: 'registration_id is required' });
-    }
 
-    // 1️⃣ Get registration, participant, event, and payment details
-    const { rows } = await client.query(
-      `SELECT 
-          r.registration_unique_id,
-          r.attendance_status,
-          r.event_id,
-          r.participant_id,
-          r.payment_status,
-
-          p.full_name,
-          p.email,
-          p.college_name,
-          p.department,
-
-          e.event_name,
-          e.event_type,
-
-          -- Get the latest payment for this participant
-          py.payment_id,
-          py.verified_by_admin,
-          py.notes as payment_notes,
-
-          -- Check if this is a SONACSE student
-          CASE 
-            WHEN p.full_name LIKE '%[SONACSE:%' THEN true
-            ELSE false
-          END as is_sonacse_student
-
-       FROM registrations r
-       JOIN participants p ON r.participant_id = p.participant_id
-       JOIN events e ON r.event_id = e.event_id
-       LEFT JOIN LATERAL (
-         SELECT payment_id, verified_by_admin, notes
-         FROM payments 
-         WHERE participant_id = r.participant_id
-         AND payment_status = 'Success'
-         ORDER BY created_at DESC 
-         LIMIT 1
-       ) py ON true
-       WHERE r.registration_unique_id = $1`,
-      [registration_id]
-    );
-
-    if (rows.length === 0) {
-      return reply.code(404).send({ error: 'Registration not found' });
-    }
-
-    const reg = rows[0];
-
-    // 2️⃣ Check if registration is paid
-    if (reg.payment_status !== 'Success') {
-      return reply.code(403).send({
-        success: false,
-        message: 'Registration payment is pending or failed. Attendance cannot be marked.',
-        registration_id: reg.registration_unique_id,
-        participant_id: reg.participant_id,
-        payment_status: reg.payment_status
-      });
-    }
-
-    // 3️⃣ ✅ FIXED: Different verification rules based on student type and event type
-    if (reg.is_sonacse_student) {
-      // SONACSE STUDENT LOGIC
-      if (reg.event_type !== 'workshop') {
-        // SONACSE EVENTS: Require admin verification
-        if (!reg.verified_by_admin) {
-          return reply.code(403).send({
-            success: false,
-            message: 'SONACSE event registration not admin verified. Attendance cannot be marked.',
-            registration_id: reg.registration_unique_id,
-            participant_id: reg.participant_id,
-            event_type: reg.event_type,
-            is_sonacse_student: true,
-            verified_by_admin: reg.verified_by_admin,
-            requirement: 'Admin verification required for SONACSE events'
-          });
-        }
-      }
-      // SONACSE WORKSHOPS: DO NOT require admin verification
-      // Only require payment_status = 'Success' (already checked above)
-    } else {
-      // REGULAR STUDENT LOGIC: Always require admin verification
-      if (!reg.verified_by_admin) {
-        return reply.code(403).send({
-          success: false,
-          message: 'Payment not verified by admin. Attendance cannot be marked.',
-          registration_id: reg.registration_unique_id,
-          participant_id: reg.participant_id,
-          event_type: reg.event_type,
-          is_sonacse_student: false,
-          verified_by_admin: reg.verified_by_admin
-        });
-      }
-    }
-
-    // 4️⃣ Check if attendance is already marked
-    if (reg.attendance_status === 'ATTENDED') {
-      return reply.send({
-        success: true,
-        message: 'Attendance already marked',
-        registration_id: reg.registration_unique_id,
-        participant_id: reg.participant_id,
-        event_name: reg.event_name
-      });
-    }
-
-    // 5️⃣ Mark attendance
-    const result = await client.query(
-      `UPDATE registrations
-       SET attendance_status = 'ATTENDED',
-           attended_at = NOW()
-       WHERE registration_unique_id = $1
-       RETURNING registration_unique_id, attendance_status, event_id`,
-      [registration_id]
-    );
-
-    return reply.send({
-      success: true,
-      message: 'Attendance marked successfully',
-      registration: result.rows[0],
-      event_name: reg.event_name,
-      participant_name: reg.full_name,
-      event_type: reg.event_type,
-      is_sonacse_student: reg.is_sonacse_student,
-      verification_required: reg.event_type === 'workshop' ? 'No (Workshop)' : 'Yes (Event)',
-      scanned_at: new Date().toISOString()
-    });
-
-  } catch (error) {
-    fastify.log.error(error);
-    return reply.code(500).send({ error: 'Failed to mark attendance' });
-  } finally {
-    client.release();
-  }
-});
 // -------------------- Database Setup with All Fields --------------------
 fastify.get('/api/setup-db', async (request, reply) => {
   try {
@@ -2526,6 +2631,702 @@ fastify.get('/api/setup-db', async (request, reply) => {
     fastify.log.error(error);
     return reply.code(500).send({ error: error.message });
   }
+});
+
+
+//cse endpoints 
+
+// Add this at the top with other constants
+const SONACSE_STUDENTS = [
+  '21CSE001', '21CSE002', '21CSE003', '21CSE004', '21CSE005',
+  '21CSE006', '21CSE007', '21CSE008', '21CSE009', '21CSE010',
+  '22CSE001', '22CSE002', '22CSE003', '22CSE004', '22CSE005',
+  '23CSE001', '23CSE002', '23CSE003', '23CSE004', '23CSE005',
+  '24CSE001', '24CSE002', '24CSE003', '24CSE004', '24CSE005'
+];
+
+fastify.post('/api/sonacse/register', async (request, reply) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    // 1. VALIDATE ALL REQUIRED FIELDS WITH SONACSE-SPECIFIC VALIDATION
+    const validationErrors = [];
+    
+    if (!request.body.roll_number || request.body.roll_number.trim() === '') {
+      validationErrors.push('ROLL_NUMBER_REQUIRED: Roll number is required for SONACSE registration');
+    } else {
+      const rollNumber = request.body.roll_number.trim().toUpperCase();
+      if (!SONACSE_STUDENTS.includes(rollNumber)) {
+        validationErrors.push('INVALID_SONACSE_ROLL: Roll number not found in SONACSE student list');
+      }
+    }
+    
+    if (!request.body.full_name || request.body.full_name.trim() === '') {
+      validationErrors.push('FULL_NAME_REQUIRED: Full name is required');
+    }
+    
+    if (!request.body.email || request.body.email.trim() === '') {
+      validationErrors.push('EMAIL_REQUIRED: Email address is required');
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(request.body.email)) {
+      validationErrors.push('EMAIL_INVALID: Email format is invalid (example@domain.com)');
+    }
+    
+    if (!request.body.phone || request.body.phone.trim() === '') {
+      validationErrors.push('PHONE_REQUIRED: Phone number is required');
+    } else if (request.body.phone.replace(/\D/g, '').length < 10) {
+      validationErrors.push('PHONE_INVALID: Phone must be at least 10 digits');
+    }
+    
+    if (!request.body.year_of_study) {
+      validationErrors.push('YEAR_REQUIRED: Year of study is required (1, 2, 3, or 4)');
+    } else if (![1, 2, 3, 4].includes(parseInt(request.body.year_of_study))) {
+      validationErrors.push('YEAR_INVALID: Year of study must be 1, 2, 3, or 4');
+    }
+    
+    if (validationErrors.length > 0) {
+      throw new Error(`VALIDATION_FAILED: ${validationErrors.join(' | ')}`);
+    }
+    
+    const {
+      roll_number,
+      full_name,
+      email,
+      phone,
+      year_of_study,
+      workshop_selections = [],
+      event_selections = []
+    } = request.body;
+    
+    const cleanRollNumber = roll_number.trim().toUpperCase();
+    const department = 'CSE'; // Force CSE for SONACSE students
+    const college_name = 'Saveetha Engineering College (SONACSE)';
+    
+    // 2. CHECK REGISTRATION DEADLINE
+    const today = moment();
+    if (today.isAfter(moment(EVENT_DATES.registration_closes))) {
+      throw new Error('REGISTRATION_CLOSED: Registration is closed. Please contact organizers.');
+    }
+    
+    // 3. CHECK FOR DUPLICATE EMAIL (using email instead of roll number)
+    const existingEmail = await client.query(
+      'SELECT * FROM participants WHERE LOWER(email) = LOWER($1)',
+      [email]
+    );
+    
+    if (existingEmail.rows.length > 0) {
+      throw new Error('EMAIL_EXISTS: This email is already registered. Please use a different email.');
+    }
+    
+    // 4. VALIDATE EVENT SELECTIONS
+    if (workshop_selections.length === 0 && event_selections.length === 0) {
+      throw new Error('NO_EVENTS_SELECTED: Please select at least one workshop or event');
+    }
+    
+    // 5. CHECK IF ANY WORKSHOPS ARE SELECTED
+    const hasWorkshops = workshop_selections.length > 0;
+    const hasEventsOnly = workshop_selections.length === 0 && event_selections.length > 0;
+    
+    // 6. INSERT PARTICIPANT (NO ROLL_NUMBER COLUMN - using regular insertion)
+    const participantResult = await client.query(
+      `INSERT INTO participants (
+        full_name, email, phone, college_name, department,
+        year_of_study, city, state, accommodation_required
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING participant_id`,
+      [
+        full_name.trim(),
+        email.toLowerCase().trim(),
+        phone.replace(/\D/g, ''),
+        college_name,
+        department,
+        parseInt(year_of_study),
+        'Chennai', // Default for SONACSE
+        'Tamil Nadu', // Default for SONACSE
+        false // Default no accommodation for SONACSE
+      ]
+    );
+    
+    const participantId = participantResult.rows[0].participant_id;
+    const registrationIds = [];
+    let totalAmount = 0;
+    let needsPayment = false;
+    
+    // 7. DEFINE SEAT CHECK FUNCTION FOR SONACSE (CSE seats only)
+    const checkSeatAvailability = async (eventId) => {
+      const event = await client.query(
+        `SELECT 
+          event_id,
+          event_name,
+          cse_available_seats,
+          is_active,
+          event_type,
+          day
+         FROM events 
+         WHERE event_id = $1`,
+        [eventId]
+      );
+      
+      if (!event.rows[0]) {
+        throw new Error(`EVENT_NOT_FOUND: Event ID ${eventId} not found`);
+      }
+      
+      const eventData = event.rows[0];
+      
+      if (!eventData.is_active) {
+        throw new Error(`EVENT_INACTIVE: Event "${eventData.event_name}" is no longer available`);
+      }
+      
+      if (eventData.cse_available_seats <= 0) {
+        throw new Error(`SONACSE_SEATS_FULL: No SONACSE seats available for "${eventData.event_name}". Available: ${eventData.cse_available_seats}`);
+      }
+      
+      return eventData;
+    };
+    
+    // 8. DEFINE SEAT DECREMENT FUNCTION
+    const decrementSeats = async (eventId) => {
+      await client.query(
+        `UPDATE events SET 
+          cse_available_seats = cse_available_seats - 1,
+          available_seats = available_seats - 1
+         WHERE event_id = $1`,
+        [eventId]
+      );
+    };
+    
+    // 9. PROCESS EVENTS (FREE - immediate seat decrement)
+    const processedEvents = [];
+    for (const eventId of event_selections) {
+      const eventIdNum = parseInt(eventId);
+      if (isNaN(eventIdNum) || eventIdNum <= 0) {
+        throw new Error(`INVALID_EVENT_ID: Event ID "${eventId}" is invalid`);
+      }
+      
+      // Check seat availability
+      const eventData = await checkSeatAvailability(eventId);
+      
+      // Generate registration ID with SONACSE prefix
+      const prefix = 'THREADS26-SONA-';
+      const timestamp = Date.now().toString().slice(-9);
+      const baseRegId = `${prefix}CSE-${timestamp}`;
+      const regId = `${baseRegId}-${eventId}`;
+      
+      // Insert registration
+      await client.query(
+        `INSERT INTO registrations (
+          participant_id, event_id, registration_unique_id,
+          payment_status, amount_paid, event_name, day
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          participantId,
+          eventId,
+          regId,
+          'Success', // Events are immediately confirmed (free)
+          0, // FREE for events
+          eventData.event_name,
+          eventData.day
+        ]
+      );
+      
+      // DECREMENT SEATS IMMEDIATELY for events
+      await decrementSeats(eventId);
+      
+      registrationIds.push(regId);
+      processedEvents.push({
+        event_id: eventId,
+        event_name: eventData.event_name,
+        registration_id: regId
+      });
+    }
+    
+    // 10. PROCESS WORKSHOPS (PAID - seat check only, no decrement)
+    const processedWorkshops = [];
+    for (const eventId of workshop_selections) {
+      const eventIdNum = parseInt(eventId);
+      if (isNaN(eventIdNum) || eventIdNum <= 0) {
+        throw new Error(`INVALID_WORKSHOP_ID: Workshop ID "${eventId}" is invalid`);
+      }
+      
+      // Check seat availability
+      const eventData = await checkSeatAvailability(eventId);
+      
+      // Verify it's a workshop
+      if (eventData.event_type !== 'workshop') {
+        throw new Error(`NOT_A_WORKSHOP: Event ID ${eventId} is not a workshop (type: ${eventData.event_type})`);
+      }
+      
+      // Get workshop fee
+      const feeResult = await client.query(
+        'SELECT fee FROM events WHERE event_id = $1',
+        [eventId]
+      );
+      
+      const workshopFee = parseFloat(feeResult.rows[0].fee) || 0;
+      
+      // Generate registration ID with SONACSE prefix
+      const prefix = 'THREADS26-SONA-';
+      const timestamp = Date.now().toString().slice(-9);
+      const baseRegId = `${prefix}CSE-${timestamp}`;
+      const regId = `${baseRegId}-${eventId}`;
+      
+      // Insert registration as PENDING (needs payment)
+      await client.query(
+        `INSERT INTO registrations (
+          participant_id, event_id, registration_unique_id,
+          payment_status, amount_paid, event_name, day
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          participantId,
+          eventId,
+          regId,
+          'Pending', // Needs payment
+          workshopFee,
+          eventData.event_name,
+          eventData.day
+        ]
+      );
+      
+      // NO SEAT DECREMENT HERE - will happen after payment
+      
+      registrationIds.push(regId);
+      totalAmount += workshopFee;
+      needsPayment = true;
+      processedWorkshops.push({
+        event_id: eventId,
+        event_name: eventData.event_name,
+        registration_id: regId,
+        fee: workshopFee
+      });
+    }
+    
+    // 11. COMMIT TRANSACTION
+    await client.query('COMMIT');
+    
+    // 12. GENERATE QR CODE IF NO PAYMENT NEEDED (events only)
+    let qrCodeBase64 = null;
+    let qrPayload = null;
+    
+    if (!needsPayment && processedEvents.length > 0) {
+      qrPayload = {
+        participant_id: participantId,
+        roll_number: cleanRollNumber, // Store roll number in QR payload only
+        registration_ids: registrationIds,
+        event: "THREADS'26",
+        type: "SONACSE_EVENTS_ONLY",
+        timestamp: new Date().toISOString()
+      };
+      
+      try {
+        qrCodeBase64 = await QRCode.toDataURL(
+          JSON.stringify(qrPayload),
+          {
+            errorCorrectionLevel: 'H',
+            type: 'image/png',
+            margin: 1,
+            width: 250,
+            color: {
+              dark: '#000000',
+              light: '#ffffff'
+            }
+          }
+        );
+      } catch (qrError) {
+        console.error('QR generation error:', qrError);
+      }
+    }
+    
+    // 13. CREATE PAYMENT REFERENCE IF WORKSHOPS SELECTED
+    let paymentReference = null;
+    if (needsPayment) {
+      paymentReference = `SONACSE-WS-${participantId}-${Date.now().toString().slice(-6)}`;
+    }
+    
+    // 14. RETURN RESPONSE BASED ON SELECTIONS
+    if (hasEventsOnly && !hasWorkshops) {
+      // EVENTS ONLY - FREE - IMMEDIATE CONFIRMATION
+      return reply.code(201).send({
+        success: true,
+        message: '✅ SONACSE Registration successful! Events confirmed immediately.',
+        registration_type: 'EVENTS_ONLY_FREE',
+        participant_details: {
+          participant_id: participantId,
+          participant_name: full_name,
+          roll_number: cleanRollNumber, // Return in response only
+          department: department,
+          college: college_name
+        },
+        registrations: {
+          events: processedEvents,
+          workshops: [],
+          total_registrations: processedEvents.length
+        },
+        payment: {
+          required: false,
+          amount: 0,
+          status: 'NOT_REQUIRED'
+        },
+        qr_code: qrCodeBase64,
+        qr_payload: qrPayload,
+        seat_status: {
+          message: '✅ SONACSE seats reserved for all events',
+          seats_reserved: processedEvents.length
+        },
+        next_steps: 'Show QR code at event entry. No payment required.'
+      });
+    } else if (hasWorkshops) {
+      // HAS WORKSHOPS - NEEDS PAYMENT
+      return reply.code(201).send({
+        success: true,
+        message: '🎓 SONACSE Registration successful! Complete payment for workshops.',
+        registration_type: 'WITH_WORKSHOPS_NEEDS_PAYMENT',
+        participant_details: {
+          participant_id: participantId,
+          participant_name: full_name,
+          roll_number: cleanRollNumber, // Return in response only
+          department: department,
+          college: college_name
+        },
+        registrations: {
+          events: processedEvents, // Already confirmed
+          workshops: processedWorkshops, // Pending payment
+          total_registrations: processedEvents.length + processedWorkshops.length
+        },
+        payment: {
+          required: true,
+          amount: totalAmount,
+          payment_reference: paymentReference,
+          status: 'PENDING'
+        },
+        seat_status: {
+          message: `✅ ${processedEvents.length} event seats reserved | ⏳ ${processedWorkshops.length} workshop seats pending payment`,
+          note: 'Event seats reserved. Workshop seats will be reserved after payment.'
+        },
+        next_steps: 'Complete payment using the payment reference above to reserve workshop seats.',
+        payment_options: {
+          upi_id: process.env.UPI_ID || 'threads26@okaxis',
+          payment_reference: paymentReference,
+          amount: totalAmount
+        }
+      });
+    }
+    
+  } catch (error) {
+    await client.query('ROLLBACK');
+    
+    // 15. ERROR HANDLING
+    const errorMessage = error.message;
+    
+    if (errorMessage.includes('SONACSE_SEATS_FULL')) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'SEAT_UNAVAILABLE',
+        error_code: 'SONACSE_SEATS_EXHAUSTED',
+        message: 'SONACSE seats are full for selected event',
+        details: errorMessage.replace('SONACSE_SEATS_FULL: ', ''),
+        suggestion: 'Please select different events or contact SONACSE coordinators'
+      });
+    }
+    
+    if (errorMessage.includes('INVALID_SONACSE_ROLL')) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'AUTHENTICATION_ERROR',
+        error_code: 'INVALID_SONACSE_ROLL_NUMBER',
+        message: 'Invalid SONACSE roll number',
+        details: 'The roll number is not in the SONACSE student list',
+        suggestion: 'Check your roll number or contact SONACSE coordinators'
+      });
+    }
+    
+    return reply.code(400).send({
+      success: false,
+      error_type: 'REGISTRATION_ERROR',
+      error_code: 'UNKNOWN_ERROR',
+      message: 'SONACSE registration failed',
+      details: errorMessage,
+      suggestion: 'Please try again or contact SONACSE support'
+    });
+    
+  } finally {
+    client.release();
+  }
+});
+
+fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
+  const client = await pool.connect();
+  
+  try {
+    // 1. VALIDATE INPUT
+    const validationErrors = [];
+    
+    if (!request.body.participant_id) {
+      validationErrors.push('PARTICIPANT_ID_REQUIRED: Participant ID is required');
+    } else if (isNaN(parseInt(request.body.participant_id)) || parseInt(request.body.participant_id) <= 0) {
+      validationErrors.push('PARTICIPANT_ID_INVALID: Participant ID must be a positive number');
+    }
+    
+    if (!request.body.transaction_id || request.body.transaction_id.trim() === '') {
+      validationErrors.push('TRANSACTION_ID_REQUIRED: Transaction ID is required');
+    }
+    
+    if (validationErrors.length > 0) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'INPUT_VALIDATION',
+        error_code: 'REQUIRED_FIELDS_MISSING',
+        message: 'Please check the following fields:',
+        validation_errors: validationErrors.map(err => {
+          const [code, message] = err.split(': ');
+          return { field_code: code, message };
+        })
+      });
+    }
+    
+    const {
+      participant_id,
+      transaction_id,
+      payment_reference
+    } = request.body;
+    
+    const participantId = parseInt(participant_id);
+    const cleanTransactionId = transaction_id.trim();
+    
+    // 2. CHECK PARTICIPANT EXISTS AND GET DETAILS
+    const participantCheck = await client.query(
+      'SELECT participant_id, full_name, department, college_name FROM participants WHERE participant_id = $1',
+      [participantId]
+    );
+    
+    if (participantCheck.rows.length === 0) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'PARTICIPANT_NOT_FOUND',
+        error_code: 'INVALID_PARTICIPANT_ID',
+        message: 'Participant not found',
+        details: `No participant found with ID ${participantId}`,
+        suggestion: 'Check the participant ID and try again'
+      });
+    }
+    
+    const participant = participantCheck.rows[0];
+    
+    // 3. CHECK FOR DUPLICATE TRANSACTION
+    const duplicateCheck = await client.query(
+      'SELECT 1 FROM payments WHERE transaction_id = $1',
+      [cleanTransactionId]
+    );
+    
+    if (duplicateCheck.rows.length > 0) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'DUPLICATE_TRANSACTION',
+        error_code: 'TRANSACTION_ALREADY_USED',
+        message: 'Transaction ID already used',
+        details: 'Please use a different transaction ID',
+        transaction_id: cleanTransactionId
+      });
+    }
+    
+    // 4. GET PENDING WORKSHOP REGISTRATIONS
+    const pendingWorkshops = await client.query(
+      `SELECT 
+        r.registration_id,
+        r.event_id,
+        r.registration_unique_id,
+        r.amount_paid,
+        r.event_name,
+        e.day,
+        e.cse_available_seats,
+        e.available_seats
+       FROM registrations r
+       JOIN events e ON r.event_id = e.event_id
+       WHERE r.participant_id = $1 
+         AND r.payment_status = 'Pending'
+         AND r.amount_paid > 0`,
+      [participantId]
+    );
+    
+    if (pendingWorkshops.rows.length === 0) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'NO_PENDING_WORKSHOPS',
+        error_code: 'NO_PAYMENT_REQUIRED',
+        message: 'No pending workshops found',
+        details: 'This participant has no workshops requiring payment',
+        participant_id: participantId,
+        participant_name: participant.full_name,
+        suggestion: 'Check if payment was already completed'
+      });
+    }
+    
+    // 5. CALCULATE TOTAL AMOUNT
+    const totalAmount = pendingWorkshops.rows.reduce(
+      (sum, reg) => sum + parseFloat(reg.amount_paid || 0),
+      0
+    );
+    
+    // 6. START TRANSACTION
+    await client.query('BEGIN');
+    
+    // 7. CHECK AND RESERVE SEATS FOR EACH WORKSHOP
+    for (const reg of pendingWorkshops.rows) {
+      // Check seat availability
+      if (reg.cse_available_seats <= 0) {
+        throw new Error(`SONACSE_WORKSHOP_SEATS_FULL: No SONACSE seats available for "${reg.event_name}". Seats filled before payment.`);
+      }
+      
+      // Decrement seats
+      await client.query(
+        `UPDATE events SET 
+          cse_available_seats = cse_available_seats - 1,
+          available_seats = available_seats - 1
+         WHERE event_id = $1`,
+        [reg.event_id]
+      );
+    }
+    
+    // 8. SAVE PAYMENT RECORD
+    const paymentResult = await client.query(
+      `INSERT INTO payments (
+        participant_id, 
+        transaction_id, 
+        payment_reference,
+        amount, 
+        payment_method, 
+        payment_status,
+        verified_by_admin,
+        verified_at,
+        created_at
+      ) VALUES ($1, $2, $3, $4, 'UPI', 'Success', false, NOW(), NOW())
+      RETURNING payment_id, created_at`,
+      [
+        participantId,
+        cleanTransactionId,
+        payment_reference || `SONACSE-PAY-${Date.now().toString().slice(-8)}`,
+        totalAmount
+      ]
+    );
+    
+    // 9. MARK WORKSHOP REGISTRATIONS AS CONFIRMED
+    await client.query(
+      `UPDATE registrations
+       SET payment_status = 'Success'
+       WHERE participant_id = $1 AND payment_status = 'Pending' AND amount_paid > 0
+       RETURNING registration_unique_id`,
+      [participantId]
+    );
+    
+    // 10. GET ALL CONFIRMED REGISTRATIONS (events + workshops)
+    const allRegistrations = await client.query(
+      `SELECT registration_unique_id, event_name, amount_paid
+       FROM registrations 
+       WHERE participant_id = $1 AND payment_status = 'Success'
+       ORDER BY registered_at`,
+      [participantId]
+    );
+    
+    // 11. COMMIT TRANSACTION
+    await client.query('COMMIT');
+    
+    // 12. GENERATE QR CODE
+    const registrationIds = allRegistrations.rows.map(r => r.registration_unique_id);
+    
+    const qrPayload = {
+      participant_id: participantId,
+      participant_name: participant.full_name,
+      registration_ids: registrationIds,
+      event: "THREADS'26",
+      type: "SONACSE_FULL_CONFIRMED",
+      timestamp: new Date().toISOString()
+    };
+    
+    let qrCodeBase64;
+    try {
+      qrCodeBase64 = await QRCode.toDataURL(
+        JSON.stringify(qrPayload),
+        {
+          errorCorrectionLevel: 'H',
+          type: 'image/png',
+          margin: 1,
+          width: 250,
+          color: {
+            dark: '#000000',
+            light: '#ffffff'
+          }
+        }
+      );
+    } catch (qrError) {
+      console.error('QR generation error:', qrError);
+      qrCodeBase64 = null;
+    }
+    
+    // 13. RETURN SUCCESS RESPONSE
+    return reply.send({
+      success: true,
+      message: '✅ SONACSE Payment verified successfully! All seats reserved.',
+      participant_details: {
+        participant_id: participantId,
+        participant_name: participant.full_name,
+        department: participant.department || 'CSE',
+        college: participant.college_name || 'Saveetha Engineering College (SONACSE)'
+      },
+      payment_details: {
+        transaction_id: cleanTransactionId,
+        amount: totalAmount,
+        payment_id: paymentResult.rows[0].payment_id,
+        payment_date: paymentResult.rows[0].created_at,
+        payment_reference: paymentResult.rows[0].payment_reference
+      },
+      registrations: {
+        total: allRegistrations.rows.length,
+        events: allRegistrations.rows.filter(r => r.amount_paid === 0).map(r => ({
+          event_name: r.event_name,
+          registration_id: r.registration_unique_id,
+          fee: 0,
+          status: 'Confirmed'
+        })),
+        workshops: allRegistrations.rows.filter(r => r.amount_paid > 0).map(r => ({
+          event_name: r.event_name,
+          registration_id: r.registration_unique_id,
+          fee: r.amount_paid,
+          status: 'Confirmed'
+        }))
+      },
+      qr_code: qrCodeBase64,
+      qr_payload: qrPayload,
+      next_steps: 'Show QR code at event entry. All registrations confirmed.'
+    });
+    
+  } catch (error) {
+    await client.query('ROLLBACK');
+    
+    const errorMessage = error.message;
+    
+    if (errorMessage.includes('SONACSE_WORKSHOP_SEATS_FULL')) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'SEAT_UNAVAILABLE',
+        error_code: 'WORKSHOP_SEATS_FILLED',
+        message: 'Workshop seats filled before payment',
+        details: errorMessage.replace('SONACSE_WORKSHOP_SEATS_FULL: ', ''),
+        suggestion: 'Contact SONACSE coordinators for assistance'
+      });
+    }
+    
+    return reply.code(400).send({
+      success: false,
+      error_type: 'PAYMENT_VERIFICATION_ERROR',
+      error_code: 'PROCESSING_ERROR',
+      message: 'Payment verification failed',
+      details: errorMessage,
+      suggestion: 'Please try again or contact SONACSE coordinators'
+    });
+    
+  } finally {
+    client.release();
+  }    
 });
 
 const PORT = process.env.PORT || 3000;
