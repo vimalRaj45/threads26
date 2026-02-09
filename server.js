@@ -2237,6 +2237,7 @@ fastify.get('/api/admin/check-registration-status', async (request) => {
 
 
 // -------------------- Scan QR & Mark Attendance by Registration --------------------
+// -------------------- Scan QR & Mark Attendance by Registration --------------------
 fastify.post('/api/scan-attendance', async (request, reply) => {
   const client = await pool.connect();
 
@@ -2247,30 +2248,45 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
       return reply.code(400).send({ error: 'registration_id is required' });
     }
 
-    // 1️⃣ Get registration, participant, and payment details
+    // 1️⃣ Get registration, participant, event, and payment details
     const { rows } = await client.query(
       `SELECT 
           r.registration_unique_id,
           r.attendance_status,
           r.event_id,
           r.participant_id,
+          r.payment_status,
 
           p.full_name,
           p.email,
           p.college_name,
           p.department,
 
-          py.verified_by_admin
+          e.event_name,
+          e.event_type,
+
+          -- Get the latest payment for this participant
+          py.payment_id,
+          py.verified_by_admin,
+          py.notes as payment_notes,
+
+          -- Check if this is a SONACSE student
+          CASE 
+            WHEN p.full_name LIKE '%[SONACSE:%' THEN true
+            ELSE false
+          END as is_sonacse_student
 
        FROM registrations r
        JOIN participants p ON r.participant_id = p.participant_id
-       LEFT JOIN payments py
-         ON r.participant_id = py.participant_id
-         AND py.created_at = (
-           SELECT MAX(created_at)
-           FROM payments
-           WHERE participant_id = r.participant_id
-         )
+       JOIN events e ON r.event_id = e.event_id
+       LEFT JOIN LATERAL (
+         SELECT payment_id, verified_by_admin, notes
+         FROM payments 
+         WHERE participant_id = r.participant_id
+         AND payment_status = 'Success'
+         ORDER BY created_at DESC 
+         LIMIT 1
+       ) py ON true
        WHERE r.registration_unique_id = $1`,
       [registration_id]
     );
@@ -2281,27 +2297,64 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
 
     const reg = rows[0];
 
-    // 2️⃣ Check if payment is verified by admin
-    if (!reg.verified_by_admin) {
+    // 2️⃣ Check if registration is paid
+    if (reg.payment_status !== 'Success') {
       return reply.code(403).send({
         success: false,
-        message: 'Participant payment not verified by admin. Attendance cannot be marked.',
+        message: 'Registration payment is pending or failed. Attendance cannot be marked.',
         registration_id: reg.registration_unique_id,
-        participant_id: reg.participant_id
+        participant_id: reg.participant_id,
+        payment_status: reg.payment_status
       });
     }
 
-    // 3️⃣ Check if attendance is already marked
+    // 3️⃣ ✅ FIXED: Different verification rules based on student type and event type
+    if (reg.is_sonacse_student) {
+      // SONACSE STUDENT LOGIC
+      if (reg.event_type !== 'workshop') {
+        // SONACSE EVENTS: Require admin verification
+        if (!reg.verified_by_admin) {
+          return reply.code(403).send({
+            success: false,
+            message: 'SONACSE event registration not admin verified. Attendance cannot be marked.',
+            registration_id: reg.registration_unique_id,
+            participant_id: reg.participant_id,
+            event_type: reg.event_type,
+            is_sonacse_student: true,
+            verified_by_admin: reg.verified_by_admin,
+            requirement: 'Admin verification required for SONACSE events'
+          });
+        }
+      }
+      // SONACSE WORKSHOPS: DO NOT require admin verification
+      // Only require payment_status = 'Success' (already checked above)
+    } else {
+      // REGULAR STUDENT LOGIC: Always require admin verification
+      if (!reg.verified_by_admin) {
+        return reply.code(403).send({
+          success: false,
+          message: 'Payment not verified by admin. Attendance cannot be marked.',
+          registration_id: reg.registration_unique_id,
+          participant_id: reg.participant_id,
+          event_type: reg.event_type,
+          is_sonacse_student: false,
+          verified_by_admin: reg.verified_by_admin
+        });
+      }
+    }
+
+    // 4️⃣ Check if attendance is already marked
     if (reg.attendance_status === 'ATTENDED') {
       return reply.send({
         success: true,
         message: 'Attendance already marked',
         registration_id: reg.registration_unique_id,
-        participant_id: reg.participant_id
+        participant_id: reg.participant_id,
+        event_name: reg.event_name
       });
     }
 
-    // 4️⃣ Mark attendance
+    // 5️⃣ Mark attendance
     const result = await client.query(
       `UPDATE registrations
        SET attendance_status = 'ATTENDED',
@@ -2315,6 +2368,11 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
       success: true,
       message: 'Attendance marked successfully',
       registration: result.rows[0],
+      event_name: reg.event_name,
+      participant_name: reg.full_name,
+      event_type: reg.event_type,
+      is_sonacse_student: reg.is_sonacse_student,
+      verification_required: reg.event_type === 'workshop' ? 'No (Workshop)' : 'Yes (Event)',
       scanned_at: new Date().toISOString()
     });
 
@@ -2325,8 +2383,6 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
     client.release();
   }
 });
-
-
 // -------------------- Database Setup with All Fields --------------------
 fastify.get('/api/setup-db', async (request, reply) => {
   try {
