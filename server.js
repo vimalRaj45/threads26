@@ -1577,7 +1577,9 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
 });
 
 
-// -------------------- Mark Attendance by Event ID & Participant ID (Manual/Backup) --------------------
+
+
+    // -------------------- Mark Attendance by Event ID & Participant ID (Manual/Backup) --------------------
 fastify.post('/api/manual-attendance', async (request, reply) => {
   const client = await pool.connect();
 
@@ -1591,7 +1593,7 @@ fastify.post('/api/manual-attendance', async (request, reply) => {
       });
     }
 
-    // 1️⃣ Get registration details
+    // 1️⃣ Get registration details - FIXED: using registered_at instead of created_at
     const { rows } = await client.query(
       `SELECT 
           r.registration_unique_id,
@@ -1601,6 +1603,7 @@ fastify.post('/api/manual-attendance', async (request, reply) => {
           r.payment_status,
           r.amount_paid,
           r.event_name,
+          r.registered_at,  -- Added this for ordering
 
           e.event_type,  -- Get event type: 'workshop', 'technical', 'non-technical', etc.
           e.fee,
@@ -1610,14 +1613,14 @@ fastify.post('/api/manual-attendance', async (request, reply) => {
           p.email,
           p.college_name,
           p.department,
-          p.phone_number
+          p.phone
 
        FROM registrations r
        JOIN participants p ON r.participant_id = p.participant_id
        JOIN events e ON r.event_id = e.event_id
        WHERE r.event_id = $1 
          AND r.participant_id = $2
-       ORDER BY r.created_at DESC
+       ORDER BY r.registered_at DESC  -- FIXED: Changed from created_at to registered_at
        LIMIT 1`,
       [event_id, participant_id]
     );
@@ -1651,7 +1654,7 @@ fastify.post('/api/manual-attendance', async (request, reply) => {
     // 3️⃣ CHECK IF THIS IS A SONACSE REGISTRATION
     const isSonacse = reg.registration_unique_id.startsWith('THREADS26-SONA-');
     
-    // 4️⃣ GET ADMIN VERIFICATION STATUS (for both SONACSE and others)
+    // 4️⃣ GET ADMIN VERIFICATION STATUS
     const paymentCheck = await client.query(
       `SELECT 
         py.verified_by_admin,
@@ -1660,7 +1663,11 @@ fastify.post('/api/manual-attendance', async (request, reply) => {
         py.created_at as payment_date
        FROM payments py
        WHERE py.participant_id = $1
-         AND py.event_id = $2
+         AND EXISTS (
+           SELECT 1 FROM registrations r2 
+           WHERE r2.participant_id = $1 
+           AND r2.event_id = $2
+         )
        ORDER BY py.created_at DESC
        LIMIT 1`,
       [reg.participant_id, event_id]
@@ -1694,7 +1701,7 @@ fastify.post('/api/manual-attendance', async (request, reply) => {
             participant_id: reg.participant_id,
             full_name: reg.full_name,
             email: reg.email,
-            phone_number: reg.phone_number,
+            phone: reg.phone,
             college_name: reg.college_name,
             department: reg.department
           },
@@ -1760,7 +1767,7 @@ fastify.post('/api/manual-attendance', async (request, reply) => {
             participant_id: reg.participant_id,
             full_name: reg.full_name,
             email: reg.email,
-            phone_number: reg.phone_number,
+            phone: reg.phone,
             college_name: reg.college_name,
             department: reg.department
           },
@@ -1818,7 +1825,7 @@ fastify.post('/api/manual-attendance', async (request, reply) => {
             participant_id: reg.participant_id,
             full_name: reg.full_name,
             email: reg.email,
-            phone_number: reg.phone_number,
+            phone: reg.phone,
             college_name: reg.college_name,
             department: reg.department
           },
@@ -1885,7 +1892,7 @@ fastify.post('/api/manual-attendance', async (request, reply) => {
             participant_id: reg.participant_id,
             full_name: reg.full_name,
             email: reg.email,
-            phone_number: reg.phone_number,
+            phone: reg.phone,
             college_name: reg.college_name,
             department: reg.department
           },
@@ -1924,7 +1931,7 @@ fastify.post('/api/manual-attendance', async (request, reply) => {
         participant_id: reg.participant_id,
         full_name: reg.full_name,
         email: reg.email,
-        phone_number: reg.phone_number,
+        phone: reg.phone,
         college_name: reg.college_name,
         department: reg.department
       },
@@ -1947,7 +1954,6 @@ fastify.post('/api/manual-attendance', async (request, reply) => {
     client.release();
   }
 });
-
 
 
 
