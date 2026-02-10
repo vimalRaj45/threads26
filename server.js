@@ -1579,383 +1579,82 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
 
 
 
-    // -------------------- Mark Attendance by Event ID & Participant ID (Manual/Backup) --------------------
-fastify.post('/api/manual-attendance', async (request, reply) => {
+  // -------------------- Search Participants for Manual Attendance --------------------
+fastify.get('/api/search-participants', async (request, reply) => {
   const client = await pool.connect();
 
   try {
-    const { event_id, participant_id } = request.body;
+    const { search, event_id } = request.query;
 
-    if (!event_id || !participant_id) {
+    if (!search) {
       return reply.code(400).send({ 
         success: false,
-        error: 'Both event_id and participant_id are required' 
+        error: 'Search query is required' 
       });
     }
 
-    // 1️⃣ Get registration details - FIXED: using registered_at instead of created_at
-    const { rows } = await client.query(
-      `SELECT 
-          r.registration_unique_id,
-          r.attendance_status,
-          r.event_id,
-          r.participant_id,
-          r.payment_status,
-          r.amount_paid,
-          r.event_name,
-          r.registered_at,  -- Added this for ordering
+    let query = `
+      SELECT 
+        p.participant_id,
+        p.full_name,
+        p.email,
+        p.college_name,
+        p.department,
+        p.phone,
+        
+        r.registration_unique_id,
+        r.event_id,
+        r.event_name,
+        r.attendance_status,
+        r.payment_status,
+        r.amount_paid,
+        r.created_at as registration_date,
+        
+        e.event_type,
+        e.fee,
+        e.event_date
+        
+      FROM participants p
+      JOIN registrations r ON p.participant_id = r.participant_id
+      JOIN events e ON r.event_id = e.event_id
+      WHERE (p.full_name ILIKE $1 OR p.email ILIKE $1 OR p.phone ILIKE $1)
+    `;
 
-          e.event_type,  -- Get event type: 'workshop', 'technical', 'non-technical', etc.
-          e.fee,
-          e.event_name as event_full_name,
+    const params = [`%${search}%`];
+    
+    if (event_id) {
+      query += ` AND r.event_id = $2`;
+      params.push(event_id);
+    }
 
-          p.full_name,
-          p.email,
-          p.college_name,
-          p.department,
-          p.phone
+    query += ` ORDER BY p.full_name, r.created_at DESC LIMIT 20`;
 
-       FROM registrations r
-       JOIN participants p ON r.participant_id = p.participant_id
-       JOIN events e ON r.event_id = e.event_id
-       WHERE r.event_id = $1 
-         AND r.participant_id = $2
-       ORDER BY r.registered_at DESC  -- FIXED: Changed from created_at to registered_at
-       LIMIT 1`,
-      [event_id, participant_id]
-    );
+    const { rows } = await client.query(query, params);
 
     if (rows.length === 0) {
       return reply.code(404).send({ 
         success: false,
-        error: 'Registration not found for this event and participant',
-        details: `No registration found for event_id: ${event_id} and participant_id: ${participant_id}`
+        error: 'No participants found' 
       });
     }
-
-    const reg = rows[0];
-    const eventType = reg.event_type;
-
-    // 2️⃣ CHECK IF ATTENDANCE ALREADY MARKED
-    if (reg.attendance_status === 'ATTENDED') {
-      return reply.send({
-        success: true,
-        message: '✅ Attendance already marked',
-        registration_id: reg.registration_unique_id,
-        participant_id: reg.participant_id,
-        participant_name: reg.full_name,
-        event_name: reg.event_full_name,
-        event_type: eventType,
-        attended_at: new Date().toISOString(),
-        warning: 'Attendance was already marked previously'
-      });
-    }
-
-    // 3️⃣ CHECK IF THIS IS A SONACSE REGISTRATION
-    const isSonacse = reg.registration_unique_id.startsWith('THREADS26-SONA-');
-    
-    // 4️⃣ GET ADMIN VERIFICATION STATUS
-    const paymentCheck = await client.query(
-      `SELECT 
-        py.verified_by_admin,
-        py.payment_method,
-        py.transaction_id,
-        py.created_at as payment_date
-       FROM payments py
-       WHERE py.participant_id = $1
-         AND EXISTS (
-           SELECT 1 FROM registrations r2 
-           WHERE r2.participant_id = $1 
-           AND r2.event_id = $2
-         )
-       ORDER BY py.created_at DESC
-       LIMIT 1`,
-      [reg.participant_id, event_id]
-    );
-
-    const paymentInfo = paymentCheck.rows[0];
-    const verifiedByAdmin = paymentInfo?.verified_by_admin || false;
-
-    // 5️⃣ LOGIC BASED ON STUDENT TYPE AND EVENT TYPE
-    
-    // ------ SONACSE STUDENTS ------
-    if (isSonacse) {
-      // SONACSE EVENT (non-workshop) - NO CHECKS
-      if (eventType !== 'workshop') {
-        const result = await client.query(
-          `UPDATE registrations
-           SET attendance_status = 'ATTENDED',
-               attended_at = NOW()
-           WHERE registration_unique_id = $1
-           RETURNING registration_unique_id, attendance_status, event_id, attended_at`,
-          [reg.registration_unique_id]
-        );
-
-        return reply.send({
-          success: true,
-          message: '✅ SONACSE Event attendance marked successfully (Manual Entry)',
-          participant_type: 'SONACSE',
-          event_type: 'EVENT',
-          registration: result.rows[0],
-          participant: {
-            participant_id: reg.participant_id,
-            full_name: reg.full_name,
-            email: reg.email,
-            phone: reg.phone,
-            college_name: reg.college_name,
-            department: reg.department
-          },
-          event: {
-            event_id: reg.event_id,
-            event_name: reg.event_full_name,
-            event_type: eventType
-          },
-          note: 'SONACSE events are free - no verification required',
-          method: 'MANUAL_ENTRY'
-        });
-      }
-      // SONACSE WORKSHOP - CHECK BOTH PAYMENT AND ADMIN VERIFICATION
-      else if (eventType === 'workshop') {
-        // Check admin verification
-        if (!verifiedByAdmin) {
-          return reply.code(403).send({
-            success: false,
-            participant_type: 'SONACSE',
-            event_type: 'WORKSHOP',
-            message: 'SONACSE workshop payment not verified by admin',
-            details: 'Admin verification required for SONACSE workshop attendance',
-            registration_id: reg.registration_unique_id,
-            participant_id: reg.participant_id,
-            participant_name: reg.full_name,
-            event_name: reg.event_full_name,
-            amount_paid: reg.amount_paid,
-            suggestion: 'Wait for admin verification or contact SONACSE coordinators'
-          });
-        }
-
-        // Check payment status
-        if (reg.payment_status !== 'Success') {
-          return reply.code(403).send({
-            success: false,
-            participant_type: 'SONACSE',
-            event_type: 'WORKSHOP',
-            message: 'SONACSE workshop payment not completed',
-            details: `Payment status: ${reg.payment_status}`,
-            registration_id: reg.registration_unique_id,
-            participant_id: reg.participant_id,
-            amount_paid: reg.amount_paid,
-            suggestion: 'Complete payment to attend workshop'
-          });
-        }
-
-        const result = await client.query(
-          `UPDATE registrations
-           SET attendance_status = 'ATTENDED',
-               attended_at = NOW()
-           WHERE registration_unique_id = $1
-           RETURNING registration_unique_id, attendance_status, event_id, attended_at`,
-          [reg.registration_unique_id]
-        );
-
-        return reply.send({
-          success: true,
-          message: '✅ SONACSE Workshop attendance marked successfully (Manual Entry)',
-          participant_type: 'SONACSE',
-          event_type: 'WORKSHOP',
-          registration: result.rows[0],
-          participant: {
-            participant_id: reg.participant_id,
-            full_name: reg.full_name,
-            email: reg.email,
-            phone: reg.phone,
-            college_name: reg.college_name,
-            department: reg.department
-          },
-          event: {
-            event_id: reg.event_id,
-            event_name: reg.event_full_name,
-            event_type: eventType
-          },
-          payment_info: {
-            amount_paid: reg.amount_paid,
-            payment_status: reg.payment_status,
-            admin_verified: verifiedByAdmin,
-            payment_method: paymentInfo?.payment_method,
-            transaction_id: paymentInfo?.transaction_id
-          },
-          method: 'MANUAL_ENTRY'
-        });
-      }
-    }
-    // ------ OTHER STUDENTS ------
-    else {
-      // OTHER STUDENTS EVENT - CHECK ONLY ADMIN VERIFICATION
-      if (eventType !== 'workshop') {
-        // Check admin verification
-        if (!verifiedByAdmin) {
-          return reply.code(403).send({
-            success: false,
-            participant_type: 'REGULAR',
-            event_type: 'EVENT',
-            message: 'Payment not verified by admin. Attendance cannot be marked.',
-            registration_id: reg.registration_unique_id,
-            participant_id: reg.participant_id,
-            participant_name: reg.full_name,
-            event_name: reg.event_full_name,
-            details: 'Admin verification required for event attendance'
-          });
-        }
-
-        const result = await client.query(
-          `UPDATE registrations
-           SET attendance_status = 'ATTENDED',
-               attended_at = NOW()
-           WHERE registration_unique_id = $1
-           RETURNING registration_unique_id, attendance_status, event_id, attended_at`,
-          [reg.registration_unique_id]
-        );
-
-        return reply.send({
-          success: true,
-          message: '✅ Event attendance marked successfully (Manual Entry)',
-          participant_type: 'REGULAR',
-          event_type: 'EVENT',
-          registration: result.rows[0],
-          participant: {
-            participant_id: reg.participant_id,
-            full_name: reg.full_name,
-            email: reg.email,
-            phone: reg.phone,
-            college_name: reg.college_name,
-            department: reg.department
-          },
-          event: {
-            event_id: reg.event_id,
-            event_name: reg.event_full_name,
-            event_type: eventType
-          },
-          payment_info: {
-            admin_verified: verifiedByAdmin,
-            payment_method: paymentInfo?.payment_method,
-            transaction_id: paymentInfo?.transaction_id
-          },
-          method: 'MANUAL_ENTRY'
-        });
-      }
-      // OTHER STUDENTS WORKSHOP - CHECK BOTH PAYMENT AND ADMIN VERIFICATION
-      else if (eventType === 'workshop') {
-        // Check admin verification
-        if (!verifiedByAdmin) {
-          return reply.code(403).send({
-            success: false,
-            participant_type: 'REGULAR',
-            event_type: 'WORKSHOP',
-            message: 'Payment not verified by admin. Attendance cannot be marked.',
-            registration_id: reg.registration_unique_id,
-            participant_id: reg.participant_id,
-            participant_name: reg.full_name,
-            event_name: reg.event_full_name,
-            details: 'Admin verification required for workshop attendance'
-          });
-        }
-
-        // Check payment status
-        if (reg.payment_status !== 'Success') {
-          return reply.code(403).send({
-            success: false,
-            participant_type: 'REGULAR',
-            event_type: 'WORKSHOP',
-            message: 'Workshop payment not completed',
-            details: `Payment status: ${reg.payment_status}`,
-            registration_id: reg.registration_unique_id,
-            participant_id: reg.participant_id,
-            amount_paid: reg.amount_paid
-          });
-        }
-
-        const result = await client.query(
-          `UPDATE registrations
-           SET attendance_status = 'ATTENDED',
-               attended_at = NOW()
-           WHERE registration_unique_id = $1
-           RETURNING registration_unique_id, attendance_status, event_id, attended_at`,
-          [reg.registration_unique_id]
-        );
-
-        return reply.send({
-          success: true,
-          message: '✅ Workshop attendance marked successfully (Manual Entry)',
-          participant_type: 'REGULAR',
-          event_type: 'WORKSHOP',
-          registration: result.rows[0],
-          participant: {
-            participant_id: reg.participant_id,
-            full_name: reg.full_name,
-            email: reg.email,
-            phone: reg.phone,
-            college_name: reg.college_name,
-            department: reg.department
-          },
-          event: {
-            event_id: reg.event_id,
-            event_name: reg.event_full_name,
-            event_type: eventType
-          },
-          payment_info: {
-            amount_paid: reg.amount_paid,
-            payment_status: reg.payment_status,
-            admin_verified: verifiedByAdmin,
-            payment_method: paymentInfo?.payment_method,
-            transaction_id: paymentInfo?.transaction_id
-          },
-          method: 'MANUAL_ENTRY'
-        });
-      }
-    }
-
-    // If we reach here, event_type is valid but logic didn't match
-    const result = await client.query(
-      `UPDATE registrations
-       SET attendance_status = 'ATTENDED',
-           attended_at = NOW()
-       WHERE registration_unique_id = $1
-       RETURNING registration_unique_id, attendance_status, event_id, attended_at`,
-      [reg.registration_unique_id]
-    );
 
     return reply.send({
       success: true,
-      message: '✅ Attendance marked successfully (Manual Entry)',
-      registration: result.rows[0],
-      participant: {
-        participant_id: reg.participant_id,
-        full_name: reg.full_name,
-        email: reg.email,
-        phone: reg.phone,
-        college_name: reg.college_name,
-        department: reg.department
-      },
-      event: {
-        event_id: reg.event_id,
-        event_name: reg.event_full_name,
-        event_type: eventType
-      },
-      method: 'MANUAL_ENTRY'
+      count: rows.length,
+      participants: rows
     });
 
   } catch (error) {
     fastify.log.error(error);
     return reply.code(500).send({ 
       success: false,
-      error: 'Failed to mark attendance manually',
+      error: 'Search failed',
       details: error.message 
     });
   } finally {
     client.release();
   }
 });
-
-
 
 // 8. Get Attendance Report
 fastify.get('/api/admin/attendance-report', async (request) => {
