@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>THREADS'26 - Super Admin Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #2d3748;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header .subtitle {
+            color: #4a5568;
+            font-size: 1.1rem;
+        }
+
+        .refresh-btn {
+            background: #48bb78;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .refresh-btn:hover {
+            background: #38a169;
+            transform: translateY(-2px);
+        }
+
+        .refresh-btn:active {
+            transform: translateY(0);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+            font-size: 1.2rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-card h3 {
+            color: #4a5568;
+            font-size: 1rem;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #2d3748;
+            margin-bottom: 5px;
+        }
+
+        .stat-trend {
+            font-size: 0.9rem;
+            color: #718096;
+        }
+
+        .positive { color: #48bb78; }
+        .negative { color: #f56565; }
+        .neutral { color: #4299e1; }
+
+        .section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            color: #2d3748;
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: #edf2f7;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .tab:hover {
+            background: #e2e8f0;
+        }
+
+        .tab.active {
+            background: #4299e1;
+            color: white;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            max-height: 500px;
+            overflow-y: auto;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 800px;
+        }
+
+        th {
+            background: #f7fafc;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #4a5568;
+            border-bottom: 2px solid #e2e8f0;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: middle;
+        }
+
+        tr:hover {
+            background: #f7fafc;
+        }
+
+        .status {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            text-align: center;
+            display: inline-block;
+        }
+
+        .status-success { background: #c6f6d5; color: #22543d; }
+        .status-pending { background: #fed7d7; color: #742a2a; }
+        .status-verified { background: #bee3f8; color: #2a4365; }
+        .status-attended { background: #e9d8fd; color: #44337a; }
+
+        .search-box {
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 12px 20px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+        }
+
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .filter-select {
+            padding: 10px 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            min-width: 150px;
+            background: white;
+        }
+
+        .filter-select:focus {
+            outline: none;
+            border-color: #4299e1;
+        }
+
+        .action-btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            margin-right: 5px;
+        }
+
+        .btn-view { background: #4299e1; color: white; }
+        .btn-view:hover { background: #3182ce; }
+
+        .btn-verify { background: #48bb78; color: white; }
+        .btn-verify:hover { background: #38a169; }
+
+        .btn-attendance { background: #9f7aea; color: white; }
+        .btn-attendance:hover { background: #805ad5; }
+
+        .btn-download { background: #ed8936; color: white; }
+        .btn-download:hover { background: #dd6b20; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h3 {
+            color: #2d3748;
+            font-size: 1.5rem;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #718096;
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
+        }
+
+        .detail-row {
+            display: flex;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .detail-label {
+            font-weight: 600;
+            color: #4a5568;
+            min-width: 200px;
+        }
+
+        .detail-value {
+            color: #2d3748;
+        }
+
+        .error {
+            background: #fed7d7;
+            color: #742a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .success {
+            background: #c6f6d5;
+            color: #22543d;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .header {
+                flex-direction: column;
+                gap: 20px;
+                text-align: center;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .filters {
+                flex-direction: column;
+            }
+            
+            .filter-select {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div>
+                <h1>THREADS'26 Super Admin Dashboard</h1>
+                <div class="subtitle">Real-time monitoring and management system</div>
+            </div>
+            <button class="refresh-btn" onclick="loadAllData()">
+                🔄 Refresh All Data
+            </button>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div class="loading" id="loading">Loading dashboard data...</div>
+
+        <!-- Error Message -->
+        <div class="error" id="error"></div>
+        <div class="success" id="success"></div>
+
+        <!-- Quick Stats -->
+        <div class="stats-grid" id="statsGrid"></div>
+
+        <!-- Events Management -->
+        <div class="section">
+            <h2>📊 Events & Registration Stats</h2>
+            <div id="eventsContent"></div>
+        </div>
+
+        <!-- Registrations Management -->
+        <div class="section">
+            <h2>👥 Registrations Management</h2>
+            <div class="tabs">
+                <button class="tab active" onclick="showTab('allRegistrations')">All Registrations</button>
+                <button class="tab" onclick="showTab('pendingPayments')">Pending Verification</button>
+                <button class="tab" onclick="showTab('sonacse')">SONACSE</button>
+                <button class="tab" onclick="showTab('attendance')">Attendance</button>
+            </div>
+            
+            <div class="filters">
+                <select class="filter-select" id="eventFilter" onchange="filterRegistrations()">
+                    <option value="">All Events</option>
+                </select>
+                <select class="filter-select" id="paymentFilter" onchange="filterRegistrations()">
+                    <option value="">All Payment Status</option>
+                    <option value="Success">Paid</option>
+                    <option value="Pending">Pending</option>
+                </select>
+                <select class="filter-select" id="dayFilter" onchange="filterRegistrations()">
+                    <option value="">All Days</option>
+                    <option value="1">Day 1</option>
+                    <option value="2">Day 2</option>
+                </select>
+                <input type="text" class="filter-select" placeholder="Search by name, email, ID..." 
+                       onkeyup="filterRegistrations()" id="searchInput">
+            </div>
+            
+            <div class="table-container">
+                <table id="registrationsTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>College</th>
+                            <th>Event</th>
+                            <th>Day</th>
+                            <th>Payment</th>
+                            <th>Verification</th>
+                            <th>Attendance</th>
+                        </tr>
+                    </thead>
+                    <tbody id="registrationsBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Financial Overview -->
+        <div class="section">
+            <h2>💰 Financial Overview</h2>
+            <div id="financialContent"></div>
+        </div>
+
+        <!-- Analytics -->
+        <div class="section">
+            <h2>📈 Analytics</h2>
+            <div id="analyticsContent"></div>
+        </div>
+
+        <!-- Tools -->
+        <div class="section">
+            <h2>🛠️ Admin Tools</h2>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                <button class="action-btn btn-download" onclick="exportData()">📥 Export All Data</button>
+                <button class="action-btn btn-verify" onclick="showBulkVerification()">✅ Bulk Payment Verification</button>
+                <button class="action-btn btn-attendance" onclick="showAttendanceReport()">📋 Generate Attendance Report</button>
+                <button class="action-btn btn-view" onclick="showEventDates()">📅 Check Event Dates</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div class="modal" id="detailModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Participant Details</h3>
+                <button class="close-modal" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <!-- Bulk Verification Modal -->
+    <div class="modal" id="verificationModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Bulk Payment Verification</h3>
+                <button class="close-modal" onclick="closeVerificationModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <textarea id="csvInput" placeholder="Paste CSV data here (format: transaction_id,amount)&#10;Example:&#10;TXN12345,500&#10;TXN67890,750" 
+                          rows="10" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px; margin-bottom: 20px;"></textarea>
+                <div class="filters">
+                    <button class="action-btn btn-verify" onclick="verifyBulkPayments()">Verify Payments</button>
+                    <button class="action-btn" onclick="closeVerificationModal()" style="background: #a0aec0;">Cancel</button>
+                </div>
+                <div id="verificationResult"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let allRegistrations = [];
+        let allEvents = [];
+        let currentFilter = 'allRegistrations';
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', () => {
+            loadAllData();
+            // Auto-refresh every 30 seconds
+            setInterval(loadAllData, 30000);
+        });
+
+        // Load all data
+        async function loadAllData() {
+            showLoading(true);
+            try {
+                await Promise.all([
+                    loadQuickStats(),
+                    loadEvents(),
+                    loadRegistrations(),
+                    loadAdminStats()
+                ]);
+                showError('');
+                showLoading(false);
+            } catch (error) {
+                showError('Failed to load data: ' + error.message);
+                showLoading(false);
+            }
+        }
+
+        // Show/hide loading
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        // Show error message
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = message ? 'block' : 'none';
+        }
+
+        // Show success message
+        function showSuccess(message) {
+            const successDiv = document.getElementById('success');
+            successDiv.textContent = message;
+            successDiv.style.display = message ? 'block' : 'none';
+            setTimeout(() => successDiv.style.display = 'none', 3000);
+        }
+
+        // Load quick stats
+        async function loadQuickStats() {
+            try {
+                const response = await fetch('https://threads26-2-fdem.onrender.com/api/super-admin/quick');
+                const data = await response.json();
+                
+                const statsGrid = document.getElementById('statsGrid');
+                statsGrid.innerHTML = `
+                    <div class="stat-card">
+                        <h3>Total Participants</h3>
+                        <div class="stat-number">${data.overview.total_participants}</div>
+                        <div class="stat-trend">Today: ${data.overview.today_registrations}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Registrations</h3>
+                        <div class="stat-number">${data.overview.total_registrations}</div>
+                        <div class="stat-trend">Active events: ${data.overview.active_events}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Revenue</h3>
+                        <div class="stat-number">₹${data.overview.total_revenue}</div>
+                        <div class="stat-trend">Today: ₹${data.overview.today_revenue}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Pending Verifications</h3>
+                        <div class="stat-number">${data.overview.pending_verifications}</div>
+                        <div class="stat-trend ${data.registration_open ? 'positive' : 'negative'}">
+                            Registration: ${data.registration_open ? 'OPEN' : 'CLOSED'}
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Failed to load quick stats:', error);
+            }
+        }
+
+        // Load events
+        async function loadEvents() {
+            try {
+                const response = await fetch('https://threads26-2-fdem.onrender.com/api/events');
+                const data = await response.json();
+                allEvents = data.events;
+                
+                const eventsContent = document.getElementById('eventsContent');
+                eventsContent.innerHTML = `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                        ${data.events.map(event => `
+                            <div style="background: #f7fafc; padding: 20px; border-radius: 10px; border-left: 5px solid #4299e1;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                                    <strong style="color: #2d3748;">${event.event_name}</strong>
+                                    <span class="status ${event.available_seats < 10 ? 'status-pending' : 'status-success'}">
+                                        ${event.available_seats} seats
+                                    </span>
+                                </div>
+                                <div style="color: #718096; font-size: 0.9rem;">
+                                    Day ${event.day} | ${event.event_type} | ₹${event.fee}
+                                </div>
+                                <div style="margin-top: 10px; font-size: 0.85rem;">
+                                    CSE: ${event.cse_available_seats}/${event.cse_seats} | 
+                                    Total: ${event.available_seats}/${event.total_seats}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                
+                // Populate event filter
+                const eventFilter = document.getElementById('eventFilter');
+                eventFilter.innerHTML = '<option value="">All Events</option>' + 
+                    data.events.map(event => `<option value="${event.event_id}">${event.event_name}</option>`).join('');
+            } catch (error) {
+                console.error('Failed to load events:', error);
+            }
+        }
+
+        // Load registrations
+        async function loadRegistrations() {
+            try {
+                const response = await fetch('https://threads26-2-fdem.onrender.com/api/admin/registrations');
+                allRegistrations = await response.json();
+                displayRegistrations();
+            } catch (error) {
+                console.error('Failed to load registrations:', error);
+            }
+        }
+
+        // Display registrations based on current filter
+        function displayRegistrations() {
+            let filtered = [...allRegistrations];
+            
+            // Apply tab filter
+            if (currentFilter === 'pendingPayments') {
+                filtered = filtered.filter(r => !r.verified_by_admin && r.payment_status === 'Success');
+            } else if (currentFilter === 'sonacse') {
+                filtered = filtered.filter(r => r.registration_unique_id.includes('SONA'));
+            } else if (currentFilter === 'attendance') {
+                filtered = filtered.filter(r => r.payment_status === 'Success');
+            }
+            
+            // Apply search filter
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            if (searchTerm) {
+                filtered = filtered.filter(r => 
+                    r.full_name.toLowerCase().includes(searchTerm) ||
+                    r.email.toLowerCase().includes(searchTerm) ||
+                    r.registration_unique_id.toLowerCase().includes(searchTerm) ||
+                    r.college_name.toLowerCase().includes(searchTerm)
+                );
+            }
+            
+            // Apply event filter
+            const eventFilter = document.getElementById('eventFilter').value;
+            if (eventFilter) {
+                filtered = filtered.filter(r => r.event_id == eventFilter);
+            }
+            
+            // Apply payment filter
+            const paymentFilter = document.getElementById('paymentFilter').value;
+            if (paymentFilter) {
+                filtered = filtered.filter(r => r.payment_status === paymentFilter);
+            }
+            
+            // Apply day filter
+            const dayFilter = document.getElementById('dayFilter').value;
+            if (dayFilter) {
+                filtered = filtered.filter(r => r.day == dayFilter);
+            }
+            
+            // Render table
+            const tbody = document.getElementById('registrationsBody');
+            tbody.innerHTML = filtered.map(reg => `
+                <tr>
+                    <td>${reg.registration_unique_id}</td>
+                    <td>
+                        <strong>${reg.full_name}</strong><br>
+                        <small>${reg.email}</small>
+                    </td>
+                    <td>${reg.college_name}<br><small>${reg.department}</small></td>
+                    <td>${reg.event_name}<br><small>${reg.event_type}</small></td>
+                    <td>Day ${reg.day}</td>
+                    <td>
+                        <span class="status ${reg.payment_status === 'Success' ? 'status-success' : 'status-pending'}">
+                            ${reg.payment_status}
+                        </span><br>
+                        <small>₹${reg.amount_paid || 0}</small>
+                    </td>
+                    <td>
+                        <span class="status ${reg.verified_by_admin ? 'status-verified' : 'status-pending'}">
+                            ${reg.verified_by_admin ? 'Verified' : 'Pending'}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="status ${reg.attendance_status === 'ATTENDED' ? 'status-attended' : 'status-pending'}">
+                            ${reg.attendance_status || 'NOT_ATTENDED'}
+                        </span>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Switch tabs
+        function showTab(tabName) {
+            currentFilter = tabName;
+            
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            displayRegistrations();
+        }
+
+        // Filter registrations
+        function filterRegistrations() {
+            displayRegistrations();
+        }
+
+        // View participant details
+        async function viewDetails(participantId) {
+            try {
+                const response = await fetch(`https://threads26-2-fdem.onrender.com/api/participant/${participantId}/all`);
+                const data = await response.json();
+                
+                document.getElementById('modalTitle').textContent = `Participant: ${data.participant.full_name}`;
+                document.getElementById('modalBody').innerHTML = `
+                    <div class="detail-row">
+                        <div class="detail-label">Participant ID:</div>
+                        <div class="detail-value">${data.participant.participant_id}</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Full Name:</div>
+                        <div class="detail-value">${data.participant.full_name}</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Email:</div>
+                        <div class="detail-value">${data.participant.email}</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Phone:</div>
+                        <div class="detail-value">${data.participant.phone}</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">College:</div>
+                        <div class="detail-value">${data.participant.college_name}</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Department:</div>
+                        <div class="detail-value">${data.participant.department} - Year ${data.participant.year_of_study}</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Verification Status:</div>
+                        <div class="detail-value">
+                            <span class="status ${data.verification_status === 'ADMIN_VERIFIED' ? 'status-verified' : 'status-pending'}">
+                                ${data.verification_status}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <h4 style="margin-top: 20px; margin-bottom: 10px;">Registrations:</h4>
+                    ${data.registrations.map(reg => `
+                        <div style="background: #f7fafc; padding: 15px; border-radius: 8px; margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <strong>${reg.event_name}</strong>
+                                <span class="status ${reg.payment_status === 'Success' ? 'status-success' : 'status-pending'}">
+                                    ${reg.payment_status}
+                                </span>
+                            </div>
+                            <div style="color: #718096; font-size: 0.9rem;">
+                                Day ${reg.day} | ${reg.event_type} | Registration: ${reg.registration_unique_id}
+                            </div>
+                            <div style="font-size: 0.9rem; margin-top: 5px;">
+                                Amount: ₹${reg.amount_paid} | 
+                                Attendance: <span class="status ${reg.attendance_status === 'ATTENDED' ? 'status-attended' : 'status-pending'}">
+                                    ${reg.attendance_status || 'NOT_ATTENDED'}
+                                </span>
+                            </div>
+                        </div>
+                    `).join('')}
+                    
+                    ${data.payments.length > 0 ? `
+                        <h4 style="margin-top: 20px; margin-bottom: 10px;">Payments:</h4>
+                        ${data.payments.map(payment => `
+                            <div style="background: #f0fff4; padding: 15px; border-radius: 8px; margin-bottom: 10px;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <strong>Transaction: ${payment.transaction_id}</strong>
+                                    <span class="status ${payment.verified_by_admin ? 'status-verified' : 'status-pending'}">
+                                        ${payment.verified_by_admin ? 'Verified' : 'Pending'}
+                                    </span>
+                                </div>
+                                <div style="color: #718096; font-size: 0.9rem;">
+                                    Amount: ₹${payment.amount} | Method: ${payment.payment_method}
+                                </div>
+                                <div style="font-size: 0.9rem; margin-top: 5px;">
+                                    Date: ${new Date(payment.created_at).toLocaleString()}
+                                </div>
+                            </div>
+                        `).join('')}
+                    ` : ''}
+                `;
+                
+                document.getElementById('detailModal').style.display = 'flex';
+            } catch (error) {
+                showError('Failed to load participant details: ' + error.message);
+            }
+        }
+
+        // Manual verification
+        async function manualVerify(participantId) {
+            if (!confirm('Are you sure you want to manually verify this participant?')) return;
+            
+            try {
+                const response = await fetch('https://threads26-2-fdem.onrender.com/api/admin/manual-verification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ participant_id: participantId })
+                });
+                
+                const result = await response.json();
+                if (response.ok) {
+                    showSuccess('Participant verified successfully!');
+                    loadRegistrations();
+                    loadQuickStats();
+                } else {
+                    throw new Error(result.error || 'Verification failed');
+                }
+            } catch (error) {
+                showError('Verification failed: ' + error.message);
+            }
+        }
+
+        // Load admin stats
+        async function loadAdminStats() {
+            try {
+                const response = await fetch('https://threads26-2-fdem.onrender.com/api/admin/stats');
+                const data = await response.json();
+                
+                // Financial Content
+                const financialContent = document.getElementById('financialContent');
+                financialContent.innerHTML = `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                        <div style="background: #f7fafc; padding: 20px; border-radius: 10px; border-left: 5px solid #48bb78;">
+                            <h4 style="margin-bottom: 10px;">Revenue Summary</h4>
+                            <div style="font-size: 2rem; font-weight: bold; color: #2d3748;">
+                                ₹${data.total_revenue}
+                            </div>
+                            <div style="color: #718096; font-size: 0.9rem;">
+                                Total revenue collected
+                            </div>
+                        </div>
+                        
+                        <div style="background: #f7fafc; padding: 20px; border-radius: 10px; border-left: 5px solid #ed8936;">
+                            <h4 style="margin-bottom: 10px;">Payment Status</h4>
+                            ${data.payment_status.map(stat => `
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                    <span>${stat.payment_status}:</span>
+                                    <strong>${stat.count}</strong>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <div style="background: #f7fafc; padding: 20px; border-radius: 10px; border-left: 5px solid #9f7aea;">
+                            <h4 style="margin-bottom: 10px;">Attendance Status</h4>
+                            ${data.attendance_status.map(stat => `
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                    <span>${stat.attendance_status || 'Not Marked'}:</span>
+                                    <strong>${stat.count}</strong>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+                
+                // Analytics Content
+                const analyticsContent = document.getElementById('analyticsContent');
+                analyticsContent.innerHTML = `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                        <div style="background: #f7fafc; padding: 20px; border-radius: 10px;">
+                            <h4 style="margin-bottom: 15px;">Registrations by Day</h4>
+                            ${data.registrations_by_day.map(day => `
+                                <div style="margin-bottom: 10px;">
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                        <span>Day ${day.day}:</span>
+                                        <strong>${day.count} registrations</strong>
+                                    </div>
+                                    <div style="background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden;">
+                                        <div style="background: #4299e1; height: 100%; width: ${(day.count / Math.max(...data.registrations_by_day.map(d => d.count)) * 100)}%"></div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <div style="background: #f7fafc; padding: 20px; border-radius: 10px;">
+                            <h4 style="margin-bottom: 15px;">Top Events</h4>
+                            ${data.top_events.map(event => `
+                                <div style="margin-bottom: 10px;">
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                        <span>${event.event_name}:</span>
+                                        <strong>${event.registrations}</strong>
+                                    </div>
+                                    <div style="background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden;">
+                                        <div style="background: #48bb78; height: 100%; width: ${(event.registrations / Math.max(...data.top_events.map(e => e.registrations)) * 100)}%"></div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <div style="background: #f7fafc; padding: 20px; border-radius: 10px;">
+                            <h4 style="margin-bottom: 15px;">Top Colleges</h4>
+                            ${data.top_colleges.map(college => `
+                                <div style="margin-bottom: 10px;">
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                        <span>${college.college_name}:</span>
+                                        <strong>${college.participants}</strong>
+                                    </div>
+                                    <div style="background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden;">
+                                        <div style="background: #ed8936; height: 100%; width: ${(college.participants / Math.max(...data.top_colleges.map(c => c.participants)) * 100)}%"></div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Failed to load admin stats:', error);
+            }
+        }
+
+        // Export data
+        async function exportData() {
+            try {
+                const response = await fetch('https://threads26-2-fdem.onrender.com/api/admin/export');
+                const csv = await response.text();
+                
+                // Download CSV
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `threads26_registrations_${new Date().toISOString().split('T')[0]}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                showSuccess('Data exported successfully!');
+            } catch (error) {
+                showError('Export failed: ' + error.message);
+            }
+        }
+
+        // Show bulk verification modal
+        function showBulkVerification() {
+            document.getElementById('verificationModal').style.display = 'flex';
+        }
+
+        // Close verification modal
+        function closeVerificationModal() {
+            document.getElementById('verificationModal').style.display = 'none';
+            document.getElementById('csvInput').value = '';
+            document.getElementById('verificationResult').innerHTML = '';
+        }
+
+        // Verify bulk payments
+        async function verifyBulkPayments() {
+            const csvData = document.getElementById('csvInput').value.trim();
+            if (!csvData) {
+                showError('Please paste CSV data');
+                return;
+            }
+            
+            try {
+                // Parse CSV
+                const lines = csvData.split('\n').filter(line => line.trim());
+                const payments = lines.map(line => {
+                    const [transaction_id, amount] = line.split(',').map(item => item.trim());
+                    return { transaction_id, amount: parseFloat(amount) };
+                }).filter(p => p.transaction_id && !isNaN(p.amount));
+                
+                if (payments.length === 0) {
+                    throw new Error('No valid payments found in CSV');
+                }
+                
+                const response = await fetch('https://threads26-2-fdem.onrender.com/api/admin/verify-payments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ payments })
+                });
+                
+                const result = await response.json();
+                if (response.ok) {
+                    document.getElementById('verificationResult').innerHTML = `
+                        <div style="background: #c6f6d5; color: #22543d; padding: 15px; border-radius: 8px; margin-top: 20px;">
+                            <h4>Verification Results</h4>
+                            <div style="margin-top: 10px;">
+                                <div><strong>Newly Verified:</strong> ${result.summary.newly_verified}</div>
+                                <div><strong>Failed:</strong> ${result.summary.failed}</div>
+                                <div><strong>Total Verified:</strong> ${result.summary.total_verified_now}</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    if (result.failed && result.failed.length > 0) {
+                        document.getElementById('verificationResult').innerHTML += `
+                            <div style="background: #fed7d7; color: #742a2a; padding: 15px; border-radius: 8px; margin-top: 10px;">
+                                <h4>Failed Transactions</h4>
+                                ${result.failed.map(f => `
+                                    <div style="margin-top: 5px;">
+                                        ${f.transaction_id} - ${f.name} (${f.phone})
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `;
+                    }
+                    
+                    // Refresh data
+                    setTimeout(() => {
+                        loadRegistrations();
+                        loadQuickStats();
+                        loadAdminStats();
+                    }, 1000);
+                } else {
+                    throw new Error(result.error || 'Verification failed');
+                }
+            } catch (error) {
+                document.getElementById('verificationResult').innerHTML = `
+                    <div style="background: #fed7d7; color: #742a2a; padding: 15px; border-radius: 8px; margin-top: 20px;">
+                        Error: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Show attendance report
+        async function showAttendanceReport() {
+            try {
+                const response = await fetch('https://threads26-2-fdem.onrender.com/api/admin/attendance-report');
+                const data = await response.json();
+                
+                // Create report window
+                const reportWindow = window.open('', '_blank');
+                reportWindow.document.write(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Attendance Report</title>
+                        <style>
+                            body { font-family: Arial, sans-serif; margin: 40px; }
+                            table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+                            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                            th { background-color: #f2f2f2; }
+                            .stats { background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>THREADS'26 Attendance Report</h1>
+                        <div class="stats">
+                            <h3>Summary</h3>
+                            <p>Total: ${data.statistics.total} | Attended: ${data.statistics.attended} | Not Attended: ${data.statistics.not_attended}</p>
+                        </div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>College</th>
+                                    <th>Event</th>
+                                    <th>Day</th>
+                                    <th>Attendance</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.registrations.map(reg => `
+                                    <tr>
+                                        <td>${reg.full_name}</td>
+                                        <td>${reg.college_name}</td>
+                                        <td>${reg.event_name}</td>
+                                        <td>Day ${reg.day}</td>
+                                        <td>${reg.attendance_status}</td>
+                                        <td>${reg.attended_at ? new Date(reg.attended_at).toLocaleString() : 'N/A'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        <p style="margin-top: 20px; color: #666;">Generated on ${new Date().toLocaleString()}</p>
+                    </body>
+                    </html>
+                `);
+                reportWindow.document.close();
+            } catch (error) {
+                showError('Failed to generate attendance report: ' + error.message);
+            }
+        }
+
+        // Show event dates
+        async function showEventDates() {
+            try {
+                const response = await fetch('https://threads26-2-fdem.onrender.com/api/event-dates');
+                const data = await response.json();
+                
+                alert(`Event Dates:
+                Workshop Day: ${data.workshop_day}
+                Event Day: ${data.event_day}
+                Registration Closes: ${data.registration_closes}
+                
+                Countdown:
+                Days to Workshop: ${data.countdown.days_to_workshop}
+                Days to Event: ${data.countdown.days_to_event}
+                Registration Status: ${data.countdown.is_registration_open ? 'OPEN' : 'CLOSED'}
+                `);
+            } catch (error) {
+                showError('Failed to load event dates: ' + error.message);
+            }
+        }
+
+        // Close modal
+        function closeModal() {
+            document.getElementById('detailModal').style.display = 'none';
+        }
+
+        // Close modal on outside click
+        window.onclick = function(event) {
+            const modal = document.getElementById('detailModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+            
+            const verifyModal = document.getElementById('verificationModal');
+            if (event.target === verifyModal) {
+                closeVerificationModal();
+            }
+        }
+    </script>
+</body>
+</html>
