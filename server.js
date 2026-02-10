@@ -2682,7 +2682,7 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
     
     const cleanRollNumber = roll_number.trim().toUpperCase();
     const department = 'CSE'; // Force CSE for SONACSE students
-    const college_name = 'Saveetha Engineering College (SONACSE)';
+    const college_name = 'Sona College of Technology (SONACSE)';
     
     // 2. CHECK REGISTRATION DEADLINE
     const today = moment();
@@ -3251,7 +3251,7 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
         participant_id: participantId,
         participant_name: participant.full_name,
         department: participant.department || 'CSE',
-        college: participant.college_name || 'Saveetha Engineering College (SONACSE)'
+        college: participant.college_name || 'Sona College of Technology (SONACSE)'
       },
       payment_details: {
         transaction_id: cleanTransactionId,
