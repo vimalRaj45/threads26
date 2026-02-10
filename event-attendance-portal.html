@@ -3,307 +3,54 @@
 <head>
     <title>Event Attendance Portal</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f8f9fa;
-        }
-        #portal {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding: 15px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .grid-container {
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            gap: 20px;
-            margin-top: 20px;
-        }
-        .panel {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .tab-container {
-            margin: 20px 0;
-        }
-        .tab-buttons {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-        .tab-button {
-            padding: 10px 20px;
-            border: none;
-            background: #e9ecef;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        .tab-button.active {
-            background: #007bff;
-            color: white;
-        }
-        .tab-content {
-            display: none;
-        }
-        .tab-content.active {
-            display: block;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        .form-group input {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        button {
-            padding: 10px 20px;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        button:hover {
-            background: #0056b3;
-        }
-        button.secondary {
-            background: #6c757d;
-        }
-        button.secondary:hover {
-            background: #545b62;
-        }
-        button.danger {
-            background: #dc3545;
-        }
-        button.danger:hover {
-            background: #c82333;
-        }
-        .scanner-container {
-            text-align: center;
-            margin: 20px 0;
-        }
-        #reader {
-            width: 100% !important;
-            max-width: 400px;
-            margin: 0 auto;
-        }
-        #scanResult, #manualResult {
-            margin-top: 15px;
-            padding: 15px;
-            border-radius: 5px;
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border: 1px solid #dee2e6;
-        }
-        th {
-            background: #f8f9fa;
-            font-weight: bold;
-        }
-        tr:hover {
-            background: #f8f9fa;
-        }
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-        }
-        .stat-box {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            text-align: center;
-        }
-        .stat-value {
-            font-size: 24px;
-            font-weight: bold;
-            color: #007bff;
-        }
-        .status-success {
-            color: #155724;
-            background: #d4edda;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-        .status-pending {
-            color: #856404;
-            background: #fff3cd;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-        .status-failed {
-            color: #721c24;
-            background: #f8d7da;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-    </style>
 </head>
 <body>
 
 <div id="portal">
-    <div class="header">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
         <h1 id="eventTitle">Event Attendance Portal</h1>
-        <button onclick="window.close()" class="danger">Close Portal</button>
+        <button onclick="window.close()">Close Portal</button>
     </div>
 
-    <div class="tab-container">
-        <div class="tab-buttons">
-            <button class="tab-button active" onclick="switchTab('scanner')">QR Scanner</button>
-            <button class="tab-button" onclick="switchTab('manual')">Manual Entry</button>
-            <button class="tab-button" onclick="switchTab('registrations')">All Registrations</button>
-        </div>
+    <div style="display:grid; grid-template-columns: 1fr 2fr; gap:20px; margin-top:20px;">
 
-        <!-- QR SCANNER TAB -->
-        <div id="scannerTab" class="tab-content active">
-            <div class="grid-container">
-                <!-- LEFT: Scanner -->
-                <div>
-                    <div class="panel">
-                        <h3>QR Code Scanner</h3>
-                        <small style="color:#666;">Scan QR codes from Threads26 registration emails/confirmations.</small>
-                        
-                        <div class="scanner-container">
-                            <div id="reader"></div>
-                            <div style="margin-top:15px;">
-                                <button onclick="startScanner()">Start Scanner</button>
-                                <button onclick="stopScanner()" class="secondary">Stop Scanner</button>
-                                <button onclick="clearScanResult()" class="secondary">Clear Result</button>
-                            </div>
-                        </div>
-                        
-                        <div id="scanResult"></div>
-                    </div>
+        <!-- LEFT -->
+        <div>
+            <h3>Quick Actions</h3>
 
-                    <div class="panel">
-                        <h3>Attendance Stats</h3>
-                        <div class="stats-grid">
-                            <div class="stat-box">
-                                <div>Total Registered</div>
-                                <div class="stat-value" id="totalRegistered">0</div>
-                            </div>
-                            <div class="stat-box">
-                                <div>Present</div>
-                                <div class="stat-value" id="presentCount">0</div>
-                            </div>
-                            <div class="stat-box">
-                                <div>Absent</div>
-                                <div class="stat-value" id="absentCount">0</div>
-                            </div>
-                            <div class="stat-box">
-                                <div>Attendance %</div>
-                                <div class="stat-value" id="attendancePercent">0%</div>
-                            </div>
-                        </div>
-                    </div>
+            <div style="background:#f5f5f5; padding:15px; border-radius:5px;">
+                <h4>QR Code Scanner</h4>
+                <small style="color:#666;">Scan QR codes from Threads26 registration emails/confirmation.</small>
+                <div id="reader" style="width:100%;"></div>
+                <div style="margin-top:10px;">
+                    <button onclick="startScanner()">Start Scanner</button>
+                    <button onclick="stopScanner()">Stop Scanner</button>
                 </div>
+                <div id="scanResult" style="margin-top:10px;"></div>
+            </div>
 
-                <!-- RIGHT: Quick Stats -->
-                <div>
-                    <div class="panel">
-                        <h3>Quick Actions</h3>
-                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px;">
-                            <button onclick="refreshRegistrations()">Refresh List</button>
-                            <button onclick="exportAttendance()">Export CSV</button>
-                            <button onclick="markAllPresent()" class="secondary">Mark All Present</button>
-                            <button onclick="clearAllAttendance()" class="danger">Clear All</button>
-                        </div>
-                        
-                        <div style="margin-top: 20px;">
-                            <h4>Recent Scans</h4>
-                            <div id="recentScans" style="max-height: 300px; overflow-y: auto;"></div>
-                        </div>
-                    </div>
-                </div>
+            <div style="margin-top:20px; background:#f5f5f5; padding:15px; border-radius:5px;">
+                <h4>Attendance Stats</h4>
+                <p>Total Registered: <span id="totalRegistered">0</span></p>
+                <p>Present: <span id="presentCount">0</span></p>
+                <p>Absent: <span id="absentCount">0</span></p>
+                <p>Attendance %: <span id="attendancePercent">0%</span></p>
             </div>
         </div>
 
-        <!-- MANUAL ENTRY TAB -->
-        <div id="manualTab" class="tab-content">
-            <div class="grid-container">
-                <!-- LEFT: Manual Entry Form -->
-                <div>
-                    <div class="panel">
-                        <h3>Manual Attendance Entry</h3>
-                        <p style="color:#666;">Use this when QR scanning fails or for on-the-spot attendance.</p>
-                        
-                        <div class="form-group">
-                            <label for="participantId">Participant ID</label>
-                            <input type="text" id="participantId" placeholder="Enter Participant ID">
-                        </div>
-                        
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px;">
-                            <button onclick="markAttendanceManually()">Mark Attendance</button>
-                            <button onclick="searchParticipant()" class="secondary">Search Participant</button>
-                        </div>
-                        
-                        <div id="manualResult" style="margin-top: 20px;"></div>
-                    </div>
-                </div>
+        <!-- RIGHT -->
+        <div>
+            <h3>All Registrations</h3>
 
-                <!-- RIGHT: Search Results -->
-                <div>
-                    <div class="panel">
-                        <h3>Search Results</h3>
-                        <div class="form-group">
-                            <label for="searchQuery">Search by Name/Email/Phone</label>
-                            <input type="text" id="searchQuery" placeholder="Enter search term..." onkeyup="searchParticipant()">
-                        </div>
-                        
-                        <div id="searchResults" style="margin-top: 15px;"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
+            <input
+                id="searchBox"
+                placeholder="Search by Name / ID / College..."
+                style="width:70%; padding:8px;"
+                onkeyup="filterRegistrations()"
+            >
+            <button onclick="refreshRegistrations()">Refresh</button>
 
-        <!-- ALL REGISTRATIONS TAB -->
-        <div id="registrationsTab" class="tab-content">
-            <div class="panel">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <h3>All Registrations</h3>
-                    <input
-                        id="searchBox"
-                        placeholder="Search by Name / ID / College / Email..."
-                        style="width: 300px; padding: 8px;"
-                        onkeyup="filterRegistrations()"
-                    >
-                </div>
-                
-                <div id="registrationsContainer"></div>
-            </div>
+            <div id="registrationsContainer" style="margin-top:15px;"></div>
         </div>
     </div>
 </div>
@@ -311,74 +58,39 @@
 <script>
 const BASE_URL = 'https://threads26-2-fdem.onrender.com';
 let token = localStorage.getItem('coordinatorToken');
-let eventId = 1;
+let eventId = localStorage.getItem('currentEventId');
 let eventName = localStorage.getItem('currentEventName');
 
 let allRegistrations = [];
 let html5QrCode;
 let scanning = false;
-let recentScans = [];
 
-/* ---------------- TAB MANAGEMENT ---------------- */
-function switchTab(tabName) {
-    // Hide all tabs
-    document.querySelectorAll('.tab-content').forEach(tab => {
-        tab.classList.remove('active');
-    });
-    
-    // Remove active class from all buttons
-    document.querySelectorAll('.tab-button').forEach(button => {
-        button.classList.remove('active');
-    });
-    
-    // Show selected tab
-    document.getElementById(tabName + 'Tab').classList.add('active');
-    
-    // Activate selected button
-    event.target.classList.add('active');
-    
-    // Stop scanner if switching away from scanner tab
-    if (tabName !== 'scanner' && scanning) {
-        stopScanner();
-    }
-}
-
-/* ---------------- INITIALIZATION ---------------- */
+/* ---------------- INIT ---------------- */
 window.onload = () => {
     if (!token || !eventId) {
-        alert('Login required. Please log in again.');
+        alert('Login required');
         window.close();
         return;
     }
-    
-    document.getElementById('eventTitle').textContent = `${eventName} - Attendance Portal`;
+    document.getElementById('eventTitle').textContent =
+        `${eventName} - Attendance Portal`;
     loadEventRegistrations();
     startScanner();
-    
-    // Initialize manual entry form with current event ID (hidden)
-    const manualForm = document.createElement('input');
-    manualForm.type = 'hidden';
-    manualForm.id = 'currentEventId';
-    manualForm.value = eventId;
-    document.body.appendChild(manualForm);
 };
 
-/* ---------------- QR SCANNER FUNCTIONS ---------------- */
+/* ---------------- SCANNER ---------------- */
 function startScanner() {
     if (scanning) return;
-    
+
     html5QrCode = new Html5Qrcode("reader");
     scanning = true;
-    
+
     html5QrCode.start(
         { facingMode: "environment" },
         { fps: 10, qrbox: 250 },
         onScanSuccess,
         () => {}
-    ).catch((err) => {
-        console.error("Scanner error:", err);
-        scanning = false;
-    });
+    ).catch(() => scanning = false);
 }
 
 function stopScanner() {
@@ -386,45 +98,17 @@ function stopScanner() {
         html5QrCode.stop().then(() => {
             html5QrCode.clear();
             scanning = false;
-        }).catch((err) => {
-            console.error("Stop scanner error:", err);
         });
     }
-}
-
-function clearScanResult() {
-    document.getElementById('scanResult').innerHTML = '';
-    recentScans = [];
-    updateRecentScans();
-}
-
-function updateRecentScans() {
-    const container = document.getElementById('recentScans');
-    if (recentScans.length === 0) {
-        container.innerHTML = '<p style="color:#666; text-align:center;">No recent scans</p>';
-        return;
-    }
-    
-    let html = '';
-    recentScans.slice(-10).reverse().forEach(scan => {
-        html += `
-            <div style="margin-bottom: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
-                <div><strong>${scan.name}</strong></div>
-                <div style="font-size: 0.9em; color: #666;">${scan.id}</div>
-                <div style="font-size: 0.8em; color: ${scan.success ? 'green' : 'red'};">${scan.message}</div>
-                <div style="font-size: 0.8em; color: #999;">${scan.time}</div>
-            </div>
-        `;
-    });
-    container.innerHTML = html;
 }
 
 async function onScanSuccess(decodedText) {
     stopScanner();
     const scanDiv = document.getElementById('scanResult');
-    
+    scanDiv.innerHTML = '';
+
     let scannedIds = [];
-    
+
     try {
         const qrData = JSON.parse(decodedText);
         scannedIds = qrData.registration_ids || [];
@@ -434,213 +118,103 @@ async function onScanSuccess(decodedText) {
             .map(x => x.trim())
             .filter(Boolean);
     }
-    
-    // Validate registration IDs
+
+    // Debug logging
+    console.log('Scanned text:', decodedText);
+    console.log('Parsed IDs:', scannedIds);
+    console.log('Current Event ID:', eventId);
+
+    // ✅ FIXED: Better validation for registration IDs
     const validIds = scannedIds.filter(id => {
         try {
+            // Check if it's a Threads26 ID
             const isThreadsId = id.startsWith('THREADS26-');
+            
             if (!isThreadsId) return false;
             
+            // Extract event ID from registration_unique_id format
+            // Format examples:
+            // - THREADS26-SONA-123-1 (SONACSE student for event 1)
+            // - THREADS26-OTHER-456-12 (Other college for event 12)
             const parts = id.split('-');
+            
             if (parts.length < 4) return false;
             
             const extractedEventId = parts[parts.length - 1];
+            
+            // Validate numeric event ID
             if (!/^\d+$/.test(extractedEventId)) return false;
             
             return extractedEventId === String(eventId);
+            
         } catch (error) {
             console.log('Error parsing ID:', id, error);
             return false;
         }
     });
-    
+
+    console.log('Valid IDs:', validIds);
+
     if (validIds.length === 0) {
         scanDiv.innerHTML = '<p style="color:red">❌ Invalid QR (Event mismatch or invalid format)</p>';
         setTimeout(startScanner, 1500);
         return;
     }
-    
-    let resultsHtml = '';
-    
+
     for (let id of validIds) {
         const res = await fetch(`${BASE_URL}/api/scan-attendance`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ registration_id: id })
         });
-        
+
         const data = await res.json();
-        
-        // Add to recent scans
-        recentScans.push({
-            id: id,
-            name: data.participant?.full_name || 'Unknown',
-            message: data.message || (data.success ? 'Success' : 'Failed'),
-            success: data.success,
-            time: new Date().toLocaleTimeString()
-        });
-        
+        const p = document.createElement('p');
+
         if (data.success) {
-            resultsHtml += `<p style="color:green;">✅ ${data.participant?.full_name || 'Participant'} - ${data.message}`;
-            if (data.participant?.college_name) {
-                resultsHtml += ` (${data.participant.college_name})`;
+            p.style.color = 'green';
+            p.textContent = `✅ ${id} - ${data.message}`;
+            if (data.participant) {
+                p.textContent += ` (${data.participant.full_name})`;
             }
-            resultsHtml += `</p>`;
-            
-            // Update local registration data
             const r = allRegistrations.find(x => x.registration_unique_id === id);
             if (r) {
                 r.attendance_status = 'ATTENDED';
                 r.verification_status = data.payment_info?.admin_verified ? 'Verified' : 'Pending';
             }
         } else {
-            resultsHtml += `<p style="color:red;">❌ ${id} - ${data.message}</p>`;
+            p.style.color = 'red';
+            p.textContent = `❌ ${id} - ${data.message}`;
+            // Show backend error details
             if (data.details) {
-                resultsHtml += `<small style="color:orange;">Reason: ${data.details}</small><br>`;
+                const details = document.createElement('div');
+                details.style.fontSize = '0.8em';
+                details.style.color = 'orange';
+                details.textContent = `Reason: ${data.details}`;
+                p.appendChild(details);
             }
             if (data.suggestion) {
-                resultsHtml += `<small style="color:blue;">Suggestion: ${data.suggestion}</small>`;
+                const suggestion = document.createElement('div');
+                suggestion.style.fontSize = '0.8em';
+                suggestion.style.color = 'blue';
+                suggestion.textContent = `Suggestion: ${data.suggestion}`;
+                p.appendChild(suggestion);
             }
         }
+
+        scanDiv.appendChild(p);
     }
-    
-    scanDiv.innerHTML = resultsHtml;
-    updateRecentScans();
+
     updateStats();
     filterRegistrations();
-    
+
     setTimeout(() => {
+        scanDiv.innerHTML = '';
         startScanner();
-    }, 2000);
+    }, 3000);
 }
 
-/* ---------------- MANUAL ATTENDANCE FUNCTIONS ---------------- */
-async function markAttendanceManually() {
-    const participantId = document.getElementById('participantId').value.trim();
-    const resultDiv = document.getElementById('manualResult');
-    
-    if (!participantId) {
-        resultDiv.innerHTML = '<p style="color:red;">❌ Please enter a Participant ID</p>';
-        return;
-    }
-    
-    resultDiv.innerHTML = '<p>Processing...</p>';
-    
-    try {
-        const response = await fetch(`${BASE_URL}/api/manual-attendance`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                event_id: eventId,
-                participant_id: participantId
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            resultDiv.innerHTML = `
-                <div style="background:#d4edda; color:#155724; padding:15px; border-radius:5px;">
-                    <h4 style="margin-top:0;">✅ ${data.message}</h4>
-                    <p><strong>Participant:</strong> ${data.participant.full_name}</p>
-                    <p><strong>College:</strong> ${data.participant.college_name}</p>
-                    <p><strong>Event:</strong> ${data.event.event_name}</p>
-                    <p><strong>Method:</strong> ${data.method}</p>
-                </div>
-            `;
-            
-            // Update local data
-            const r = allRegistrations.find(x => 
-                x.participant_id === participantId && x.event_id === eventId
-            );
-            if (r) {
-                r.attendance_status = 'ATTENDED';
-            }
-            
-            // Clear input
-            document.getElementById('participantId').value = '';
-            
-            // Refresh data
-            loadEventRegistrations();
-            
-        } else {
-            resultDiv.innerHTML = `
-                <div style="background:#f8d7da; color:#721c24; padding:15px; border-radius:5px;">
-                    <h4 style="margin-top:0;">❌ ${data.error || data.message}</h4>
-                    ${data.details ? `<p><strong>Details:</strong> ${data.details}</p>` : ''}
-                    ${data.suggestion ? `<p><strong>Suggestion:</strong> ${data.suggestion}</p>` : ''}
-                </div>
-            `;
-        }
-    } catch (error) {
-        resultDiv.innerHTML = `<p style="color:red;">❌ Error: ${error.message}</p>`;
-    }
-}
-
-async function searchParticipant() {
-    const searchQuery = document.getElementById('searchQuery').value.trim();
-    const resultsDiv = document.getElementById('searchResults');
-    
-    if (!searchQuery) {
-        resultsDiv.innerHTML = '<p style="color:#666;">Enter a search term above...</p>';
-        return;
-    }
-    
-    resultsDiv.innerHTML = '<p>Searching...</p>';
-    
-    try {
-        const response = await fetch(`${BASE_URL}/api/search-participants?event_id=${eventId}&search_query=${encodeURIComponent(searchQuery)}`, {
-            headers: { 'x-admin-token': token }
-        });
-        
-        const data = await response.json();
-        
-        if (data.success && data.count > 0) {
-            let html = '<div style="max-height: 400px; overflow-y: auto;">';
-            data.participants.forEach(participant => {
-                html += `
-                    <div style="border:1px solid #ddd; padding:10px; margin-bottom:10px; border-radius:5px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div>
-                                <strong>${participant.full_name}</strong><br>
-                                <small>${participant.college_name} • ${participant.department}</small>
-                            </div>
-                            <button onclick="useParticipantId('${participant.participant_id}')" class="secondary" style="padding:5px 10px; font-size:0.9em;">
-                                Mark Attendance
-                            </button>
-                        </div>
-                        <div style="font-size:0.9em; color:#666; margin-top:5px;">
-                            <div>ID: ${participant.participant_id}</div>
-                            <div>Email: ${participant.email}</div>
-                            <div>Phone: ${participant.phone_number || 'N/A'}</div>
-                            <div>Payment: <span class="${participant.payment_status === 'Success' ? 'status-success' : 'status-pending'}">
-                                ${participant.payment_status}
-                            </span></div>
-                            <div>Attendance: <span class="${participant.attendance_status === 'ATTENDED' ? 'status-success' : 'status-pending'}">
-                                ${participant.attendance_status || 'PENDING'}
-                            </span></div>
-                        </div>
-                    </div>
-                `;
-            });
-            html += '</div>';
-            resultsDiv.innerHTML = html;
-        } else {
-            resultsDiv.innerHTML = '<p style="color:#666;">No participants found matching your search.</p>';
-        }
-    } catch (error) {
-        resultsDiv.innerHTML = `<p style="color:red;">❌ Search error: ${error.message}</p>`;
-    }
-}
-
-function useParticipantId(pid) {
-    document.getElementById('participantId').value = pid;
-    document.getElementById('searchQuery').value = '';
-    document.getElementById('searchResults').innerHTML = '';
-    markAttendanceManually();
-}
-
-/* ---------------- REGISTRATION MANAGEMENT ---------------- */
+/* ---------------- DATA ---------------- */
 async function loadEventRegistrations() {
     try {
         const res = await fetch(
@@ -668,8 +242,8 @@ function displayRegistrations(list) {
         return;
     }
 
-    let html = `<table>
-        <thead>
+    let html = `<table border="1" cellpadding="8" width="100%" style="border-collapse:collapse;">
+        <thead style="background-color:#f2f2f2;">
         <tr>
             <th>Name</th>
             <th>Registration ID</th>
@@ -678,87 +252,41 @@ function displayRegistrations(list) {
             <th>Payment Status</th>
             <th>Admin Verified</th>
             <th>Attendance</th>
-            <th>Action</th>
         </tr>
         </thead>
         <tbody>`;
 
     list.forEach(r => {
         const isPresent = r.attendance_status === 'ATTENDED';
-        html += `<tr style="${isPresent ? 'background-color: #d4edda;' : ''}">
+        html += `<tr style="${isPresent ? 'background-color: #d4edda;' : 'background-color: #fff;'}">
             <td><strong>${r.full_name || 'N/A'}</strong></td>
             <td><small style="font-family:monospace;">${r.registration_unique_id || 'N/A'}</small></td>
             <td>${r.college_name || 'N/A'}</td>
             <td>${r.event_type || 'N/A'}</td>
             <td>
-                <span class="status-${r.payment_status === 'Success' ? 'success' : 
-                                    r.payment_status === 'Pending' ? 'pending' : 
-                                    r.payment_status === 'Failed' ? 'failed' : 'pending'}">
+                <span style="padding:2px 8px; border-radius:3px; 
+                    background-color:${r.payment_status === 'Success' ? '#d4edda' : 
+                                     r.payment_status === 'Pending' ? '#fff3cd' : 
+                                     r.payment_status === 'Failed' ? '#f8d7da' : '#f2f2f2'};">
                     ${r.payment_status || 'N/A'}
                 </span>
             </td>
             <td>
-                <span class="${r.verification_status === 'Verified' ? 'status-success' : 'status-pending'}">
+                <span style="padding:2px 8px; border-radius:3px; 
+                    background-color:${r.verification_status === 'Verified' ? '#d4edda' : '#fff3cd'};">
                     ${r.verification_status || 'Pending'}
                 </span>
             </td>
             <td>
-                <span class="${isPresent ? 'status-success' : 'status-pending'}">
+                <strong style="color:${isPresent ? '#155724' : '#721c24'};">
                     ${r.attendance_status || 'PENDING'}
-                </span>
-            </td>
-            <td>
-                <button onclick="markSingleAttendance('${r.registration_unique_id}')" 
-                        ${isPresent ? 'disabled style="opacity:0.5;"' : ''}
-                        style="padding:5px 10px; font-size:0.9em;">
-                    ${isPresent ? '✓ Marked' : 'Mark'}
-                </button>
+                </strong>
             </td>
         </tr>`;
     });
 
     html += '</tbody></table>';
     document.getElementById('registrationsContainer').innerHTML = html;
-}
-
-async function markSingleAttendance(registrationId) {
-    try {
-        const response = await fetch(`${BASE_URL}/api/scan-attendance`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ registration_id: registrationId })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            alert(`✅ ${data.message}`);
-            loadEventRegistrations();
-        } else {
-            alert(`❌ ${data.message}`);
-        }
-    } catch (error) {
-        alert(`❌ Error: ${error.message}`);
-    }
-}
-
-function filterRegistrations() {
-    const q = document.getElementById('searchBox').value.toLowerCase().trim();
-
-    if (!q) {
-        displayRegistrations(allRegistrations);
-        return;
-    }
-
-    const filtered = allRegistrations.filter(r =>
-        (r.full_name && r.full_name.toLowerCase().includes(q)) ||
-        (r.registration_unique_id && r.registration_unique_id.toLowerCase().includes(q)) ||
-        (r.college_name && r.college_name.toLowerCase().includes(q)) ||
-        (r.email && r.email.toLowerCase().includes(q)) ||
-        (r.participant_id && r.participant_id.toLowerCase().includes(q))
-    );
-
-    displayRegistrations(filtered);
 }
 
 function updateStats() {
@@ -779,66 +307,30 @@ function updateStats() {
                               percent >= 50 ? '#856404' : '#721c24';
 }
 
-/* ---------------- UTILITY FUNCTIONS ---------------- */
+/* ---------------- SEARCH ---------------- */
+function filterRegistrations() {
+    const q = document.getElementById('searchBox').value.toLowerCase().trim();
+
+    if (!q) {
+        displayRegistrations(allRegistrations);
+        return;
+    }
+
+    const filtered = allRegistrations.filter(r =>
+        (r.full_name && r.full_name.toLowerCase().includes(q)) ||
+        (r.registration_unique_id && r.registration_unique_id.toLowerCase().includes(q)) ||
+        (r.college_name && r.college_name.toLowerCase().includes(q)) ||
+        (r.email && r.email.toLowerCase().includes(q))
+    );
+
+    displayRegistrations(filtered);
+}
+
+/* ---------------- UTIL ---------------- */
 function refreshRegistrations() {
     const searchBox = document.getElementById('searchBox');
-    searchBox.value = '';
+    searchBox.value = ''; // Clear search on refresh
     loadEventRegistrations();
-}
-
-function exportAttendance() {
-    const csvContent = "data:text/csv;charset=utf-8," + 
-        ["Name,Email,College,Registration ID,Payment Status,Attendance Status,Event Type,Admin Verified"]
-        .concat(allRegistrations.map(r => 
-            `"${r.full_name || ''}","${r.email || ''}","${r.college_name || ''}","${r.registration_unique_id || ''}","${r.payment_status || ''}","${r.attendance_status || ''}","${r.event_type || ''}","${r.verification_status || ''}"`
-        )).join("\n");
-    
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `${eventName}_attendance_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
-
-async function markAllPresent() {
-    if (!confirm("Are you sure you want to mark ALL registrations as present? This cannot be undone.")) {
-        return;
-    }
-    
-    try {
-        const pending = allRegistrations.filter(r => r.attendance_status !== 'ATTENDED');
-        
-        for (const reg of pending) {
-            await fetch(`${BASE_URL}/api/manual-attendance`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    event_id: eventId,
-                    participant_id: reg.participant_id
-                })
-            });
-        }
-        
-        alert(`✅ Marked ${pending.length} participants as present`);
-        loadEventRegistrations();
-    } catch (error) {
-        alert(`❌ Error: ${error.message}`);
-    }
-}
-
-async function clearAllAttendance() {
-    if (!confirm("WARNING: This will clear ALL attendance records for this event. Are you sure?")) {
-        return;
-    }
-    
-    try {
-        // This would need a separate API endpoint
-        alert("This feature requires backend implementation. Contact developer.");
-    } catch (error) {
-        alert(`❌ Error: ${error.message}`);
-    }
 }
 
 // Handle page close/refresh
@@ -847,11 +339,6 @@ window.addEventListener('beforeunload', () => {
         stopScanner();
     }
 });
-
-// Initialize the search participants endpoint if not available
-if (typeof BASE_URL !== 'undefined') {
-    // This is already defined in your provided code
-}
 
 </script>
 
