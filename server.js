@@ -7,11 +7,9 @@ import pg from 'pg';
 import dotenv from 'dotenv';
 import { Redis } from '@upstash/redis';
 import QRCode from 'qrcode';
-import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs from 'fs';
 import moment from 'moment';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -61,32 +59,6 @@ const EVENT_DATES = {
 
 
 
-
-
-fastify.get('/api/health', async () => {
-  const dbHealth = await pool.query('SELECT 1 as healthy').catch(() => ({ rows: [{ healthy: 0 }] }));
-  const redisHealth = await redis.ping().then(() => 'OK').catch(() => 'ERROR');
-  
-  return {
-    status: 'operational',
-    timestamp: new Date().toISOString(),
-    services: {
-      database: dbHealth.rows[0].healthy === 1 ? 'OK' : 'ERROR',
-      redis: redisHealth,
-      registration_open: moment().isBefore(moment(EVENT_DATES.registration_closes))
-    }
-  };
-});
-
-  const sendEmail = async (to, subject, html) => {
-  console.log(`Email to ${to}: ${subject}`);
-  return true;
-};
-
-const sendWhatsApp = async (phone, message) => {
-  console.log(`WhatsApp to ${phone}: ${message}`);
-  return true;
-};
 
 
 
@@ -1297,62 +1269,6 @@ fastify.post('/api/admin/manual-verification', async (request, reply) => {
   }
 });
 
-// -------------------- ADMIN ATTENDANCE ENDPOINTS --------------------
-
-// 6. Admin QR Scan & Attendance Update
-fastify.post('/api/admin/scan-qr', async (request, reply) => {
-  try {
-    const { qr_data} = request.body;
-    
-
-    
-    // Parse QR data
-    let participantData;
-    try {
-      participantData = JSON.parse(qr_data);
-    } catch (e) {
-      return reply.code(400).send({ error: 'Invalid QR data format' });
-    }
-    
-    // Verify hash
-    const expectedHash = crypto.createHash('sha256')
-      .update(participantData.participant_id + (process.env.QR_SECRET || 'threads26'))
-      .digest('hex');
-    
-    if (participantData.verification_hash !== expectedHash) {
-      return reply.code(400).send({ error: 'Invalid QR code' });
-    }
-    
-    // Get participant details
-    const participant = await pool.query(
-      `SELECT * FROM participants WHERE participant_id = $1`,
-      [participantData.participant_id]
-    );
-    
-    if (participant.rows.length === 0) {
-      throw new Error('Participant not found');
-    }
-    
-    // Get registrations
-    const registrations = await pool.query(
-      `SELECT r.*, e.event_name, e.day FROM registrations r
-       JOIN events e ON r.event_id = e.event_id
-       WHERE r.participant_id = $1`,
-      [participantData.participant_id]
-    );
-    
-    return {
-      success: true,
-      participant: participant.rows[0],
-      registrations: registrations.rows,
-      scanned_at: new Date().toISOString()
-    };
-    
-  } catch (error) {
-    fastify.log.error(error);
-    return reply.code(400).send({ error: error.message });
-  }
-});
 
 
 // -------------------- Scan QR & Mark Attendance by Registration --------------------
@@ -1660,67 +1576,6 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
   }
 });
 
-// 7. Update Attendance Status (QR Scan Based)
-fastify.post('/api/admin/attendance', async (request, reply) => {
-  const client = await pool.connect();
-
-  try {
-    const { registration_id } = request.body;
-
-    if (!registration_id) {
-      return reply.code(400).send({
-        error: 'registration_id is required'
-      });
-    }
-
-    await client.query('BEGIN');
-
-    // Mark attendance using ONLY registration_unique_id
-    const result = await client.query(
-      `
-      UPDATE registrations
-      SET attendance_status = 'ATTENDED',
-          attended_at = NOW()
-      WHERE registration_unique_id = $1
-        AND attendance_status != 'ATTENDED'
-      RETURNING registration_unique_id, event_id, attendance_status
-      `,
-      [registration_id]
-    );
-
-    if (result.rowCount === 0) {
-      await client.query('ROLLBACK');
-      return reply.code(404).send({
-        error: 'Invalid Registration ID or already attended'
-      });
-    }
-
-    await client.query('COMMIT');
-
-    // ✅ ADD CACHE INVALIDATION
-Promise.all([
-  invalidateStatsCache()
-]).catch(err => console.error('Cache invalidation error:', err));
-
-    return {
-      success: true,
-      message: 'Attendance marked successfully',
-      registration_id: result.rows[0].registration_unique_id,
-      event_id: result.rows[0].event_id,
-      attendance_status: result.rows[0].attendance_status,
-      attended_at: new Date().toISOString()
-    };
-
-  } catch (error) {
-    await client.query('ROLLBACK');
-    fastify.log.error(error);
-    return reply.code(500).send({
-      error: 'Failed to update attendance'
-    });
-  } finally {
-    client.release();
-  }
-});
 
 
 // 8. Get Attendance Report
@@ -1826,68 +1681,7 @@ fastify.get('/api/admin/attendance-report', async (request) => {
   }
 });
 
-// 9. Bulk Attendance Update
-fastify.post('/api/admin/bulk-attendance', async (request, reply) => {
-  const client = await pool.connect();
-  
-  try {
-    const { 
-      participant_ids, 
-      event_ids,
-      attendance_status,
-      admin_token 
-    } = request.body;
-    
-    
-    if (!['NOT_ATTENDED', 'ATTENDED'].includes(attendance_status)) {
-      return reply.code(400).send({ error: 'Invalid attendance status' });
-    }
-    
-    let query;
-    let params;
-    
-    if (participant_ids && participant_ids.length > 0) {
-      // Update all registrations for specific participants
-      query = `
-        UPDATE registrations 
-        SET attendance_status = $1, attended_at = $2
-        WHERE participant_id = ANY($3)
-        RETURNING registration_unique_id, participant_id, attendance_status
-      `;
-      params = [attendance_status, new Date(), participant_ids];
-    } else if (event_ids && event_ids.length > 0) {
-      // Update all registrations for specific events
-      query = `
-        UPDATE registrations 
-        SET attendance_status = $1, attended_at = $2
-        WHERE event_id = ANY($3)
-        RETURNING registration_unique_id, event_id, attendance_status
-      `;
-      params = [attendance_status, new Date(), event_ids];
-    } else {
-      return reply.code(400).send({ 
-        error: 'Provide either participant_ids or event_ids' 
-      });
-    }
-    
-    const result = await client.query(query, params);
-    
-    await client.query('COMMIT');
-    
-    return {
-      success: true,
-      updated_count: result.rowCount,
-      message: `Marked ${result.rowCount} registrations as ${attendance_status}`
-    };
-    
-  } catch (error) {
-    await client.query('ROLLBACK');
-    fastify.log.error(error);
-    return reply.code(400).send({ error: error.message });
-  } finally {
-    client.release();
-  }
-});
+
 
 // 10. Export Registrations (Admin)
 fastify.get('/api/admin/export', async (request, reply) => {
@@ -2304,117 +2098,9 @@ const invalidateAnnouncementsCache = async () => {
 };
 
 
-// 12. Update Event Status (Admin)
-fastify.patch('/api/admin/events/:id', async (request, reply) => {
-  
-  try {
-    const { id } = request.params;
-    const { is_active, total_seats, cse_seats } = request.body;
-    
-    const updates = [];
-    const params = [];
-    let paramCount = 1;
-    
-    if (is_active !== undefined) {
-      updates.push(`is_active = $${paramCount++}`);
-      params.push(is_active);
-    }
-    
-    if (total_seats !== undefined) {
-      updates.push(`total_seats = $${paramCount++}, available_seats = $${paramCount++}`);
-      params.push(total_seats, total_seats);
-    }
-    
-    if (cse_seats !== undefined) {
-      updates.push(`cse_seats = $${paramCount++}, cse_available_seats = $${paramCount++}`);
-      params.push(cse_seats, cse_seats);
-    }
-    
-    if (updates.length === 0) {
-      return reply.code(400).send({ error: 'No updates provided' });
-    }
-    
-    params.push(id);
-    
-    const query = `
-      UPDATE events 
-      SET ${updates.join(', ')} 
-      WHERE event_id = $${paramCount}
-      RETURNING *
-    `;
-    
-    const result = await pool.query(query, params);
-    
-    return { 
-      success: true, 
-      event: result.rows[0] 
-    };
-    
-  } catch (error) {
-    fastify.log.error(error);
-    return reply.code(400).send({ error: error.message });
-  }
-});
 
 
-// 13. Upload Gallery Image (Admin)
-fastify.post('/api/admin/gallery', async (request, reply) => {
-  
-  try {
-    const data = await request.file();
-    const { album_name } = data.fields;
-    
-    // Save file (in production, upload to S3/Cloudinary)
-    const fileName = `${uuidv4()}${path.extname(data.filename)}`;
-    const uploadPath = path.join(__dirname, 'public', 'uploads', fileName);
-    
-    // Ensure directory exists
-    await fs.promises.mkdir(path.dirname(uploadPath), { recursive: true });
-    
-    const writeStream = fs.createWriteStream(uploadPath);
-    await data.file.pipe(writeStream);
-    
-    // Save to database
-    const imageUrl = `/public/uploads/${fileName}`;
-    const result = await pool.query(
-      `INSERT INTO gallery (album_name, image_url) 
-       VALUES ($1, $2) 
-       RETURNING image_id`,
-      [album_name.value, imageUrl]
-    );
-    
-    return { 
-      success: true, 
-      image_id: result.rows[0].image_id,
-      image_url: imageUrl
-    };
-    
-  } catch (error) {
-    fastify.log.error(error);
-    return reply.code(500).send({ error: 'Upload failed' });
-  }
-});
 
-
-// 14. Get Gallery Images (Public)
-fastify.get('/api/gallery', async (request) => {
-  try {
-    const { album_name } = request.query;
-    let query = 'SELECT * FROM gallery ORDER BY uploaded_at DESC';
-    const params = [];
-    
-    if (album_name) {
-      query = 'SELECT * FROM gallery WHERE album_name = $1 ORDER BY uploaded_at DESC';
-      params.push(album_name);
-    }
-    
-    const result = await pool.query(query, params);
-    return result.rows;
-  } catch (error) {
-    fastify.log.error(error);
-    throw error;
-  }
-});
 
 
 // 15. Create announcement (Admin)
@@ -2458,61 +2144,49 @@ fastify.get('/api/announcements', async () => {
   }
 });
 
+// 17. Create announcement
+fastify.post('/api/announcements', async (request, reply) => {
+  const { title, message, expires_at, is_active = true } = request.body;
 
-// 17. Get QR for participant (for admin display)
-fastify.get('/api/participant/:id/qr-data', async (request) => {
   try {
-    const { id } = request.params;
-    
-    const participant = await pool.query(
-      `SELECT * FROM participants WHERE participant_id = $1`,
-      [id]
+    const result = await pool.query(
+      `INSERT INTO announcements (title, message, expires_at, is_active)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [title, message, expires_at, is_active]
     );
-    
-    if (participant.rows.length === 0) {
-      throw new Error('Participant not found');
-    }
-    
-    const registrations = await pool.query(
-      `SELECT 
-        r.registration_unique_id,
-        r.payment_status,
-        r.amount_paid,
-        r.registered_at,
-        r.attendance_status,
-        e.event_name,
-        e.event_type,
-        e.day,
-        e.fee
-       FROM registrations r
-       JOIN events e ON r.event_id = e.event_id
-       WHERE r.participant_id = $1`,
-      [id]
-    );
-    
-    const payments = await pool.query(
-      `SELECT * FROM payments 
-       WHERE participant_id = $1 AND payment_status = 'Success'`,
-      [id]
-    );
-    
-    const totalAmount = registrations.rows.reduce((sum, reg) => 
-      sum + parseFloat(reg.amount_paid || 0), 0
-    );
-    
-    return {
-      participant: participant.rows[0],
-      registrations: registrations.rows,
-      payments: payments.rows,
-      total_amount: totalAmount,
-      qr_url: `/api/participant/${id}/qr`
-    };
-    
+
+    reply.code(201).send(result.rows[0]);
   } catch (error) {
     fastify.log.error(error);
-    throw error;
+    reply.code(500).send({ error: 'Failed to create announcement' });
   }
 });
+
+
+// 18. Delete announcement
+fastify.delete('/api/announcements/:id', async (request, reply) => {
+  const { id } = request.params;
+
+  try {
+    const result = await pool.query(
+      `DELETE FROM announcements WHERE id = $1 RETURNING *`,
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      return reply.code(404).send({ error: 'Announcement not found' });
+    }
+
+    reply.send({ message: 'Announcement deleted successfully' });
+  } catch (error) {
+    fastify.log.error(error);
+    reply.code(500).send({ error: 'Failed to delete announcement' });
+  }
+});
+
+
+
 
 
 // 9. Auto-close Registration Check (Cron job simulation)
@@ -2543,151 +2217,6 @@ fastify.get('/api/admin/check-registration-status', async (request) => {
 
 
 
-
-// -------------------- Database Setup with All Fields --------------------
-fastify.get('/api/setup-db', async (request, reply) => {
-  try {
-    const queries = [
-      // Participants table
-      `CREATE TABLE IF NOT EXISTS participants (
-        participant_id SERIAL PRIMARY KEY,
-        full_name VARCHAR(255) NOT NULL,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        phone VARCHAR(20) NOT NULL,
-        college_name VARCHAR(255) NOT NULL,
-        department VARCHAR(100) NOT NULL,
-        year_of_study INTEGER NOT NULL,
-        city VARCHAR(100),
-        state VARCHAR(100),
-        accommodation_required BOOLEAN DEFAULT false,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`,
-      
-      // Events table (with ALL required fields)
-      `CREATE TABLE IF NOT EXISTS events (
-        event_id SERIAL PRIMARY KEY,
-        event_name VARCHAR(255) NOT NULL,
-        event_type VARCHAR(50) NOT NULL CHECK (event_type IN ('workshop', 'technical', 'non-technical')),
-        day INTEGER NOT NULL CHECK (day IN (1, 2)),
-        fee DECIMAL(10, 2) DEFAULT 0,
-        description TEXT,
-        duration VARCHAR(50),
-        speaker VARCHAR(255),
-        rules TEXT,
-        total_seats INTEGER DEFAULT 100,
-        available_seats INTEGER DEFAULT 100,
-        cse_seats INTEGER DEFAULT 30,
-        cse_available_seats INTEGER DEFAULT 30,
-        is_active BOOLEAN DEFAULT true,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`,
-      
-      // Registrations table
-      `CREATE TABLE IF NOT EXISTS registrations (
-        registration_id SERIAL PRIMARY KEY,
-        participant_id INTEGER REFERENCES participants(participant_id),
-        event_id INTEGER REFERENCES events(event_id),
-        registration_unique_id VARCHAR(50) UNIQUE NOT NULL,
-        payment_status VARCHAR(20) DEFAULT 'Pending' CHECK (payment_status IN ('Pending', 'Success', 'Failed', 'Refunded')),
-        amount_paid DECIMAL(10, 2) DEFAULT 0,
-        event_name VARCHAR(255),
-        day INTEGER,
-        attendance_status VARCHAR(20) DEFAULT 'NOT_ATTENDED' CHECK (attendance_status IN ('NOT_ATTENDED', 'ATTENDED')),
-        registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        attended_at TIMESTAMP,
-        certificate_generated BOOLEAN DEFAULT false
-      )`,
-      
-      // Payments table
-      `CREATE TABLE IF NOT EXISTS payments (
-        payment_id SERIAL PRIMARY KEY,
-        participant_id INTEGER REFERENCES participants(participant_id),
-        transaction_id VARCHAR(100),
-        payment_reference VARCHAR(100),
-        amount DECIMAL(10, 2) NOT NULL,
-        payment_method VARCHAR(50),
-        payment_status VARCHAR(20) DEFAULT 'Success' CHECK (payment_status IN ('Success', 'Failed', 'Refunded')),
-        verified_by_admin BOOLEAN DEFAULT false,
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        verified_at TIMESTAMP
-      )`,
-      
-      // Gallery table
-      `CREATE TABLE IF NOT EXISTS gallery (
-        image_id SERIAL PRIMARY KEY,
-        album_name VARCHAR(100) NOT NULL,
-        image_url VARCHAR(500) NOT NULL,
-        caption TEXT,
-        uploaded_by VARCHAR(100),
-        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`,
-      
-      // Announcements table
-      `CREATE TABLE IF NOT EXISTS announcements (
-        announcement_id SERIAL PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
-        content TEXT NOT NULL,
-        is_active BOOLEAN DEFAULT true,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        expires_at TIMESTAMP
-      )`
-    ];
-    
-    for (const query of queries) {
-      await pool.query(query);
-    }
-    
-    // Insert sample events
-    const sampleEvents = [
-      // Workshops (Day 1)
-      [1, 'AI/ML Workshop', 'workshop', 1, 150, 'Learn AI/ML techniques', '3 hours', 'Dr. AI Expert', 'Bring laptop with Python', 50, 50, 30, 30, true],
-      [2, 'Web3 Workshop', 'workshop', 1, 120, 'Blockchain and Web3', '3 hours', 'Blockchain Specialist', 'Basic programming required', 50, 50, 30, 30, true],
-      [3, 'IoT Workshop', 'workshop', 1, 130, 'Internet of Things', '3 hours', 'IoT Engineer', 'No prior experience', 50, 50, 30, 30, true],
-      
-      // Technical Events (Day 2)
-      [4, 'Paper Presentation', 'technical', 2, 80, 'Present research papers', '2 hours', null, 'Max 2 authors per paper', 100, 100, 40, 40, true],
-      [5, 'Code Relay', 'technical', 2, 70, 'Team coding competition', '2 hours', null, 'Teams of 2 members', 100, 100, 40, 40, true],
-      [6, 'Debugging Challenge', 'technical', 2, 60, 'Find and fix bugs', '1.5 hours', null, 'Individual participation', 100, 100, 40, 40, true],
-      
-      // Non-Technical Events (Day 2)
-      [7, 'Technical Quiz', 'non-technical', 2, 50, 'Tech knowledge quiz', '1 hour', null, 'Teams of 2-3 members', 100, 100, 40, 40, true],
-      [8, 'Treasure Hunt', 'non-technical', 2, 40, 'Campus treasure hunt', '2 hours', null, 'Teams of 3-4 members', 100, 100, 40, 40, true],
-      [9, 'Connections', 'non-technical', 2, 30, 'Word connection game', '1 hour', null, 'Individual participation', 100, 100, 40, 40, true]
-    ];
-    
-    for (const event of sampleEvents) {
-      await pool.query(`
-        INSERT INTO events (
-          event_id, event_name, event_type, day, fee, description,
-          duration, speaker, rules, total_seats, available_seats,
-          cse_seats, cse_available_seats, is_active
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-        ON CONFLICT (event_id) DO UPDATE SET
-          event_name = EXCLUDED.event_name,
-          event_type = EXCLUDED.event_type,
-          fee = EXCLUDED.fee,
-          description = EXCLUDED.description,
-          duration = EXCLUDED.duration,
-          speaker = EXCLUDED.speaker,
-          rules = EXCLUDED.rules
-      `, event);
-    }
-    
-    return { 
-      success: true, 
-      message: 'Database setup complete with all required fields',
-      tables_created: queries.length,
-      sample_events_inserted: sampleEvents.length
-    };
-    
-  } catch (error) {
-    fastify.log.error(error);
-    return reply.code(500).send({ error: error.message });
-  }
-});
 
 
 //cse endpoints 
@@ -3384,6 +2913,52 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
     client.release();
   }    
 });
+
+
+
+
+
+// FAST SIMPLE ENDPOINT for quick loading
+fastify.get('/api/super-admin/quick', async (request, reply) => {
+  try {
+    const stats = await pool.query(`
+      SELECT 
+        (SELECT COUNT(*) FROM participants) as total_participants,
+        (SELECT COUNT(*) FROM registrations) as total_registrations,
+        (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE payment_status = 'Success') as total_revenue,
+        (SELECT COUNT(*) FROM events WHERE is_active = true) as active_events,
+        (SELECT COUNT(*) FROM registrations WHERE DATE(registered_at) = CURRENT_DATE) as today_registrations,
+        (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(created_at) = CURRENT_DATE AND payment_status = 'Success') as today_revenue,
+        (SELECT COUNT(*) FROM payments WHERE verified_by_admin = false AND payment_status = 'Success') as pending_verifications
+    `);
+
+    const lowSeats = await pool.query(`
+      SELECT event_name, available_seats 
+      FROM events 
+      WHERE is_active = true AND available_seats < 10
+      ORDER BY available_seats ASC 
+      LIMIT 5
+    `);
+
+    return {
+      success: true,
+      timestamp: new Date().toISOString(),
+      overview: stats.rows[0],
+      low_seat_events: lowSeats.rows,
+      registration_open: moment().isBefore(moment(EVENT_DATES.registration_closes))
+    };
+
+  } catch (error) {
+    fastify.log.error(error);
+    return reply.code(500).send({ 
+      error: 'Failed to load quick stats',
+      details: error.message 
+    });
+  }
+});
+
+
+
 
 const PORT = process.env.PORT || 3000;
 
