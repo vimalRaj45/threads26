@@ -1,0 +1,1013 @@
+openapi: 3.0.3
+info:
+  title: THREADS'26 Event Management API
+  version: 1.0.0
+  description: |
+    API documentation for THREADS'26 Event Management System
+    Base URL: https://your-api-domain.com
+
+servers:
+  - url: https://your-api-domain.com
+    description: Production server
+
+tags:
+  - name: Public
+    description: Public endpoints accessible to all users
+  - name: Registration
+    description: Event registration endpoints
+  - name: Payment
+    description: Payment verification endpoints
+  - name: SONACSE
+    description: SONACSE-specific endpoints (Saveetha CSE students)
+  - name: Admin
+    description: Admin endpoints (requires authentication)
+  - name: Attendance
+    description: Attendance tracking endpoints
+  - name: Participant
+    description: Participant lookup endpoints
+
+paths:
+  # ==================== PUBLIC ENDPOINTS ====================
+  /api/event-dates:
+    get:
+      tags: [Public]
+      summary: Get event dates and countdown
+      responses:
+        200:
+          description: Event dates retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workshop_day:
+                    type: string
+                    format: date
+                    example: "2024-02-15"
+                  event_day:
+                    type: string
+                    format: date
+                    example: "2024-02-16"
+                  registration_closes:
+                    type: string
+                    format: date
+                    example: "2024-02-14"
+                  countdown:
+                    type: object
+                    properties:
+                      days_to_workshop:
+                        type: integer
+                        example: 5
+                      days_to_event:
+                        type: integer
+                        example: 6
+                      is_registration_open:
+                        type: boolean
+                        example: true
+
+  /api/events:
+    get:
+      tags: [Public]
+      summary: Get all events with filtering
+      parameters:
+        - name: day
+          in: query
+          schema:
+            type: integer
+            enum: [1, 2]
+          description: Filter by day (1 = Workshop Day, 2 = Event Day)
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [workshop, technical, non-technical]
+          description: Filter by event type
+      responses:
+        200:
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        event_id:
+                          type: integer
+                        event_name:
+                          type: string
+                        event_type:
+                          type: string
+                        day:
+                          type: integer
+                        fee:
+                          type: number
+                        description:
+                          type: string
+                        duration:
+                          type: string
+                        speaker:
+                          type: string
+                        rules:
+                          type: string
+                        total_seats:
+                          type: integer
+                        available_seats:
+                          type: integer
+                        cse_seats:
+                          type: integer
+                        cse_available_seats:
+                          type: integer
+                        is_active:
+                          type: boolean
+                        seat_status:
+                          type: string
+                          enum: [Sold Out, Limited Seats, Available]
+                  registration_open:
+                    type: boolean
+
+  /api/announcements:
+    get:
+      tags: [Public]
+      summary: Get active announcements
+      responses:
+        200:
+          description: List of active announcements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    title:
+                      type: string
+                    message:
+                      type: string
+                    expires_at:
+                      type: string
+                      format: date-time
+                    is_active:
+                      type: boolean
+                    created_at:
+                      type: string
+                      format: date-time
+
+  # ==================== REGISTRATION ENDPOINTS ====================
+  /api/register:
+    post:
+      tags: [Registration]
+      summary: Register for events (Regular registration)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - full_name
+                - email
+                - phone
+                - college_name
+                - department
+                - year_of_study
+              properties:
+                full_name:
+                  type: string
+                  example: "John Doe"
+                email:
+                  type: string
+                  format: email
+                  example: "john@example.com"
+                phone:
+                  type: string
+                  example: "9876543210"
+                college_name:
+                  type: string
+                  example: "ABC College"
+                department:
+                  type: string
+                  enum: [CSE, IT, ECE, EEE, MECH, OTH]
+                  example: "CSE"
+                year_of_study:
+                  type: integer
+                  enum: [1, 2, 3, 4]
+                  example: 3
+                city:
+                  type: string
+                  example: "Chennai"
+                state:
+                  type: string
+                  example: "Tamil Nadu"
+                accommodation_required:
+                  type: boolean
+                  default: false
+                workshop_selections:
+                  type: array
+                  items:
+                    type: integer
+                  example: [101, 102]
+                event_selections:
+                  type: array
+                  items:
+                    type: integer
+                  example: [201, 202]
+      responses:
+        201:
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                  participant_id:
+                    type: integer
+                  registration_ids:
+                    type: array
+                    items:
+                      type: string
+                  total_amount:
+                    type: number
+                  payment_reference:
+                    type: string
+                  seat_status:
+                    type: object
+        400:
+          description: Registration failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error_type:
+                    type: string
+                  error_code:
+                    type: string
+                  message:
+                    type: string
+                  details:
+                    type: string
+                  suggestion:
+                    type: string
+
+  # ==================== SONACSE ENDPOINTS ====================
+  /api/sonacse/register:
+    post:
+      tags: [SONACSE]
+      summary: Register for events (SONACSE students only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - roll_number
+                - full_name
+                - email
+                - phone
+                - year_of_study
+              properties:
+                roll_number:
+                  type: string
+                  example: "21CSE001"
+                full_name:
+                  type: string
+                  example: "John Doe"
+                email:
+                  type: string
+                  format: email
+                  example: "john@sonacse.edu"
+                phone:
+                  type: string
+                  example: "9876543210"
+                year_of_study:
+                  type: integer
+                  enum: [1, 2, 3, 4]
+                  example: 3
+                workshop_selections:
+                  type: array
+                  items:
+                    type: integer
+                  example: [101]
+                event_selections:
+                  type: array
+                  items:
+                    type: integer
+                  example: [201, 202]
+      responses:
+        201:
+          description: SONACSE registration successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  registration_type:
+                    type: string
+                    enum: [EVENTS_ONLY_FREE, WITH_WORKSHOPS_NEEDS_PAYMENT]
+                  participant_details:
+                    type: object
+                  registrations:
+                    type: object
+                  payment:
+                    type: object
+                  qr_code:
+                    type: string
+                    format: base64
+                  seat_status:
+                    type: object
+                  next_steps:
+                    type: string
+
+  /api/sonacse/verify-payment:
+    post:
+      tags: [SONACSE, Payment]
+      summary: Verify payment for SONACSE students
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - participant_id
+                - transaction_id
+              properties:
+                participant_id:
+                  type: integer
+                  example: 123
+                transaction_id:
+                  type: string
+                  example: "TXN123456"
+                payment_reference:
+                  type: string
+                  example: "SONACSE-PAY-123456"
+      responses:
+        200:
+          description: Payment verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  participant_details:
+                    type: object
+                  payment_details:
+                    type: object
+                  registrations:
+                    type: object
+                  qr_code:
+                    type: string
+                    format: base64
+                  qr_payload:
+                    type: object
+
+  # ==================== PAYMENT ENDPOINTS ====================
+  /api/verify-payment:
+    post:
+      tags: [Payment]
+      summary: Verify payment for regular participants
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - participant_id
+                - transaction_id
+              properties:
+                participant_id:
+                  type: integer
+                  example: 123
+                transaction_id:
+                  type: string
+                  example: "TXN123456"
+                payment_reference:
+                  type: string
+                  example: "THREADS26-123-456789"
+                payment_method:
+                  type: string
+                  default: "UPI"
+                  enum: [UPI, Card, Cash]
+      responses:
+        200:
+          description: Payment verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  payment_details:
+                    type: object
+                  seat_status:
+                    type: object
+                  registration_details:
+                    type: object
+                  qr_code:
+                    type: string
+                    format: base64
+                  qr_payload:
+                    type: object
+
+  # ==================== PARTICIPANT ENDPOINTS ====================
+  /api/participant/{id}/verification-status:
+    get:
+      tags: [Participant]
+      summary: Get participant verification status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Participant ID
+      responses:
+        200:
+          description: Verification status retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  participant_id:
+                    type: integer
+                  full_name:
+                    type: string
+                  email:
+                    type: string
+                  verification_status:
+                    type: string
+                    enum: [NOT_VERIFIED, AUTO_VERIFIED, ADMIN_VERIFIED]
+                  verified_by:
+                    type: string
+                  verified_at:
+                    type: string
+                    format: date-time
+                  payment_summary:
+                    type: object
+
+  /api/participant/{id}/all:
+    get:
+      tags: [Participant]
+      summary: Get all participant data in one call
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Participant ID
+      responses:
+        200:
+          description: All participant data retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  participant:
+                    type: object
+                  verification_status:
+                    type: string
+                  payment_summary:
+                    type: object
+                  registrations:
+                    type: array
+                  registrations_by_day:
+                    type: object
+                  payments:
+                    type: array
+                  last_updated:
+                    type: string
+                    format: date-time
+
+  /api/track/{registration_id}:
+    get:
+      tags: [Participant]
+      summary: Track registration status by registration ID
+      parameters:
+        - name: registration_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Registration Unique ID
+      responses:
+        200:
+          description: Registration details found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  registration:
+                    type: object
+                  found:
+                    type: boolean
+
+  # ==================== ATTENDANCE ENDPOINTS ====================
+  /api/scan-attendance:
+    post:
+      tags: [Attendance]
+      summary: Scan QR code and mark attendance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - registration_id
+              properties:
+                registration_id:
+                  type: string
+                  example: "THREADS26-WS-CSE-123456789-101"
+      responses:
+        200:
+          description: Attendance marked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  registration_id:
+                    type: string
+                  participant_id:
+                    type: integer
+                  participant_name:
+                    type: string
+                  event_type:
+                    type: string
+                  participant_type:
+                    type: string
+                    enum: [SONACSE, REGULAR]
+        403:
+          description: Attendance cannot be marked (payment/verification issues)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  participant_type:
+                    type: string
+                  event_type:
+                    type: string
+                  message:
+                    type: string
+                  details:
+                    type: string
+                  suggestion:
+                    type: string
+
+  # ==================== ADMIN ENDPOINTS ====================
+  /api/admin/login:
+    post:
+      tags: [Admin]
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  example: "admin"
+                password:
+                  type: string
+                  example: "password123"
+      responses:
+        200:
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  token:
+                    type: string
+                  expires_in:
+                    type: string
+
+  /api/admin/registrations:
+    get:
+      tags: [Admin]
+      summary: Get all registrations (admin view)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+          description: Items per page
+        - name: event_id
+          in: query
+          schema:
+            type: integer
+          description: Filter by event ID
+        - name: payment_status
+          in: query
+          schema:
+            type: string
+            enum: [Pending, Success, Failed]
+          description: Filter by payment status
+      responses:
+        200:
+          description: List of registrations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    registration_id:
+                      type: integer
+                    registration_unique_id:
+                      type: string
+                    payment_status:
+                      type: string
+                    registered_at:
+                      type: string
+                      format: date-time
+                    attendance_status:
+                      type: string
+                    full_name:
+                      type: string
+                    email:
+                      type: string
+                    phone:
+                      type: string
+                    college_name:
+                      type: string
+                    department:
+                      type: string
+                    event_name:
+                      type: string
+                    event_type:
+                      type: string
+                    day:
+                      type: integer
+                    transaction_id:
+                      type: string
+                    payment_method:
+                      type: string
+                    payment_verification_status:
+                      type: string
+                    verified_by_admin:
+                      type: boolean
+                    verified_at:
+                      type: string
+                      format: date-time
+                    verification_status:
+                      type: string
+                    verified_by:
+                      type: string
+
+  /api/admin/verify-payments:
+    post:
+      tags: [Admin]
+      summary: Bulk verify payments from CSV upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - payments
+              properties:
+                payments:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      transaction_id:
+                        type: string
+                      amount:
+                        type: number
+      responses:
+        200:
+          description: Payments verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  summary:
+                    type: object
+                  verified:
+                    type: array
+                    items:
+                      type: string
+                  failed:
+                    type: array
+
+  /api/admin/manual-verification:
+    post:
+      tags: [Admin]
+      summary: Manually verify a participant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - participant_id
+              properties:
+                participant_id:
+                  type: integer
+      responses:
+        200:
+          description: Manual verification successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  participant_id:
+                    type: integer
+                  participant_name:
+                    type: string
+                  payment_id:
+                    type: integer
+                  transaction_id:
+                    type: string
+                  action:
+                    type: string
+
+  /api/admin/attendance-report:
+    get:
+      tags: [Admin]
+      summary: Get attendance report
+      parameters:
+        - name: event_id
+          in: query
+          schema:
+            type: integer
+          description: Filter by event ID
+        - name: day
+          in: query
+          schema:
+            type: integer
+            enum: [1, 2]
+          description: Filter by day
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter by specific date
+      responses:
+        200:
+          description: Attendance report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  registrations:
+                    type: array
+                  statistics:
+                    type: object
+
+  /api/admin/export:
+    get:
+      tags: [Admin]
+      summary: Export all registrations as CSV
+      responses:
+        200:
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+
+  /api/admin/stats:
+    get:
+      tags: [Admin]
+      summary: Get dashboard statistics
+      responses:
+        200:
+          description: Statistics retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_registrations:
+                    type: integer
+                  total_participants:
+                    type: integer
+                  total_revenue:
+                    type: number
+                  registrations_by_day:
+                    type: array
+                  top_events:
+                    type: array
+                  top_colleges:
+                    type: array
+                  payment_status:
+                    type: array
+                  attendance_status:
+                    type: array
+                  updated_at:
+                    type: string
+                    format: date-time
+
+  /api/super-admin/quick:
+    get:
+      tags: [Admin]
+      summary: Quick dashboard overview
+      responses:
+        200:
+          description: Quick stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  timestamp:
+                    type: string
+                    format: date-time
+                  overview:
+                    type: object
+                  low_seat_events:
+                    type: array
+                  registration_open:
+                    type: boolean
+
+  /api/admin/check-registration-status:
+    get:
+      tags: [Admin]
+      summary: Check if registration should auto-close
+      responses:
+        200:
+          description: Registration status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [open, closed]
+                  message:
+                    type: string
+                  days_remaining:
+                    type: integer
+                  closes_on:
+                    type: string
+                    format: date
+                  closed_at:
+                    type: string
+                    format: date-time
+
+  # ==================== ANNOUNCEMENT ENDPOINTS ====================
+  /api/announcements:
+    post:
+      tags: [Admin]
+      summary: Create announcement (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+                - message
+              properties:
+                title:
+                  type: string
+                message:
+                  type: string
+                expires_at:
+                  type: string
+                  format: date-time
+                is_active:
+                  type: boolean
+                  default: true
+      responses:
+        201:
+          description: Announcement created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  title:
+                    type: string
+                  message:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+                  is_active:
+                    type: boolean
+                  created_at:
+                    type: string
+                    format: date-time
+
+  /api/announcements/{id}:
+    delete:
+      tags: [Admin]
+      summary: Delete announcement (Admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Announcement deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+        details:
+          type: string
+        suggestion:
+          type: string
+
+  securitySchemes:
+    AdminAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Admin JWT token obtained from /api/admin/login
