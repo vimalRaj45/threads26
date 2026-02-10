@@ -1614,7 +1614,6 @@ fastify.post('/api/manual-attendance', async (request, reply) => {
        JOIN participants p ON r.participant_id = p.participant_id
        JOIN events e ON r.event_id = e.event_id
        WHERE r.participant_id = $1 AND r.event_id = $2
-       ORDER BY r.created_at DESC
        LIMIT 1`,
       [participant_id, event_id]
     );
