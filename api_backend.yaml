@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: |
     API documentation for THREADS'26 Event Management System
-    Base URL: https://your-api-domain.com
+    Base URL: https://threads26-2-fdem.onrender.com
 
 servers:
   - url: https://your-api-domain.com
