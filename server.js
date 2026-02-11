@@ -1080,6 +1080,7 @@ fastify.get('/api/admin/registrations', async (request) => {
         FROM payments
       )
       SELECT 
+        r.participant_id,
         r.registration_id,
         r.registration_unique_id,
         r.payment_status,
