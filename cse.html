@@ -720,76 +720,91 @@
             }
         });
         
-        function showPaymentForm(data) {
-            Swal.fire({
-                title: 'Verify Workshop Payment',
-                html: `
-                    <div class="text-start">
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Payment Details</label>
-                            <div class="card bg-light p-3">
-                                <p class="mb-1"><strong>Participant ID:</strong> ${data.participant_details?.participant_id}</p>
-                                <p class="mb-1"><strong>Amount to Pay:</strong> ₹${data.payment?.amount || 0}</p>
-                                <p class="mb-1"><strong>Payment Reference:</strong> ${data.payment?.payment_reference}</p>
-                                <p class="mb-1"><strong>UPI ID:</strong> ${data.payment_options?.upi_id || 'threads26@okaxis'}</p>
-                                <p class="mb-0 text-muted small">Complete payment and enter transaction details below</p>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label fw-bold" for="swal-transaction-id">Transaction ID *</label>
-                            <input type="text" id="swal-transaction-id" class="form-control" placeholder="Enter UPI/Transaction ID" required>
-                            <div class="form-text">Transaction ID from your payment (minimum 5 characters)</div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label fw-bold" for="swal-payment-reference">Payment Reference</label>
-                            <input type="text" id="swal-payment-reference" class="form-control" placeholder="Optional payment reference" value="${data.payment?.payment_reference}">
-                            <div class="form-text">Optional: Additional payment reference or note</div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label fw-bold" for="swal-payment-method">Payment Method</label>
-                            <select id="swal-payment-method" class="form-select">
-                                <option value="UPI">UPI</option>
-                                <option value="Cash">Cash</option>
-                                <option value="Card">Card</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                        
-                        <input type="hidden" id="swal-participant-id" value="${data.participant_details?.participant_id}">
+       function showPaymentForm(data) {
+
+    const upiId = data.payment_options?.upi_id || 'threads26@okaxis';
+    const amount = data.payment?.amount || 0;
+    const reference = data.payment?.payment_reference || 'Workshop Fee';
+    const payeeName = 'SONA CSE';
+
+    // UPI payment URL
+    const upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(payeeName)}&am=${amount}&cu=INR&tn=${encodeURIComponent(reference)}`;
+
+    // QR Code Image (Google Chart API)
+    const qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiUrl)}`;
+
+    Swal.fire({
+        title: 'Verify Workshop Payment',
+        html: `
+            <div class="text-start">
+
+                <div class="mb-3 text-center">
+                    <label class="form-label fw-bold">Scan & Pay (UPI)</label>
+                    <div class="card bg-light p-3">
+                        <img src="${qrImage}" alt="UPI QR Code" class="img-fluid mx-auto mb-2" />
+                        <p class="mb-1"><strong>Amount:</strong> ₹${amount}</p>
+                        <p class="mb-1"><strong>UPI ID:</strong> ${upiId}</p>
+                        <p class="mb-0 text-muted small">Scan using any UPI app (GPay / PhonePe / Paytm)</p>
                     </div>
-                `,
-                showCancelButton: true,
-                confirmButtonText: 'Verify Payment',
-                cancelButtonText: 'Cancel',
-                confirmButtonColor: '#10b981',
-                cancelButtonColor: '#6c757d',
-                width: 500,
-                preConfirm: () => {
-                    const transactionId = document.getElementById('swal-transaction-id').value.trim();
-                    if (!transactionId) {
-                        Swal.showValidationMessage('Please enter Transaction ID');
-                        return false;
-                    }
-                    if (transactionId.length < 5) {
-                        Swal.showValidationMessage('Transaction ID must be at least 5 characters');
-                        return false;
-                    }
-                    return {
-                        participant_id: document.getElementById('swal-participant-id').value,
-                        transaction_id: transactionId,
-                        payment_reference: document.getElementById('swal-payment-reference').value.trim(),
-                        payment_method: document.getElementById('swal-payment-method').value
-                    };
-                }
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    verifySONACSEPayment(result.value);
-                }
-            });
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold" for="swal-transaction-id">Transaction ID *</label>
+                    <input type="text" id="swal-transaction-id" class="form-control"
+                        placeholder="Enter UPI / Transaction ID" required>
+                    <div class="form-text">Minimum 5 characters</div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold" for="swal-payment-reference">Payment Reference</label>
+                    <input type="text" id="swal-payment-reference" class="form-control"
+                        value="${reference}">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold" for="swal-payment-method">Payment Method</label>
+                    <select id="swal-payment-method" class="form-select">
+                        <option value="UPI">UPI</option>
+                        <option value="Cash">Cash</option>
+                        <option value="Card">Card</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+
+                <input type="hidden" id="swal-participant-id"
+                    value="${data.participant_details?.participant_id}">
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'Verify Payment',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#10b981',
+        cancelButtonColor: '#6c757d',
+        width: 520,
+        preConfirm: () => {
+            const transactionId = document.getElementById('swal-transaction-id').value.trim();
+            if (!transactionId) {
+                Swal.showValidationMessage('Please enter Transaction ID');
+                return false;
+            }
+            if (transactionId.length < 5) {
+                Swal.showValidationMessage('Transaction ID must be at least 5 characters');
+                return false;
+            }
+            return {
+                participant_id: document.getElementById('swal-participant-id').value,
+                transaction_id: transactionId,
+                payment_reference: document.getElementById('swal-payment-reference').value.trim(),
+                payment_method: document.getElementById('swal-payment-method').value
+            };
         }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            verifySONACSEPayment(result.value);
+        }
+    });
+}
+
         
         async function verifySONACSEPayment(paymentDetails) {
             Swal.fire({
