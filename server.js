@@ -25,11 +25,18 @@ const fastify = Fastify({
 
 
 // -------------------- PostgreSQL Setup --------------------
-
-// -------------------- PostgreSQL Setup --------------------
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  ssl: process.env.NODE_ENV === 'production'
+    ? { rejectUnauthorized: false }
+    : false,
+
+  // 🔑 Concurrency & Load tuning
+  max: 30,                   // max DB connections
+  min: 2,                    // keep some warm connections
+  idleTimeoutMillis: 30000,  // close idle clients after 30s
+  connectionTimeoutMillis: 2000, // wait max 2s for connection
+  keepAlive: true,
 });
 
 
