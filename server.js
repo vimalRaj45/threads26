@@ -139,9 +139,9 @@ fastify.get('/api/events', async (request, reply) => {
   }
 });
 
+
 fastify.post('/api/register', async (request, reply) => {
   // 🚀 CONCURRENCY OPTIMIZATION #1: Defer connection acquisition
-  // Don't acquire connection until AFTER validation passes
   let client = null;
   
   try {
@@ -226,16 +226,12 @@ fastify.post('/api/register', async (request, reply) => {
     // PHASE 2: ACQUIRE CONNECTION - NOW WITH TIMEOUT
     // ===========================================
     
-    // 🚀 CONCURRENCY OPTIMIZATION #2: Acquire connection with timeout
     client = await pool.connect();
-    
-    // 🚀 CONCURRENCY OPTIMIZATION #3: Set statement timeout for this session
-    await client.query('SET statement_timeout = 5000'); // 5 second max per query
-    
+    await client.query('SET statement_timeout = 5000');
     await client.query('BEGIN');
     
     // ===========================================
-    // PHASE 3: DATABASE OPERATIONS - YOUR EXACT LOGIC
+    // PHASE 3: DATABASE OPERATIONS - SIMPLIFIED
     // ===========================================
     
     // 3. CHECK FOR DUPLICATE EMAIL
@@ -272,17 +268,14 @@ fastify.post('/api/register', async (request, reply) => {
     const registrationIds = [];
     let totalAmount = 0;
     
-    // 6. DEFINE SEAT CHECK FUNCTION - DIRECT DATABASE QUERY (NO REDIS)
-    const checkSeatAvailability = async (eventId, dept) => {
-      // Direct database query - no cache
+    // 5. SIMPLIFIED SEAT CHECK FUNCTION - ONLY GENERAL SEATS
+    const checkSeatAvailability = async (eventId) => {
       const event = await client.query(
         `SELECT 
           event_id,
           event_name,
           total_seats,
           available_seats,
-          cse_seats,
-          cse_available_seats,
           is_active,
           event_type,
           day
@@ -301,28 +294,20 @@ fastify.post('/api/register', async (request, reply) => {
         throw new Error(`EVENT_INACTIVE: Event "${eventData.event_name}" is no longer available`);
       }
       
-      if (dept === 'CSE') {
-        if (eventData.cse_available_seats <= 0) {
-          throw new Error(`CSE_SEATS_FULL: No CSE seats available for "${eventData.event_name}". CSE seats: ${eventData.cse_available_seats}/${eventData.cse_seats}`);
-        }
-      } else {
-        if (eventData.available_seats <= 0) {
-          throw new Error(`GENERAL_SEATS_FULL: No general seats available for "${eventData.event_name}". General seats: ${eventData.available_seats}/${eventData.total_seats}`);
-        }
+      if (eventData.available_seats <= 0) {
+        throw new Error(`SEATS_FULL: No seats available for "${eventData.event_name}". Available: ${eventData.available_seats}/${eventData.total_seats}`);
       }
       
       return true;
     };
     
-    // 7. PROCESS WORKSHOPS (CHECK SEATS BUT DON'T DECREMENT)
-    const processedWorkshops = [];
+    // 6. PROCESS WORKSHOPS - SIMPLIFIED
     for (const eventId of workshop_selections) {
       const eventIdNum = parseInt(eventId);
       if (isNaN(eventIdNum) || eventIdNum <= 0) {
         throw new Error(`INVALID_WORKSHOP_ID: Workshop ID "${eventId}" is invalid`);
       }
       
-      // Check if workshop exists and is type 'workshop'
       const event = await client.query(
         'SELECT event_name, fee, day, event_type FROM events WHERE event_id = $1',
         [eventId]
@@ -333,20 +318,14 @@ fastify.post('/api/register', async (request, reply) => {
       }
       
       if (event.rows[0].event_type !== 'workshop') {
-        throw new Error(`NOT_A_WORKSHOP: Event ID ${eventId} is not a workshop (type: ${event.rows[0].event_type})`);
+        throw new Error(`NOT_A_WORKSHOP: Event ID ${eventId} is not a workshop`);
       }
       
-      // CHECK seat availability (direct DB query)
-      await checkSeatAvailability(eventId, department);
+      await checkSeatAvailability(eventId);
       
-      // Generate registration ID
-      const prefix = 'THREADS26-WS-';
-      const deptCode = department === 'CSE' ? 'CSE' : 'OTH';
       const timestamp = Date.now().toString().slice(-9);
-      const baseRegId = `${prefix}${deptCode}-${timestamp}`;
-      const regId = `${baseRegId}-${eventId}`;
+      const regId = `THREADS26-WS-${timestamp}-${eventId}`;
       
-      // Insert registration as PENDING
       await client.query(
         `INSERT INTO registrations (
           participant_id, event_id, registration_unique_id,
@@ -356,29 +335,24 @@ fastify.post('/api/register', async (request, reply) => {
           participantId,
           eventId,
           regId,
-          'Pending', // Payment status is Pending
+          'Pending',
           parseFloat(event.rows[0].fee) || 0,
           event.rows[0].event_name,
           event.rows[0].day
         ]
       );
       
-      // ❌ NO SEAT DECREMENT HERE - Will happen after payment
-      
       registrationIds.push(regId);
       totalAmount += parseFloat(event.rows[0].fee) || 0;
-      processedWorkshops.push(eventId);
     }
     
-    // 8. PROCESS EVENTS (CHECK SEATS BUT DON'T DECREMENT)
-    const processedEvents = [];
+    // 7. PROCESS EVENTS - SIMPLIFIED
     for (const eventId of event_selections) {
       const eventIdNum = parseInt(eventId);
       if (isNaN(eventIdNum) || eventIdNum <= 0) {
         throw new Error(`INVALID_EVENT_ID: Event ID "${eventId}" is invalid`);
       }
       
-      // Check if event exists and is day 2
       const event = await client.query(
         'SELECT event_name, fee, day FROM events WHERE event_id = $1',
         [eventId]
@@ -389,20 +363,14 @@ fastify.post('/api/register', async (request, reply) => {
       }
       
       if (event.rows[0].day !== 2) {
-        throw new Error(`NOT_DAY2_EVENT: Event ID ${eventId} is not a Day 2 event (day: ${event.rows[0].day})`);
+        throw new Error(`NOT_DAY2_EVENT: Event ID ${eventId} is not a Day 2 event`);
       }
       
-      // CHECK seat availability (direct DB query)
-      await checkSeatAvailability(eventId, department);
+      await checkSeatAvailability(eventId);
       
-      // Generate registration ID
-      const prefix = 'THREADS26-EV-';
-      const deptCode = department === 'CSE' ? 'CSE' : 'OTH';
       const timestamp = Date.now().toString().slice(-9);
-      const baseRegId = `${prefix}${deptCode}-${timestamp}`;
-      const regId = `${baseRegId}-${eventId}`;
+      const regId = `THREADS26-EV-${timestamp}-${eventId}`;
       
-      // Insert registration as PENDING
       await client.query(
         `INSERT INTO registrations (
           participant_id, event_id, registration_unique_id,
@@ -412,43 +380,36 @@ fastify.post('/api/register', async (request, reply) => {
           participantId,
           eventId,
           regId,
-          'Pending', // Payment status is Pending
+          'Pending',
           parseFloat(event.rows[0].fee) || 0,
           event.rows[0].event_name,
           event.rows[0].day
         ]
       );
       
-      // ❌ NO SEAT DECREMENT HERE - Will happen after payment
-      
       registrationIds.push(regId);
       totalAmount += parseFloat(event.rows[0].fee) || 0;
-      processedEvents.push(eventId);
     }
     
-    // 9. CREATE PAYMENT REFERENCE
+    // 8. CREATE PAYMENT REFERENCE
     const paymentReference = `THREADS26-${participantId}-${Date.now().toString().slice(-6)}`;
     
-    // 10. COMMIT TRANSACTION
+    // 9. COMMIT TRANSACTION
     await client.query('COMMIT');
     
-    // 11. RETURN SUCCESS RESPONSE
+    // 10. RETURN SIMPLIFIED RESPONSE
     return reply.code(201).send({
       success: true,
       message: 'Registration successful! Seats will be reserved after payment verification.',
       participant_id: participantId,
       participant_name: full_name,
-      department: department,
       registration_ids: registrationIds,
-      workshops_registered: processedWorkshops.length,
-      events_registered: processedEvents.length,
+      workshops_registered: workshop_selections.length,
+      events_registered: event_selections.length,
       total_amount: totalAmount,
       payment_reference: paymentReference,
       seat_status: {
-        message: department === 'CSE' 
-          ? 'CSE seats checked - will reserve after payment' 
-          : 'General seats checked - will reserve after payment',
-        department: department,
+        message: 'Seats checked - will reserve after payment',
         note: 'Seats are NOT reserved yet. Complete payment to reserve your seats.'
       },
       next_steps: 'Complete payment using the payment reference above to reserve your seats',
@@ -460,38 +421,20 @@ fastify.post('/api/register', async (request, reply) => {
     });
     
   } catch (error) {
-    // 🚀 CONCURRENCY OPTIMIZATION #4: Only rollback if client exists and transaction started
     if (client) {
-      try {
-        await client.query('ROLLBACK');
-      } catch (rollbackError) {
-        console.error('Rollback error:', rollbackError);
-      }
+      try { await client.query('ROLLBACK'); } catch (e) {}
     }
     
-    // 12. ANALYZE ERROR AND RETURN SPECIFIC MESSAGE
     const errorMessage = error.message;
     
-    // Categorize errors
-    if (errorMessage.includes('CSE_SEATS_FULL')) {
+    // Simplified error handling - removed CSE specific errors
+    if (errorMessage.includes('SEATS_FULL')) {
       return reply.code(400).send({
         success: false,
         error_type: 'SEAT_UNAVAILABLE',
-        error_code: 'CSE_SEATS_EXHAUSTED',
-        message: 'CSE seats are full for selected workshop/event',
-        details: errorMessage.replace('CSE_SEATS_FULL: ', ''),
-        suggestion: 'Please select different events or contact organizers',
-        department: 'CSE'
-      });
-    }
-    
-    if (errorMessage.includes('GENERAL_SEATS_FULL')) {
-      return reply.code(400).send({
-        success: false,
-        error_type: 'SEAT_UNAVAILABLE',
-        error_code: 'GENERAL_SEATS_EXHAUSTED',
-        message: 'General seats are full for selected workshop/event',
-        details: errorMessage.replace('GENERAL_SEATS_FULL: ', ''),
+        error_code: 'SEATS_EXHAUSTED',
+        message: 'No seats available for selected event',
+        details: errorMessage.replace('SEATS_FULL: ', ''),
         suggestion: 'Please select different events'
       });
     }
@@ -504,17 +447,6 @@ fastify.post('/api/register', async (request, reply) => {
         message: 'Selected event not found',
         details: errorMessage.replace('EVENT_NOT_FOUND: ', ''),
         suggestion: 'Please refresh the event list and try again'
-      });
-    }
-    
-    if (errorMessage.includes('EVENT_INACTIVE')) {
-      return reply.code(400).send({
-        success: false,
-        error_type: 'EVENT_ERROR',
-        error_code: 'EVENT_INACTIVE',
-        message: 'Selected event is no longer available',
-        details: errorMessage.replace('EVENT_INACTIVE: ', ''),
-        suggestion: 'Please select a different event'
       });
     }
     
@@ -535,35 +467,11 @@ fastify.post('/api/register', async (request, reply) => {
         error_type: 'DUPLICATE_EMAIL',
         error_code: 'EMAIL_ALREADY_REGISTERED',
         message: 'Email already registered',
-        details: errorMessage.replace('EMAIL_EXISTS: ', ''),
+        details: 'This email is already registered',
         suggestion: 'Please use a different email or login'
       });
     }
     
-    if (errorMessage.includes('NO_EVENTS_SELECTED')) {
-      return reply.code(400).send({
-        success: false,
-        error_type: 'NO_EVENTS',
-        error_code: 'NO_EVENTS_SELECTED',
-        message: 'No events selected',
-        details: 'Please select at least one workshop or event',
-        suggestion: 'Go back and select events'
-      });
-    }
-    
-    // 🚀 CONCURRENCY OPTIMIZATION #5: Add timeout error handling
-    if (errorMessage.includes('timeout') || error.code === 'ETIMEDOUT') {
-      return reply.code(503).send({
-        success: false,
-        error_type: 'SERVICE_BUSY',
-        error_code: 'DATABASE_TIMEOUT',
-        message: 'System is busy, please try again',
-        details: 'Your request timed out due to high load',
-        suggestion: 'Please wait a moment and try again'
-      });
-    }
-    
-    // Log unexpected errors but don't expose details
     console.error('Registration error:', error);
     
     return reply.code(400).send({
@@ -576,10 +484,7 @@ fastify.post('/api/register', async (request, reply) => {
     });
     
   } finally {
-    // 🚀 CONCURRENCY OPTIMIZATION #6: Always release connection
-    if (client) {
-      client.release();
-    }
+    if (client) client.release();
   }
 });
 fastify.post("/api/admin/verify-payments", async (request, reply) => {
@@ -745,7 +650,7 @@ fastify.post('/api/verify-payment', async (request, reply) => {
   const client = await pool.connect();
   
   try {
-    // 1. VALIDATE INPUT DATA WITH SPECIFIC ERRORS
+    // 1. VALIDATE INPUT DATA
     const validationErrors = [];
     
     if (!request.body.participant_id) {
@@ -800,9 +705,9 @@ fastify.post('/api/verify-payment', async (request, reply) => {
       });
     }
     
-    // 3. CHECK PARTICIPANT EXISTS AND GET DEPARTMENT
+    // 3. CHECK PARTICIPANT EXISTS
     const participantCheck = await client.query(
-      'SELECT participant_id, full_name, department FROM participants WHERE participant_id = $1',
+      'SELECT participant_id, full_name FROM participants WHERE participant_id = $1',
       [participantId]
     );
     
@@ -816,8 +721,6 @@ fastify.post('/api/verify-payment', async (request, reply) => {
         suggestion: 'Check the participant ID and try again'
       });
     }
-    
-    const department = participantCheck.rows[0].department;
     
     // 4. CHECK FOR PENDING REGISTRATIONS
     const pendingRegistrations = await client.query(
@@ -891,39 +794,29 @@ fastify.post('/api/verify-payment', async (request, reply) => {
       ]
     );
     
-    // 8. DEFINE SEAT UPDATE FUNCTION (NOW DECREMENTING SEATS)
-    const updateSeats = async (eventId, department, increment = false) => {
+    // 8. SIMPLIFIED SEAT UPDATE FUNCTION - ONLY GENERAL SEATS
+    const updateSeats = async (eventId, increment = false) => {
       const op = increment ? '+' : '-';
       
-      if (department === 'CSE') {
-        await client.query(
-          `UPDATE events SET cse_available_seats = cse_available_seats ${op} 1 WHERE event_id = $1`,
-          [eventId]
-        );
-      }
-      
       await client.query(
-        `UPDATE events SET available_seats = available_seats ${op} 1 WHERE event_id = $1`,
+        `UPDATE events 
+         SET available_seats = available_seats ${op} 1,
+             total_seats = total_seats
+         WHERE event_id = $1`,
         [eventId]
       );
       
-      await redis.del(`seats:${eventId}`);
+      // Clear cache if you're using Redis
+      if (redis) {
+        await redis.del(`seats:${eventId}`).catch(() => {});
+      }
     };
     
     // 9. CHECK AND DECREMENT SEATS FOR EACH REGISTRATION
-    const seatLocks = [];
     for (const reg of pendingRegistrations.rows) {
-      // Acquire lock for this event to prevent race conditions
-      const lockKey = `seat_lock:${reg.event_id}:${Date.now()}`;
-      const lockAcquired = await redis.set(lockKey, 'locked', { nx: true, ex: 3 });
-      if (!lockAcquired) {
-        throw new Error(`Event ${reg.event_id} is being processed. Please try again.`);
-      }
-      seatLocks.push(lockKey);
-      
       // Check if event still has seats available
       const event = await client.query(
-        'SELECT event_name, cse_available_seats, available_seats FROM events WHERE event_id = $1 AND is_active = true',
+        'SELECT event_name, available_seats FROM events WHERE event_id = $1 AND is_active = true',
         [reg.event_id]
       );
       
@@ -933,19 +826,12 @@ fastify.post('/api/verify-payment', async (request, reply) => {
       
       const eventData = event.rows[0];
       
-      // Check seat availability again (in case seats filled since registration)
-      if (department === 'CSE') {
-        if (eventData.cse_available_seats <= 0) {
-          throw new Error(`CSE_SEATS_FULL_AT_PAYMENT: No CSE seats available for "${reg.event_name}". Seats filled before payment.`);
-        }
-      } else {
-        if (eventData.available_seats <= 0) {
-          throw new Error(`GENERAL_SEATS_FULL_AT_PAYMENT: No general seats available for "${reg.event_name}". Seats filled before payment.`);
-        }
+      if (eventData.available_seats <= 0) {
+        throw new Error(`SEATS_FULL_AT_PAYMENT: No seats available for "${reg.event_name}". Seats filled before payment.`);
       }
       
       // ✅ DECREMENT SEATS HERE (AFTER PAYMENT VERIFICATION)
-      await updateSeats(reg.event_id, department, false);
+      await updateSeats(reg.event_id, false);
     }
     
     // 10. MARK REGISTRATIONS AS CONFIRMED
@@ -972,12 +858,7 @@ fastify.post('/api/verify-payment', async (request, reply) => {
     // 11. COMMIT TRANSACTION
     await client.query('COMMIT');
     
-    // 12. RELEASE SEAT LOCKS
-    for (const lockKey of seatLocks) {
-      await redis.del(lockKey).catch(() => {});
-    }
-    
-    // 13. GET ALL SUCCESSFUL REGISTRATION IDS
+    // 12. GET ALL SUCCESSFUL REGISTRATION IDS
     const allRegistrations = await client.query(
       `SELECT registration_unique_id 
        FROM registrations 
@@ -988,7 +869,7 @@ fastify.post('/api/verify-payment', async (request, reply) => {
     
     const registrationIds = allRegistrations.rows.map(r => r.registration_unique_id);
     
-    // 14. GENERATE QR CODE
+    // 13. GENERATE QR CODE
     const qrPayload = {
       participant_id: participantId,
       registration_ids: registrationIds,
@@ -1015,28 +896,29 @@ fastify.post('/api/verify-payment', async (request, reply) => {
       qrCodeBase64 = null;
     }
     
-    // 15. GET PARTICIPANT DETAILS
+    // 14. GET PARTICIPANT DETAILS
     const participantDetails = participantCheck.rows[0];
     
-    // 16. CLEANUP CACHES
+    // 15. CLEANUP CACHES
     try {
-      await redis.del(`verification:${participantId}`);
-      await redis.del('admin_stats');
-      for (const reg of pendingRegistrations.rows) {
-        await redis.del(`track:${reg.registration_unique_id}`);
+      if (redis) {
+        await redis.del(`verification:${participantId}`);
+        await redis.del('admin_stats');
+        for (const reg of pendingRegistrations.rows) {
+          await redis.del(`track:${reg.registration_unique_id}`);
+        }
       }
     } catch (cacheError) {
       console.error('Cache cleanup error:', cacheError);
     }
     
-    // 17. RETURN SUCCESS RESPONSE
+    // 16. RETURN SIMPLIFIED RESPONSE
     const response = {
       success: true,
       message: '🎉 Payment verified successfully! Seats have been reserved.',
       payment_details: {
         participant_id: participantId,
         participant_name: participantDetails.full_name,
-        department: department,
         transaction_id: cleanTransactionId,
         amount: totalAmount,
         payment_id: paymentResult.rows[0].payment_id,
@@ -1044,10 +926,7 @@ fastify.post('/api/verify-payment', async (request, reply) => {
         payment_status: 'Verified'
       },
       seat_status: {
-        message: department === 'CSE' 
-          ? '✅ CSE seats successfully reserved after payment' 
-          : '✅ General seats successfully reserved after payment',
-        department: department,
+        message: '✅ Seats successfully reserved after payment',
         seats_reserved: pendingRegistrations.rows.length
       },
       registration_details: {
@@ -1056,13 +935,11 @@ fastify.post('/api/verify-payment', async (request, reply) => {
         events_registered: pendingRegistrations.rows.map(r => ({
           event_name: r.event_name,
           registration_id: r.registration_unique_id,
-          amount: r.amount_paid,
-          seat_type: department === 'CSE' ? 'CSE Quota' : 'General Quota'
+          amount: r.amount_paid
         }))
       }
     };
     
-    // Add QR code if generated successfully
     if (qrCodeBase64) {
       response.qr_code = qrCodeBase64;
       response.qr_payload = qrPayload;
@@ -1071,41 +948,28 @@ fastify.post('/api/verify-payment', async (request, reply) => {
     return reply.send(response);
     
   } catch (error) {
-    // 18. ROLLBACK ON ERROR
+    // 17. ROLLBACK ON ERROR
     try {
       await client.query('ROLLBACK');
     } catch (rollbackError) {
       console.error('Rollback error:', rollbackError);
     }
     
-    // 19. ANALYZE ERROR
     const errorMessage = error.message;
     
-    // Handle seat-related errors during payment
-    if (errorMessage.includes('CSE_SEATS_FULL_AT_PAYMENT')) {
+    // SIMPLIFIED ERROR HANDLING - No CSE specific errors
+    if (errorMessage.includes('SEATS_FULL_AT_PAYMENT')) {
       return reply.code(400).send({
         success: false,
         error_type: 'SEAT_UNAVAILABLE_AT_PAYMENT',
-        error_code: 'CSE_SEATS_FILLED_BEFORE_PAYMENT',
-        message: 'CSE seats filled before payment completion',
-        details: errorMessage.replace('CSE_SEATS_FULL_AT_PAYMENT: ', ''),
-        suggestion: 'Contact organizers for assistance. Your payment was not processed.',
-        department: 'CSE'
-      });
-    }
-    
-    if (errorMessage.includes('GENERAL_SEATS_FULL_AT_PAYMENT')) {
-      return reply.code(400).send({
-        success: false,
-        error_type: 'SEAT_UNAVAILABLE_AT_PAYMENT',
-        error_code: 'GENERAL_SEATS_FILLED_BEFORE_PAYMENT',
-        message: 'General seats filled before payment completion',
-        details: errorMessage.replace('GENERAL_SEATS_FULL_AT_PAYMENT: ', ''),
+        error_code: 'SEATS_FILLED_BEFORE_PAYMENT',
+        message: 'Seats were filled before payment completion',
+        details: errorMessage.replace('SEATS_FULL_AT_PAYMENT: ', ''),
         suggestion: 'Contact organizers for assistance. Your payment was not processed.'
       });
     }
     
-    // 20. RETURN GENERIC ERROR
+    // 18. RETURN GENERIC ERROR
     fastify.log.error('Payment verification error:', error);
     
     return reply.code(400).send({
@@ -1118,11 +982,9 @@ fastify.post('/api/verify-payment', async (request, reply) => {
     });
     
   } finally {
-    // 21. RELEASE CLIENT
     client.release();
   }
 });
-
 
 // -------------------- ADMIN PAYMENT VERIFICATION ENDPOINTS --------------------
 
