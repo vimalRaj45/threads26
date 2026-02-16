@@ -51,11 +51,10 @@ redis.ping().then(() => {
 
 
 
-// Event dates (for auto-close feature)
 const EVENT_DATES = {
-  workshop_day: moment().add(5, 'days').format('YYYY-MM-DD'), // Day 1 (5 days from today)
-  event_day: moment().add(6, 'days').format('YYYY-MM-DD'),    // Day 2 (6 days from today)
-  registration_closes: moment().add(4, 'days').format('YYYY-MM-DD') // Day before event (4 days from today)
+  registration_closes: moment('2026-03-04', 'YYYY-MM-DD').format('YYYY-MM-DD'),
+  workshop_day: moment('2026-03-05', 'YYYY-MM-DD').format('YYYY-MM-DD'),
+  event_day: moment('2026-03-06', 'YYYY-MM-DD').format('YYYY-MM-DD')
 };
 
 
@@ -195,6 +194,7 @@ fastify.post('/api/register', async (request, reply) => {
       college_name,
       department,
       year_of_study,
+      gender,
       city = '',
       state = '',
       accommodation_required = false,
@@ -245,24 +245,26 @@ fastify.post('/api/register', async (request, reply) => {
     }
     
     // 4. INSERT PARTICIPANT
-    const participantResult = await client.query(
-      `INSERT INTO participants (
-        full_name, email, phone, college_name, department,
-        year_of_study, city, state, accommodation_required
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING participant_id`,
-      [
-        full_name.trim(),
-        email.toLowerCase().trim(),
-        phone.replace(/\D/g, ''),
-        college_name.trim(),
-        department.toUpperCase().trim(),
-        parseInt(year_of_study),
-        city.trim(),
-        state.trim(),
-        Boolean(accommodation_required)
-      ]
-    );
+   // In the INSERT PARTICIPANT section, update the query:
+const participantResult = await client.query(
+  `INSERT INTO participants (
+    full_name, email, phone, college_name, department,
+    year_of_study, city, state, accommodation_required, gender
+  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+  RETURNING participant_id`,
+  [
+    full_name.trim(),
+    email.toLowerCase().trim(),
+    phone.replace(/\D/g, ''),
+    college_name.trim(),
+    department.toUpperCase().trim(),
+    parseInt(year_of_study),
+    city.trim(),
+    state.trim(),
+    Boolean(accommodation_required),
+    gender // Add gender here
+  ]
+);
     
     const participantId = participantResult.rows[0].participant_id;
     const registrationIds = [];
@@ -1040,10 +1042,12 @@ fastify.get('/api/admin/registrations', async (request) => {
         p.phone,
         p.college_name,
         p.department,
+        p.gender,
 
         e.event_name,
         e.event_type,
         e.day,
+        
 
         lp.transaction_id,
         lp.payment_method,
@@ -2055,6 +2059,7 @@ fastify.get('/api/admin/export', async (request, reply) => {
         p.department,
         p.year_of_study,
         p.city,
+        p.gender,
         p.state,
         p.accommodation_required,
         r.registration_unique_id,
@@ -2201,7 +2206,7 @@ fastify.get('/api/participant/:id/all', async (request, reply) => {
     
     // 1. Get participant basic info
     const participant = await pool.query(
-      'SELECT participant_id, full_name, email, phone, college_name, department, year_of_study, city, state FROM participants WHERE participant_id = $1',
+      'SELECT participant_id, full_name, email, phone, college_name, department, year_of_study, city, state, gender FROM participants WHERE participant_id = $1',
       [id]
     );
     
@@ -2638,6 +2643,7 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
       email,
       phone,
       year_of_study,
+      gender,
       workshop_selections = [],
       event_selections = []
     } = request.body;
@@ -2672,24 +2678,26 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
     const hasEventsOnly = workshop_selections.length === 0 && event_selections.length > 0;
     
     // 6. INSERT PARTICIPANT (NO ROLL_NUMBER COLUMN - using regular insertion)
-    const participantResult = await client.query(
-      `INSERT INTO participants (
-        full_name, email, phone, college_name, department,
-        year_of_study, city, state, accommodation_required
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING participant_id`,
-      [
-        full_name.trim(),
-        email.toLowerCase().trim(),
-        phone.replace(/\D/g, ''),
-        college_name,
-        department,
-        parseInt(year_of_study),
-        'Chennai', // Default for SONACSE
-        'Tamil Nadu', // Default for SONACSE
-        false // Default no accommodation for SONACSE
-      ]
-    );
+    // In the SONACSE INSERT PARTICIPANT section:
+const participantResult = await client.query(
+  `INSERT INTO participants (
+    full_name, email, phone, college_name, department,
+    year_of_study, city, state, accommodation_required, gender
+  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+  RETURNING participant_id`,
+  [
+    full_name.trim(),
+    email.toLowerCase().trim(),
+    phone.replace(/\D/g, ''),
+    college_name,
+    department,
+    parseInt(year_of_study),
+    'Salem', // Default for SONACSE
+    'Tamil Nadu', // Default for SONACSE
+    false, // Default no accommodation for SONACSE
+    gender // Add gender here
+  ]
+);
     
     const participantId = participantResult.rows[0].participant_id;
     const registrationIds = [];
