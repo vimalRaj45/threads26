@@ -2581,17 +2581,704 @@ fastify.get('/api/admin/check-registration-status', async (request) => {
 
 
 
-
-//cse endpoints 
-
-// Add this at the top with other constants
-const SONACSE_STUDENTS = [
-  '21CSE001', '21CSE002', '21CSE003', '21CSE004', '21CSE005',
-  '21CSE006', '21CSE007', '21CSE008', '21CSE009', '21CSE010',
-  '22CSE001', '22CSE002', '22CSE003', '22CSE004', '22CSE005',
-  '23CSE001', '23CSE002', '23CSE003', '23CSE004', '23CSE005',
-  '24CSE001', '24CSE002', '24CSE003', '24CSE004', '24CSE005'
-];
+const SONACSE_STUDENTS = {
+  '61782323102001': 'ABHISHEK K U',
+  '61782323102002': 'ABINAYA C',
+  '61782323102003': 'ABIRAMI M',
+  '61782323102004': 'AGALYA M',
+  '61782323102005': 'AISHWARYA R',
+  '61782323102006': 'AKSHAYA N',
+  '61782323102007': 'ALRIFA I',
+  '61782323102008': 'ANFAZ SULTHAN',
+  '61782323102009': 'ARCCHANA K',
+  '61782323102010': 'ARCHANA S',
+  '61782323102011': 'ARNOLD PHILIP',
+  '61782323102012': 'ASHIQ MOHAMED A',
+  '61782323102013': 'ASWIN T U',
+  '61782323102014': 'BALAHARIHARAN K S',
+  '61782323102015': 'BHAGYASHREE S',
+  '61782323102017': 'BHAVADHARINI K',
+  '61782323102018': 'BHAVITRA S',
+  '61782323102019': 'BUVANA N',
+  '61782323102021': 'CHIDAMBARAM U M',
+  '61782323102022': 'DEEPAK S S',
+  '61782323102023': 'DEEPAKKUMAR K M',
+  '61782323102024': 'DEEPASRI T',
+  '61782323102025': 'DHANUSHBALAJI P',
+  '61782323102026': 'DHANUSRI V',
+  '61782323102027': 'DHARANISH M',
+  '61782323102028': 'DHARSHANA R',
+  '61782323102029': 'DHARUNKUMAR S',
+  '61782323102030': 'DHINESH S',
+  '61782323102031': 'DHINESHKUMAR P',
+  '61782323102032': 'DHIYANESH B',
+  '61782323102033': 'DHURAISAMY P',
+  '61782323102034': 'DINESH KUMAR S',
+  '61782323102035': 'DIVYAASHRE E G',
+  '61782323102036': 'DIVYADHARSHINI M',
+  '61782323102037': 'EIKJAS ALI KHAN M',
+  '61782323102038': 'ELAKKIYA K',
+  '61782323102039': 'ELLAYA VIGNESH C',
+  '61782323102040': 'GAJENDRA M',
+  '61782323102041': 'GAYATHRI M',
+  '61782323102042': 'GOKULAVAASAN B',
+  '61782323102043': 'GOPI G',
+  '61782323102044': 'GOPIKA K',
+  '61782323102045': 'GOWDHAM RAJ A',
+  '61782323102046': 'GRACE CHRISTEL C',
+  '61782323102047': 'HARIHARAN N',
+  '61782323102048': 'HARINI B',
+  '61782323102049': 'HARINI G S',
+  '61782323102050': 'HARINI T',
+  '61782323102051': 'Harish V',
+  '61782323102052': 'Indhumathi S',
+  '61782323102053': 'Janakiraman S',
+  '61782323102054': 'Jaya bharathC',
+  '61782323102055': 'Jeeva DharshiniT',
+  '61782323102056': 'Jeevanprakash P',
+  '61782323102057': 'JEROME JOHN ITTY',
+  '61782323102058': 'Jothishree B E',
+  '61782323102059': 'KabilanR',
+  '61782323102060': 'Kamala JananiK',
+  '61782323102061': 'KamaleshS',
+  '61782323102062': 'kanaparthi pavan datta',
+  '61782323102063': 'KanishkaM',
+  '61782323102064': 'karthigaS',
+  '61782323102065': 'Karthikeyan R',
+  '61782323102066': 'Karthikeyan S',
+  '61782323102067': 'Kashif Ahamad S',
+  '61782323102068': 'Kavipriya A S',
+  '61782323102069': 'kaviyashri V',
+  '61782323102070': 'Keerthi G',
+  '61782323102071': 'KeerthickS',
+  '61782323102073': 'kiruthiga G',
+  '61782323102074': 'KrishnaKumar D',
+  '61782323102075': 'Kritika B',
+  '61782323102076': 'KumudiniS',
+  '61782323102077': 'LaksharaRR',
+  '61782323102078': 'Lenin S',
+  '61782323102079': 'Lithwin ShujiJ',
+  '61782323102080': 'LokeshN',
+  '61782323102081': 'Lokeshwaran R',
+  '61782323102082': 'Macernestantony D',
+  '61782323102083': 'Madhusri V',
+  '61782323102084': 'Malini VP',
+  '61782323102085': 'Manasvi Sharad mali',
+  '61782323102086': 'Manoj Kumar R',
+  '61782323102087': 'Manolashini V',
+  '61782323102088': 'Manoshankari V',
+  '61782323102089': 'Meenashalini P',
+  '61782323102090': 'Megashree M',
+  '61782323102091': 'Meiyarasan S',
+  '61782323102093': 'Mohammed AliA',
+  '61782323102094': 'Mohammed SufiyaanI',
+  '61782323102095': 'Mona RachelD C',
+  '61782323102096': 'MounikaV',
+  '61782323102097': 'Mouriya V K',
+  '61782323102098': 'Nakshathra S',
+  '61782323102099': 'Nandhakishore K G',
+  '61782323102101': 'Naveen G',
+  '61782323102102': 'Naveen kumar T',
+  '61782323102103': 'Naveen.N',
+  '61782323102104': 'Naveenkumar p',
+  '61782323102105': 'Navinadarshan.V',
+  '61782323102106': 'Negha S',
+  '61782323102107': 'NEHAL KESAVAN',
+  '61782323102108': 'Niranjan S',
+  '61782323102109': 'Nishalini S',
+  '61782323102110': 'Nithishkanna B',
+  '61782323102112': 'Nitish Roshaan. S',
+  '61782323102113': 'Nivedhithasri S',
+  '61782323102114': 'Nivithapriya R S',
+  '61782323102115': 'PARASH DAULYAL',
+  '61782323102116': 'Pavinithi N K',
+  '61782323102117': 'PAVISHYA P L',
+  '61782323102118': 'Poovarasan C',
+  '61782323102119': 'Poovarasan s',
+  '61782323102120': 'Pradhiksha',
+  '61782323102121': 'Pranav Karthik S S',
+  '61782323102122': 'Praneesh s',
+  '61782323102123': 'PRANESH K K',
+  '61782323102124': 'Praveen B',
+  '61782323102125': 'Preethi S',
+  '61782323102126': 'Priya P',
+  '61782323102127': 'RAHUL K',
+  '61782323102128': 'RAHUL NS',
+  '61782323102129': 'Ram Priya M',
+  '61782323102130': 'RAMANSH TOMAR',
+  '61782323102131': 'RAMBILAS SAH',
+  '61782323102132': 'RAMYA S',
+  '61782323102133': 'Rashmi M',
+  '61782323102134': 'Riteshkumaran',
+  '61782323102135': 'Rithish.I',
+  '61782323102136': 'Roopika E',
+  '61782323102137': 'Sagaran S',
+  '61782323102138': 'SAI RAJA RAJAN JK',
+  '61782323102139': 'Sailekha M',
+  '61782323102140': 'Salvi B',
+  '61782323102142': 'Sanjana M',
+  '61782323102143': 'Sanjana.R',
+  '61782323102144': 'Sanjay J',
+  '61782323102145': 'Sanjay Prasath M',
+  '61782323102146': 'Sanjay prakash.G',
+  '61782323102147': 'Santhosh Kumar JP',
+  '61782323102148': 'Santhosh S.K',
+  '61782323102149': 'Sethuraman A',
+  '61782323102150': 'Shalini M',
+  '61782323102151': 'Sharan D',
+  '61782323102152': 'Shifana Fathima M',
+  '61782323102153': 'SHREE NIKESH R',
+  '61782323102154': 'SHREESARVESH S G',
+  '61782323102155': 'SHRI DHARSHINI S',
+  '61782323102156': 'SHUBHAGITA P S',
+  '61782323102157': 'SIBINESHWARAN S',
+  '61782323102158': 'SIVATMIKA A',
+  '61782323102159': 'SOBHIKASRI J',
+  '61782323102160': 'SOPHIE CHRISTINA A',
+  '61782323102161': 'SOWBARANIKA A',
+  '61782323102162': 'SOWNDHARYA G',
+  '61782323102163': 'SOWRNALATHA A',
+  '61782323102164': 'SRI BHUMA S',
+  '61782323102165': 'SRI SARAVANAVEL G',
+  '61782323102166': 'SRI VIMALRAJ S',
+  '61782323102167': 'SRIDHARAN S S',
+  '61782323102168': 'SRIDHARANISH K',
+  '61782323102169': 'SRINAGAPRIYA A',
+  '61782323102170': 'SRINIVASA RAJAN M',
+  '61782323102171': 'SRI RANGANATHAN S',
+  '61782323102172': 'SUBASH CHANDRA BOSE S',
+  '61782323102173': 'SUDHARSHINEE  S K',
+  '61782323102174': 'SUGUMARAN S',
+  '61782323102175': 'SUJITHRA R',
+  '61782323102176': 'SUPREETHA J U',
+  '61782323102177': 'SURUTHIKA R',
+  '61782323102178': 'SURYA  S',
+  '61782323102179': 'TAMIL B S',
+  '61782323102180': 'TANUSHREE T B',
+  '61782323102181': 'THIRUVELAN C',
+  '61782323102182': 'VAIBHAVAKANNA P',
+  '61782323102183': 'VAISHNAVI K',
+  '61782323102184': 'VAISHNAVI M',
+  '61782323102185': 'VALARMATHI A',
+  '61782323102186': 'VANITHA N',
+  '61782323102187': 'VARSHINI M',
+  '61782323102188': 'VARSHITHA SHIVAKUMAR',
+  '61782323102189': 'VASANTHAKUMAR S',
+  '61782323102190': 'VIDHYA S',
+  '61782323102191': 'VIJAYAMILAN V',
+  '61782323102192': 'VIMALRAGHAV M',
+  '61782323102193': 'VISHAL V',
+  '61782323102194': 'VISHNU PRASANTH K',
+  '61782323102195': 'VISHWA J',
+  '61782323102196': 'VITHUN S',
+  '61782323102197': 'VIVEGANANDAN S',
+  '61782323102198': 'YOGESH C',
+  '61782323102701': 'Ashwin Shriram RC',
+  '61782323102702': 'DEEPAK P',
+  '61782323102706': 'LokeswaranG',
+  '61782323102707': 'MAHAVISHNU',
+  '61782323102708': 'MANISH PRITHIV R',
+  '61782323102711': 'Nishvan Kumar. M',
+  '61782323102713': 'Sakthivel S',
+  '61782323102714': 'SANJJITH S',
+  '61782323102715': 'Sathiya.S',
+  '61782323102716': 'SOUNDHAR D',
+  '61782323102721': 'Ragul S',
+  '61782323111001': 'ABHINAV GEORGE',
+  '61782323111002': 'ADHYANDH ROBIN SANJAY G S',
+  '61782323111003': 'AFRINS',
+  '61782323111004': 'AKASH B',
+  '61782323111005': 'ALFADEENI',
+  '61782323111006': 'ANANTH KARTHIKV',
+  '61782323111007': 'ARAVINDKUMAR R',
+  '61782323111008': 'ARUL R',
+  '61782323111012': 'CHANDRUK',
+  '61782323111013': 'DIVYA PRAKASHKANDEEBAN',
+  '61782323111015': 'HARISANKARA',
+  '61782323111016': 'HARISH MADHAVANV',
+  '61782323111017': 'HARSHINIG',
+  '61782323111019': 'JAI SAI KISHOREB',
+  '61782323111020': 'JEEVANANTHAM RAJARAM',
+  '61782323111021': 'JOHNSHI ELENAA',
+  '61782323111022': 'JOSHIKAAK',
+  '61782323111023': 'JUSTINJOHN',
+  '61782323111024': 'KALAIYARASAN K D',
+  '61782323111025': 'KAMESHWARANK',
+  '61782323111026': 'KANISH V',
+  '61782323111027': 'KANISHMAS',
+  '61782323111029': 'KAVIARASUG',
+  '61782323111030': 'KISHOREKUMAR M',
+  '61782323111031': 'KISHORE KUMARU',
+  '61782323111032': 'LIVYAA',
+  '61782323111033': 'LOKESHWARANS',
+  '61782323111035': 'PRIYANKAA MADU  SRM',
+  '61782323111036': 'MAHENDIRANK S',
+  '61782323111037': 'MOHAMMED USMAN',
+  '61782323111038': 'NAGASURIMEERASH',
+  '61782323111039': 'NAVEENKUMART',
+  '61782323111040': 'NIDERSANAS B',
+  '61782323111041': 'NIROSHINI K',
+  '61782323111042': 'NISHANTH P',
+  '61782323111043': 'PARVEZ AHAMEDS',
+  '61782323111044': 'PAVITHRA AT',
+  '61782323111045': 'PAVITHRA S',
+  '61782323111046': 'PRAVEEN RAJ',
+  '61782323111047': 'PRIYADHARSHINI M',
+  '61782323111048': 'RAKKSITHA R',
+  '61782323111049': 'RASIKA R G',
+  '61782323111050': 'ROHITHV',
+  '61782323111051': 'SAMKUMARS',
+  '61782323111052': 'SARANR',
+  '61782323111054': 'SHYAM SUNDAR',
+  '61782323111055': 'SOWMINIS',
+  '61782323111056': 'SRIKHANTHSURYAK S',
+  '61782323111057': 'SUBASH N',
+  '61782323111058': 'SUDARMANI V',
+  '61782323111059': 'TANYA RAJ',
+  '61782323111060': 'THARUNMURUGANANTHAM',
+  '61782323111061': 'VARSHINIS',
+  '61782323111062': 'VENIJ',
+  '61782323111063': 'VISHWAJITH P L',
+  '61782323111702': 'MOHAMMEDRIFATH MEERA',
+  '61782323111703': 'SUBRAMANIAN GPH',
+  '61782323111704': 'SUDHARSANS',
+  '61782323112001': 'ABIRAMI R',
+  '61782323112002': 'AFSARI BEGUM Z',
+  '61782323112003': 'AKASHKUMARAN S',
+  '61782323112004': 'AMEERA A',
+  '61782323112005': 'ANUJPAREEK R',
+  '61782323112006': 'ASWIN M',
+  '61782323112007': 'BHARATH S',
+  '61782323112008': 'BHUVANESHWARAN R',
+  '61782323112009': 'CHARUMATHI M',
+  '61782323112010': 'DHINAKARAN R',
+  '61782323112011': 'DINESH KUMAR S M',
+  '61782323112012': 'DIVYADHARSHINI V',
+  '61782323112013': 'GAYATHRY S R',
+  '61782323112014': 'JAGRUTHI SS',
+  '61782323112015': 'JANAKA S',
+  '61782323112016': 'JAYASUDHA J',
+  '61782323112018': 'KAVIN K K',
+  '61782323112020': 'KATHIRVEL M',
+  '61782323112021': 'KAVIA RAGAVI KSR',
+  '61782323112022': 'KAVYA D',
+  '61782323112023': 'KEERTHAN KAMATH G',
+  '61782323112024': 'KIRUBAVATHI P',
+  '61782323112025': 'MADHUMIDHA M',
+  '61782323112026': 'MADHURANDHAN VI',
+  '61782323112027': 'MANEESHA K',
+  '61782323112028': 'MANISHA V',
+  '61782323112029': 'MANUSHREE S G',
+  '61782323112030': 'MOHAN R',
+  '61782323112031': 'MOREENA S R',
+  '61782323112032': 'MOULIPACHAN S',
+  '61782323112033': 'NAGULAN VIJAYAKUMAR',
+  '61782323112034': 'NAVANEETHAN A R',
+  '61782323112035': 'NAVEEN PRASANA',
+  '61782323112036': 'NISHA G',
+  '61782323112037': 'PRIYADHARSHINI J',
+  '61782323112038': 'RAGASIYA M S',
+  '61782323112039': 'RANJAN M',
+  '61782323112040': 'REVATHI',
+  '61782323112041': 'SABARI P',
+  '61782323112042': 'SANDHIYA J S',
+  '61782323112043': 'SANJAI S',
+  '61782323112044': 'SARA FATHIMA A',
+  '61782323112045': 'SELVARAGAVAN M',
+  '61782323112046': 'SHAMIRA SHAHEEN S',
+  '61782323112047': 'SHAZIA AKBAR',
+  '61782323112048': 'SHUBHASHREE M',
+  '61782323112049': 'SIVA SANKAR C',
+  '61782323112050': 'SOWMIYA L',
+  '61782323112051': 'SRI AISHWARYA G',
+  '61782323112052': 'SRINITHI  A',
+  '61782323112053': 'SUDHIPTI M',
+  '61782323112054': 'SWASTHIK BHARGAV V',
+  '61782323112055': 'TEJASVINI R',
+  '61782323112056': 'THEJOMAYIE K',
+  '61782323112057': 'VAISHINI J',
+  '61782323112058': 'VARSHINI',
+  '61782323112059': 'VASU S',
+  '61782323112060': 'VIJAY V',
+  '61782323112061': 'VIJAYALAKSHMI',
+  '61782323112062': 'VIMAL RAJ S',
+  '61782323112063': 'VISHNU ANAND S',
+  '61782323112501': 'BOOBALAN M H',
+  '61782323112701': 'ASHOK KUMAR K',
+  '61782323112703': 'DHANUSHATHIRI A',
+  '61782323112704': 'HARI PRASATH M M',
+  '61782323112705': 'SUJEETH S',
+  '61782324102001': 'AAFIYA S',
+  '61782324102002': 'AAMIR KHAN S',
+  '61782324102003': 'AASHISH SHARMA',
+  '61782324102004': 'AATHISH M',
+  '61782324102005': 'ABARNA A A',
+  '61782324102006': 'ABINAYA G',
+  '61782324102007': 'ABIRAMI B',
+  '61782324102008': 'ADARSHA MURMU',
+  '61782324102009': 'AGALYA V S',
+  '61782324102010': 'AKHIL KUMAR S',
+  '61782324102011': 'AKHSHAYA VARSHINEE BA',
+  '61782324102012': 'AKSHAYA SREE P',
+  '61782324102013': 'AKSHIYALAKSHMI G',
+  '61782324102014': 'AMOGHA SHRE V',
+  '61782324102015': 'AMRIN TAJ N',
+  '61782324102016': 'AMSAVARDHINI G',
+  '61782324102017': 'ANTONY XAVIER M',
+  '61782324102018': 'ARIHARA SUTHAN L K',
+  '61782324102019': 'ARMAAN AHMED N',
+  '61782324102020': 'ARUL B',
+  '61782324102021': 'ASWIN S',
+  '61782324102022': 'ASWIN T',
+  '61782324102023': 'AYMAN SHAREEF F',
+  '61782324102024': 'BARATH V K',
+  '61782324102025': 'BHARANI T',
+  '61782324102026': 'BIPEEN YADAV',
+  '61782324102027': 'BRUNDHA S',
+  '61782324102028': 'CHANDAN SHAH',
+  '61782324102029': 'CHANDRU A',
+  '61782324102030': 'CHIRADEEP T D',
+  '61782324102031': 'DARSHAA B',
+  '61782324102032': 'DAYANIDHI VARMAA S N',
+  '61782324102033': 'DAYASUBHASH J',
+  '61782324102034': 'DEE ANN NATASHA V',
+  '61782324102035': 'DEEPAKRAJA S',
+  '61782324102036': 'DEVADHARSHINI N',
+  '61782324102037': 'DHANUSH M',
+  '61782324102038': 'DHARANIKUMAR R S',
+  '61782324102039': 'DHARUN M',
+  '61782324102040': 'DHIVYAA T',
+  '61782324102041': 'DIVASH KALAKHETI',
+  '61782324102042': 'DIVYAPPRIYA S',
+  '61782324102043': 'DIVYAPRAKASH U',
+  '61782324102044': 'ELACHCHANA B',
+  '61782324102045': 'ELAKKIYA A',
+  '61782324102046': 'ENITHA G',
+  '61782324102047': 'ESSWAR RAJA V B',
+  '61782324102048': 'GAYATHRI N',
+  '61782324102049': 'GITASRI M',
+  '61782324102050': 'GOKUL M',
+  '61782324102051': 'GOPIKA M',
+  '61782324102052': 'GOWSIGAR D',
+  '61782324102053': 'GRISHMA SHIWAKOTI',
+  '61782324102054': 'GURUNADHAN K',
+  '61782324102055': 'GURUNATH S R',
+  '61782324102056': 'HARIDHARSAN I K',
+  '61782324102057': 'HARIDHARSHINI M K',
+  '61782324102058': 'HARIHARAN V',
+  '61782324102059': 'HARINI S',
+  '61782324102060': 'HARINI SRI P S',
+  '61782324102061': 'HARINISHREE R',
+  '61782324102062': 'HARIPRIYAN S S',
+  '61782324102064': 'HARISH JAYA SURYA L',
+  '61782324102065': 'HARRISON BENNETT J',
+  '61782324102066': 'HAYAGREEVAR G',
+  '61782324102067': 'HEMAMALINI S',
+  '61782324102068': 'HEMAVARSHINI R',
+  '61782324102069': 'HIMANSHU BISHWAS KHAWAS',
+  '61782324102070': 'JAGADESH CHANDRA BOSE K',
+  '61782324102071': 'JAGATHAMILAN J J',
+  '61782324102072': 'JAIPRASANNA R K',
+  '61782324102073': 'JANUSHREE S',
+  '61782324102074': 'JAVITH J',
+  '61782324102075': 'JAYASREE D',
+  '61782324102076': 'JAYAVARSHINI M N',
+  '61782324102077': 'JAYAVIGNESH S A',
+  '61782324102078': 'JEEVA SRI G',
+  '61782324102079': 'JEEVADHARSHINI N',
+  '61782324102080': 'JEEVARAMAN J M',
+  '61782324102081': 'JENIFER M',
+  '61782324102082': 'JESIN FRANKLIN S',
+  '61782324102083': 'JUHI JUNAFER N A',
+  '61782324102084': 'KANISHKA A K',
+  '61782324102086': 'KIRANRAJ K R',
+  '61782324102087': 'KIRUBAKARAN M',
+  '61782324102088': 'KIRUBHASREE G',
+  '61782324102089': 'KISHORE GANESHKUMAR',
+  '61782324102090': 'KUMARESAN B',
+  '61782324102091': 'LOGESH S P',
+  '61782324102092': 'LOGU KUMAR G',
+  '61782324102093': 'LOHITH S',
+  '61782324102094': 'MAHALAKSHMI R',
+  '61782324102095': 'MAIVIZHI P',
+  '61782324102096': 'MALATHY S',
+  '61782324102097': 'MANIKANDAN K',
+  '61782324102098': 'MANIKANDAN K N',
+  '61782324102099': 'MANIKANDAN V',
+  '61782324102100': 'MANISH KUMAR MAHATO',
+  '61782324102101': 'MANJUSHREE V',
+  '61782324102102': 'MANOJ A',
+  '61782324102103': 'MEHAVARSHINI S',
+  '61782324102104': 'MEKALA M',
+  '61782324102105': 'MOHAMAD SAMIR ALAM',
+  '61782324102106': 'MOHAMMED FAROOQ N',
+  '61782324102107': 'MOHITHA S',
+  '61782324102108': 'MOULIKA M',
+  '61782324102109': 'MOUNIYA R',
+  '61782324102110': 'MOURIYA A P',
+  '61782324102111': 'MRITYUNJAY PRASAD CHAURASIYA',
+  '61782324102112': 'MUHAMMAD AFRITH D',
+  '61782324102113': 'MUHAMMAD KAMEEL A',
+  '61782324102114': 'MUKESH M',
+  '61782324102115': 'MUTHUKUMARAN V',
+  '61782324102116': 'NANDHINI A',
+  '61782324102117': 'NAVEEN S',
+  '61782324102118': 'NAVINKUMAR  P',
+  '61782324102119': 'NEHAL K S',
+  '61782324102120': 'NIKSHITHA  V',
+  '61782324102121': 'NIRENJANA N K',
+  '61782324102122': 'NISHA A',
+  '61782324102123': 'NITHESH S',
+  '61782324102124': 'NITHIN SAAI C S',
+  '61782324102125': 'NITHYASUBHA V',
+  '61782324102126': 'NIVASINI V M',
+  '61782324102127': 'PAPPU KUMAR THAKUR',
+  '61782324102128': 'PAULEBINEEZER M',
+  '61782324102129': 'PAVITHRA P',
+  '61782324102130': 'PERARULAALAN T G',
+  '61782324102131': 'PETER JACOB',
+  '61782324102132': 'POOJA S',
+  '61782324102133': 'PRABHANJANA A T',
+  '61782324102134': 'PRADEEP KUMAR S',
+  '61782324102135': 'PRAJJAWAL KUNWAR',
+  '61782324102136': 'PRAVEENBABU E S',
+  '61782324102137': 'PRAWIN KRISHNAN G',
+  '61782324102138': 'PREETHA ROSE A',
+  '61782324102139': 'PRIYADARSINI R',
+  '61782324102140': 'PRIYADHARSHINI V',
+  '61782324102141': 'PRIYANKA S',
+  '61782324102142': 'RAGINEE DEO',
+  '61782324102143': 'RAGUL R',
+  '61782324102144': 'RAM KISHAN SUNAR',
+  '61782324102145': 'RAMESH R',
+  '61782324102146': 'RATHEESH J J',
+  '61782324102147': 'RITHIKA S',
+  '61782324102148': 'RITHIKA SRI K',
+  '61782324102149': 'ROHINI PRIYA V',
+  '61782324102150': 'ROHITH S',
+  '61782324102151': 'ROOPANI B',
+  '61782324102152': 'ROSHNNI S B',
+  '61782324102153': 'RUMESH BALAJI S',
+  '61782324102154': 'SAKTIKRITHIC K K',
+  '61782324102155': 'SAMIR ANSARI',
+  '61782324102156': 'SAMUVEL A',
+  '61782324102157': 'SANDHIYA S',
+  '61782324102158': 'SANDIP SAH TURHA',
+  '61782324102159': 'SANJAY KUMAR U',
+  '61782324102160': 'SANJAY RAJ S',
+  '61782324102161': 'SANJAY S',
+  '61782324102162': 'SANJAYRAJ R',
+  '61782324102163': 'SANJIT THAKUR HAJAM',
+  '61782324102164': 'SANTANU MUKHIYA BIN',
+  '61782324102165': 'SARAN S',
+  '61782324102166': 'SARANYA M',
+  '61782324102167': 'SARMILA M',
+  '61782324102168': 'SENTHURVELAN K C',
+  '61782324102169': 'SHALENE R',
+  '61782324102170': 'SHANMATHI R G',
+  '61782324102171': 'SHARMILA R',
+  '61782324102172': 'SHARVESH S',
+  '61782324102173': 'SHARVESHVAR T R',
+  '61782324102174': 'SHARWAN KUMAR MANDAL',
+  '61782324102175': 'SHIVSHANKAR KUMAR JAYSAWAL',
+  '61782324102176': 'SHRINIDHI D R',
+  '61782324102177': 'SHRINITHAA H',
+  '61782324102178': 'SHYAM KUMAR CHAURASIYA',
+  '61782324102179': 'SIVABALAN P',
+  '61782324102180': 'SIVABALAN S',
+  '61782324102181': 'PRANAJ J',
+  '61782324102182': 'SIVASRI L',
+  '61782324102183': 'SOUMYA BARANWAL',
+  '61782324102184': 'SOUNDARYA S',
+  '61782324102185': 'SREESANTH V S',
+  '61782324102186': 'SRI ABIRAMI A',
+  '61782324102187': 'SRI SASIN P',
+  '61782324102188': 'SRINIDHI P',
+  '61782324102189': 'SRINIDHI R',
+  '61782324102190': 'SRINITHIPRIYA T',
+  '61782324102191': 'SRIYA S',
+  '61782324102192': 'SUBASREE V',
+  '61782324102193': 'SUBHASINI S A',
+  '61782324102194': 'SUDARSHAN SAH',
+  '61782324102195': 'SUDHARSHAN S',
+  '61782324102196': 'SUDHIKSHA R',
+  '61782324102197': 'SUGANTHIKA R',
+  '61782324102198': 'SWATHI S',
+  '61782324102199': 'SWATHY V R',
+  '61782324102200': 'TARUNHARI',
+  '61782324102201': 'TEKNARAYAN RAJBANSHI',
+  '61782324102202': 'THARUN R K',
+  '61782324102203': 'THIRUMALAI S',
+  '61782324102204': 'UPENDRA KUMAR YADAV',
+  '61782324102205': 'USHA A',
+  '61782324102206': 'VARUNUVIPRIYA V',
+  '61782324102207': 'VIDHYA P',
+  '61782324102208': 'VIDHYASRI S',
+  '61782324102209': 'VIGNESH KARTHIKEYAN M R',
+  '61782324102210': 'VIGNESHSARAVANAN M S',
+  '61782324102211': 'VISHAL KARTHIK R',
+  '61782324102212': 'VISHNUPPRIYAN G',
+  '61782324102213': 'YASMIN BANU S',
+  '61782324102214': 'YESHWANTH P',
+  '61782324102215': 'YOGESHWARAN K',
+  '61782324102216': 'YOKESHWARAAN K J',
+  '61782324102701': 'AKASH K',
+  '61782324102702': 'SIVAPRAKASH M',
+  '61782324102703': 'ANBARASU S',
+  '61782324102704': 'DEEPAN RAJ A T',
+  '61782324102705': 'DHATCHINAMURTHI S V',
+  '61782324102706': 'KAMALIKA T',
+  '61782324102707': 'KATHIRVENTHAN S',
+  '61782324102708': 'KESHORE G V',
+  '61782324102709': 'KISHORE K',
+  '61782324102710': 'MANIKANDAN S',
+  '61782324102711': 'NAVYA S',
+  '61782324102713': 'AMAR FAROOK  M',
+  '61782324102714': 'SABARINATHAN M',
+  '61782324102715': 'G.SRI HARNI',
+  '61782324111001': 'ABINAYA',
+  '61782324111002': 'ADHITHYAN',
+  '61782324111003': 'ADITYA CHAURASIYA',
+  '61782324111004': 'AHTHI SHRI',
+  '61782324111005': 'AJAY KIRTHICK',
+  '61782324111006': 'AMEERUDHEEN',
+  '61782324111007': 'AMURTHA',
+  '61782324111008': 'ANDRICK WILLIAMS',
+  '61782324111009': 'BENO JACINTH RAJ',
+  '61782324111010': 'BHARANI HARI',
+  '61782324111011': 'CHANDRAMATHI',
+  '61782324111012': 'CHETANA BUDHA CHHETRI',
+  '61782324111013': 'DEEPIKA',
+  '61782324111014': 'DEV',
+  '61782324111015': 'DHANASEKAR',
+  '61782324111016': 'DHARMA SUGASH',
+  '61782324111017': 'DHARSHANAPRIYA',
+  '61782324111018': 'DHIVAGAR',
+  '61782324111019': 'ELANGO',
+  '61782324111020': 'GOWSHIKA',
+  '61782324111021': 'HABEEBBUR RAHAMAN',
+  '61782324111022': 'HARI',
+  '61782324111023': 'HARIDHARUSON',
+  '61782324111024': 'INDHUMATHI',
+  '61782324111025': 'JAYA NITHYASRI',
+  '61782324111026': 'JEFFRIN',
+  '61782324111027': 'JOHITH',
+  '61782324111028': 'KAARTHIKEYAN',
+  '61782324111029': 'KAKARLA NIKHIL',
+  '61782324111030': 'KAMALI',
+  '61782324111031': 'KAMESH',
+  '61782324111032': 'KANISH',
+  '61782324111033': 'KRITIKA SILWA',
+  '61782324111034': 'KUMKUMAKAVYASHREE',
+  '61782324111035': 'LINGESH',
+  '61782324111036': 'LOKESHWARAN',
+  '61782324111037': 'MANIGANDANBALAJI D',
+  '61782324111038': 'MEGHA J P',
+  '61782324111039': 'MONIKA S',
+  '61782324111040': 'MONISH R',
+  '61782324111041': 'MUGANBALAJI M',
+  '61782324111042': 'NAREN KARTHICK S',
+  '61782324111043': 'NEHARIKHA I M',
+  '61782324111044': 'NITHISH J',
+  '61782324111045': 'NITHYASRI N',
+  '61782324111046': 'PRAGADEESH V',
+  '61782324111047': 'PRAGADEESHWARAN S',
+  '61782324111048': 'PRAKASH PD YADAV',
+  '61782324111049': 'PRATIGYA ADHIKARY',
+  '61782324111050': 'PRIYANKA D',
+  '61782324111051': 'RAAJ NIKITAA K R',
+  '61782324111052': 'RAHUL KUMAR YADAV',
+  '61782324111053': 'RAVIKIRAN S',
+  '61782324111054': 'RISHIKESH SS',
+  '61782324111055': 'RITHIK R',
+  '61782324111056': 'ROHITH P',
+  '61782324111057': 'ROHITH T',
+  '61782324111058': 'SAMAGYA BARAL',
+  '61782324111059': 'SANDHIYA CHAWLA M',
+  '617823241110603': 'SANDHIYA M',
+  '61782324111061': 'SARVESH P',
+  '61782324111062': 'SHREE SHYAM SINHA',
+  '61782324111063': 'SIVARAMAN P',
+  '61782324111064': 'SRIDEVI G',
+  '61782324111065': 'SRIDHARAN P',
+  '61782324111066': 'SRINIVASAN M',
+  '61782324111067': 'SUDHISH VIJAI',
+  '61782324111068': 'SUJAN KHATRI',
+  '61782324111069': 'SUJITH KUMAR M',
+  '61782324111070': 'THAMARAI LAKSHMI S',
+  '61782324111071': 'THARINI G',
+  '61782324111072': 'VIMAL RAJ K',
+  '61782324111701': 'ELAVARASAN A',
+  '61782324111702': 'HARSHADRAMM J S',
+  '61782324111705': 'NIVETHA V',
+  '6178232411201': 'ABILASH P',
+  '6178232411202': 'AJAY V',
+  '6178232411203': 'ASHWIN M S',
+  '6178232411204': 'ASWANTH B',
+  '6178232411205': 'DEEPAK P',
+  '6178232411206': 'DHARANIK',
+  '6178232411207': 'DHURGAD EVI S',
+  '6178232411208': 'DIVYA A',
+  '6178232411209': 'ELA VIBUSHA',
+  '6178232411210': 'ELANKUMARAN M S',
+  '6178232411211': 'GOKUL R',
+  '6178232411212': 'GOPINATH V',
+  '6178232411213': 'HARI RAJ B',
+  '6178232411214': 'JAGATH PRIYAN V',
+  '6178232411215': 'JAISRI S',
+  '6178232411216': 'JENITHRAJ R',
+  '6178232411217': 'KALAIYARASI D',
+  '6178232411218': 'KAMALI S',
+  '6178232411219': 'KAVEENA M',
+  '6178232411220': 'KAVYA S',
+  '6178232411221': 'KIRANKUMAR M',
+  '6178232411222': 'KIRUTHI VARSHNI S',
+  '6178232411223': 'MADHUMITA SP',
+  '6178232411224': 'MALATHI G',
+  '6178232411225': 'MOHAMMED MUZAMMIL A',
+  '6178232411226': 'MONISH ESHWAR S',
+  '6178232411227': 'MONISHREE K',
+  '6178232411228': 'NAFEES TAJ M',
+  '6178232411229': 'NAVEENKUMAR K',
+  '6178232411230': 'NETHRA G',
+  '6178232411231': 'NIRANJANA E',
+  '6178232411232': 'NIRMAL KUMAR V',
+  '6178232411233': 'PERAPASU K',
+  '6178232411234': 'POOJA M',
+  '6178232411235': 'POOJASHREE B',
+  '6178232411236': 'POORNASRI V',
+  '6178232411237': 'PRADEEP D',
+  '6178232411238': 'PRIYAN K',
+  '6178232411239': 'RAHINI K',
+  '6178232411240': 'RISHIPRIYAN M',
+  '6178232411241': 'ROSHAN D',
+  '6178232411242': 'SANJAI K',
+  '6178232411243': 'SANJAI Y',
+  '6178232411244': 'SANJAY G',
+  '6178232411245': 'SANJAY R',
+  '6178232411246': 'SASSWANTH R',
+  '6178232411247': 'SATHASIVAM S',
+  '6178232411248': 'SHARVESH K S',
+  '6178232411249': 'SREENANDHA S',
+  '6178232411250': 'SRINITH B',
+  '6178232411251': 'SUBASRI K',
+  '6178232411252': 'SUBASHREE D',
+  '6178232411253': 'SUBHIKSHA N',
+  '6178232411254': 'SURIYA S',
+  '6178232411255': 'SURYA B',
+  '6178232411256': 'SURYA V',
+  '6178232411257': 'SWATHI S',
+  '6178232411258': 'THAMODHARAN A',
+  '6178232411259': 'THARUN KRISHNA S',
+  '6178232411260': 'THIRUMURUGAN P',
+  '6178232411261': 'TUMIL N',
+  '6178232411262': 'UMAIRA S',
+  '6178232411263': 'WASEEM AHAMED S',
+  '61782324112701': 'MUHAMMED BASHEER AHMED',
+  '61782324112702': 'SRIGURU K R',
+  '61782324112703': 'YOGESWARAN K',
+  '61783323102703': 'DHARANEESHKAR R',
+};
 
 fastify.post('/api/sonacse/register', async (request, reply) => {
   const client = await pool.connect();
@@ -2601,18 +3288,17 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
     
     // 1. VALIDATE ALL REQUIRED FIELDS WITH SONACSE-SPECIFIC VALIDATION
     const validationErrors = [];
+    let studentName = null;
     
     if (!request.body.roll_number || request.body.roll_number.trim() === '') {
       validationErrors.push('ROLL_NUMBER_REQUIRED: Roll number is required for SONACSE registration');
     } else {
       const rollNumber = request.body.roll_number.trim().toUpperCase();
-      if (!SONACSE_STUDENTS.includes(rollNumber)) {
+      studentName = SONACSE_STUDENTS[rollNumber];
+      
+      if (!studentName) {
         validationErrors.push('INVALID_SONACSE_ROLL: Roll number not found in SONACSE student list');
       }
-    }
-    
-    if (!request.body.full_name || request.body.full_name.trim() === '') {
-      validationErrors.push('FULL_NAME_REQUIRED: Full name is required');
     }
     
     if (!request.body.email || request.body.email.trim() === '') {
@@ -2623,14 +3309,20 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
     
     if (!request.body.phone || request.body.phone.trim() === '') {
       validationErrors.push('PHONE_REQUIRED: Phone number is required');
-    } else if (request.body.phone.replace(/\D/g, '').length < 10) {
-      validationErrors.push('PHONE_INVALID: Phone must be at least 10 digits');
+    } else {
+      const cleanPhone = request.body.phone.replace(/\D/g, '');
+      if (cleanPhone.length < 10) {
+        validationErrors.push('PHONE_INVALID: Phone must be at least 10 digits');
+      }
     }
     
-    if (!request.body.year_of_study) {
+    if (!request.body.year_of_study && request.body.year_of_study !== 0) {
       validationErrors.push('YEAR_REQUIRED: Year of study is required (1, 2, 3, or 4)');
-    } else if (![1, 2, 3, 4].includes(parseInt(request.body.year_of_study))) {
-      validationErrors.push('YEAR_INVALID: Year of study must be 1, 2, 3, or 4');
+    } else {
+      const year = parseInt(request.body.year_of_study);
+      if (![1, 2, 3, 4].includes(year)) {
+        validationErrors.push('YEAR_INVALID: Year of study must be 1, 2, 3, or 4');
+      }
     }
     
     if (validationErrors.length > 0) {
@@ -2639,7 +3331,6 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
     
     const {
       roll_number,
-      full_name,
       email,
       phone,
       year_of_study,
@@ -2649,6 +3340,8 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
     } = request.body;
     
     const cleanRollNumber = roll_number.trim().toUpperCase();
+    const full_name = studentName; // Use name from SONACSE_STUDENTS object
+    
     const department = 'CSE'; // Force CSE for SONACSE students
     const college_name = 'Sona College of Technology (SONACSE)';
     
@@ -2658,7 +3351,7 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
       throw new Error('REGISTRATION_CLOSED: Registration is closed. Please contact organizers.');
     }
     
-    // 3. CHECK FOR DUPLICATE EMAIL (using email instead of roll number)
+    // 3. CHECK FOR DUPLICATE EMAIL
     const existingEmail = await client.query(
       'SELECT * FROM participants WHERE LOWER(email) = LOWER($1)',
       [email]
@@ -2677,27 +3370,26 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
     const hasWorkshops = workshop_selections.length > 0;
     const hasEventsOnly = workshop_selections.length === 0 && event_selections.length > 0;
     
-    // 6. INSERT PARTICIPANT (NO ROLL_NUMBER COLUMN - using regular insertion)
-    // In the SONACSE INSERT PARTICIPANT section:
-const participantResult = await client.query(
-  `INSERT INTO participants (
-    full_name, email, phone, college_name, department,
-    year_of_study, city, state, accommodation_required, gender
-  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-  RETURNING participant_id`,
-  [
-    full_name.trim(),
-    email.toLowerCase().trim(),
-    phone.replace(/\D/g, ''),
-    college_name,
-    department,
-    parseInt(year_of_study),
-    'Salem', // Default for SONACSE
-    'Tamil Nadu', // Default for SONACSE
-    false, // Default no accommodation for SONACSE
-    gender // Add gender here
-  ]
-);
+    // 6. INSERT PARTICIPANT
+    const participantResult = await client.query(
+      `INSERT INTO participants (
+        full_name, email, phone, college_name, department,
+        year_of_study, city, state, accommodation_required, gender
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING participant_id`,
+      [
+        full_name.trim(),
+        email.toLowerCase().trim(),
+        phone.replace(/\D/g, ''),
+        college_name,
+        department,
+        parseInt(year_of_study),
+        'Salem', // Default for SONACSE
+        'Tamil Nadu', // Default for SONACSE
+        false, // Default no accommodation for SONACSE
+        gender || 'Not Specified'
+      ]
+    );
     
     const participantId = participantResult.rows[0].participant_id;
     const registrationIds = [];
@@ -2713,13 +3405,14 @@ const participantResult = await client.query(
           cse_available_seats,
           is_active,
           event_type,
-          day
+          day,
+          fee
          FROM events 
          WHERE event_id = $1`,
         [eventId]
       );
       
-      if (!event.rows[0]) {
+      if (event.rows.length === 0) {
         throw new Error(`EVENT_NOT_FOUND: Event ID ${eventId} not found`);
       }
       
@@ -2756,13 +3449,14 @@ const participantResult = await client.query(
       }
       
       // Check seat availability
-      const eventData = await checkSeatAvailability(eventId);
+      const eventData = await checkSeatAvailability(eventIdNum);
       
       // Generate registration ID with SONACSE prefix
       const prefix = 'THREADS26-SONA-';
       const timestamp = Date.now().toString().slice(-9);
-      const baseRegId = `${prefix}CSE-${timestamp}`;
-      const regId = `${baseRegId}-${eventId}`;
+      const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const baseRegId = `${prefix}CSE-${timestamp}${randomSuffix}`;
+      const regId = `${baseRegId}-${eventIdNum}`;
       
       // Insert registration
       await client.query(
@@ -2772,7 +3466,7 @@ const participantResult = await client.query(
         ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           participantId,
-          eventId,
+          eventIdNum,
           regId,
           'Success', // Events are immediately confirmed (free)
           0, // FREE for events
@@ -2782,11 +3476,11 @@ const participantResult = await client.query(
       );
       
       // DECREMENT SEATS IMMEDIATELY for events
-      await decrementSeats(eventId);
+      await decrementSeats(eventIdNum);
       
       registrationIds.push(regId);
       processedEvents.push({
-        event_id: eventId,
+        event_id: eventIdNum,
         event_name: eventData.event_name,
         registration_id: regId
       });
@@ -2801,26 +3495,21 @@ const participantResult = await client.query(
       }
       
       // Check seat availability
-      const eventData = await checkSeatAvailability(eventId);
+      const eventData = await checkSeatAvailability(eventIdNum);
       
       // Verify it's a workshop
       if (eventData.event_type !== 'workshop') {
-        throw new Error(`NOT_A_WORKSHOP: Event ID ${eventId} is not a workshop (type: ${eventData.event_type})`);
+        throw new Error(`NOT_A_WORKSHOP: Event ID ${eventIdNum} is not a workshop (type: ${eventData.event_type})`);
       }
       
-      // Get workshop fee
-      const feeResult = await client.query(
-        'SELECT fee FROM events WHERE event_id = $1',
-        [eventId]
-      );
-      
-      const workshopFee = parseFloat(feeResult.rows[0].fee) || 0;
+      const workshopFee = parseFloat(eventData.fee) || 0;
       
       // Generate registration ID with SONACSE prefix
       const prefix = 'THREADS26-SONA-';
       const timestamp = Date.now().toString().slice(-9);
-      const baseRegId = `${prefix}CSE-${timestamp}`;
-      const regId = `${baseRegId}-${eventId}`;
+      const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const baseRegId = `${prefix}CSE-${timestamp}${randomSuffix}`;
+      const regId = `${baseRegId}-${eventIdNum}`;
       
       // Insert registration as PENDING (needs payment)
       await client.query(
@@ -2830,7 +3519,7 @@ const participantResult = await client.query(
         ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           participantId,
-          eventId,
+          eventIdNum,
           regId,
           'Pending', // Needs payment
           workshopFee,
@@ -2845,7 +3534,7 @@ const participantResult = await client.query(
       totalAmount += workshopFee;
       needsPayment = true;
       processedWorkshops.push({
-        event_id: eventId,
+        event_id: eventIdNum,
         event_name: eventData.event_name,
         registration_id: regId,
         fee: workshopFee
@@ -2862,7 +3551,7 @@ const participantResult = await client.query(
     if (!needsPayment && processedEvents.length > 0) {
       qrPayload = {
         participant_id: participantId,
-        roll_number: cleanRollNumber, // Store roll number in QR payload only
+        roll_number: cleanRollNumber,
         registration_ids: registrationIds,
         event: "THREADS'26",
         type: "SONACSE_EVENTS_ONLY",
@@ -2904,7 +3593,7 @@ const participantResult = await client.query(
         participant_details: {
           participant_id: participantId,
           participant_name: full_name,
-          roll_number: cleanRollNumber, // Return in response only
+          roll_number: cleanRollNumber,
           department: department,
           college: college_name
         },
@@ -2935,13 +3624,13 @@ const participantResult = await client.query(
         participant_details: {
           participant_id: participantId,
           participant_name: full_name,
-          roll_number: cleanRollNumber, // Return in response only
+          roll_number: cleanRollNumber,
           department: department,
           college: college_name
         },
         registrations: {
-          events: processedEvents, // Already confirmed
-          workshops: processedWorkshops, // Pending payment
+          events: processedEvents,
+          workshops: processedWorkshops,
           total_registrations: processedEvents.length + processedWorkshops.length
         },
         payment: {
@@ -2966,8 +3655,21 @@ const participantResult = await client.query(
   } catch (error) {
     await client.query('ROLLBACK');
     
+    console.error('SONACSE Registration Error:', error);
+    
     // 15. ERROR HANDLING
     const errorMessage = error.message;
+    
+    if (errorMessage.includes('VALIDATION_FAILED:')) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'VALIDATION_ERROR',
+        error_code: 'VALIDATION_FAILED',
+        message: 'Validation failed',
+        details: errorMessage.replace('VALIDATION_FAILED: ', ''),
+        suggestion: 'Please check your input and try again'
+      });
+    }
     
     if (errorMessage.includes('SONACSE_SEATS_FULL')) {
       return reply.code(400).send({
@@ -2991,13 +3693,58 @@ const participantResult = await client.query(
       });
     }
     
-    return reply.code(400).send({
+    if (errorMessage.includes('EMAIL_EXISTS')) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'DUPLICATE_ERROR',
+        error_code: 'EMAIL_ALREADY_REGISTERED',
+        message: 'Email already registered',
+        details: 'This email address is already registered for the event',
+        suggestion: 'Please use a different email or contact support if you think this is a mistake'
+      });
+    }
+    
+    if (errorMessage.includes('EVENT_NOT_FOUND')) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'EVENT_ERROR',
+        error_code: 'EVENT_NOT_FOUND',
+        message: 'Event not found',
+        details: errorMessage.replace('EVENT_NOT_FOUND: ', ''),
+        suggestion: 'Please select valid events from the list'
+      });
+    }
+    
+    if (errorMessage.includes('REGISTRATION_CLOSED')) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'DEADLINE_ERROR',
+        error_code: 'REGISTRATION_CLOSED',
+        message: 'Registration is closed',
+        details: 'The registration deadline has passed',
+        suggestion: 'Please contact organizers for late registration'
+      });
+    }
+    
+    if (errorMessage.includes('NO_EVENTS_SELECTED')) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'SELECTION_ERROR',
+        error_code: 'NO_EVENTS_SELECTED',
+        message: 'No events selected',
+        details: 'Please select at least one workshop or event',
+        suggestion: 'Choose events from the available list'
+      });
+    }
+    
+    // Default error response
+    return reply.code(500).send({
       success: false,
-      error_type: 'REGISTRATION_ERROR',
-      error_code: 'UNKNOWN_ERROR',
+      error_type: 'SERVER_ERROR',
+      error_code: 'INTERNAL_SERVER_ERROR',
       message: 'SONACSE registration failed',
-      details: errorMessage,
-      suggestion: 'Please try again or contact SONACSE support'
+      details: errorMessage || 'An unexpected error occurred',
+      suggestion: 'Please try again later or contact support'
     });
     
   } finally {
