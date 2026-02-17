@@ -306,7 +306,7 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
   }
 });
 
-// CSV/XLS Verification
+// Process the uploaded bank statement
 async function processFile() {
   console.clear();
   const file = document.getElementById('fileInput').files[0];
@@ -328,14 +328,16 @@ async function processFile() {
   csvResults.style.display = 'none';
   
   try {
-    const payments = await readFile(file);
+    // Parse the bank statement into structured payments
+    const payments = await parseBankStatement(file);
     
     if (!payments.length) {
-      throw new Error("No valid payments found in the file");
+      throw new Error("No valid credit transactions found in the file");
     }
     
-    console.log("Found payments:", payments);
+    console.log("Extracted payments:", payments);
     
+    // Send to backend for verification
     const res = await fetch("https://threads26-2-fdem.onrender.com/api/admin/verify-payments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -349,7 +351,7 @@ async function processFile() {
       csvStats.innerHTML = `
         <div class="stat-box">
           <div class="stat-value">${data.summary.total_pending_before || 0}</div>
-          <div class="stat-label">Total Pending</div>
+          <div class="stat-label">Pending Before</div>
         </div>
         <div class="stat-box">
           <div class="stat-value">${data.summary.newly_verified || 0}</div>
@@ -426,97 +428,90 @@ async function manualVerify() {
   }
 }
 
-// File reading function
-async function readFile(file) {
+// Parse bank statement to extract credit transactions
+async function parseBankStatement(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
     reader.onload = (e) => {
       try {
+        let rows = [];
         let payments = [];
         
         if (!file.name.toLowerCase().endsWith(".csv")) {
-          // Excel file
+          // Parse Excel file
           const wb = XLSX.read(e.target.result, { type: "array" });
           const sheet = wb.Sheets[wb.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-          
-          // Find header row
-          let headerRowIndex = -1;
-          let headers = [];
-          
-          for (let i = 0; i < rows.length; i++) {
-            const rowText = rows[i].join(" ").toLowerCase();
-            if (rowText.includes("deposit") && rowText.includes("remark")) {
-              headerRowIndex = i;
-              headers = rows[i];
-              break;
-            }
-          }
-          
-          if (headerRowIndex === -1) {
-            reject(new Error("Transaction table not found in Excel file"));
-            return;
-          }
-          
-          const depositIndex = headers.findIndex(h =>
-            h.toLowerCase().includes("deposit")
-          );
-          
-          const remarksIndex = headers.findIndex(h =>
-            h.toLowerCase().includes("remark")
-          );
-          
-          // Process data rows
-          for (let i = headerRowIndex + 1; i < rows.length; i++) {
-            const row = rows[i];
-            const deposit = Number(String(row[depositIndex]).replace(/,/g, ""));
-            const remarks = row[remarksIndex];
-            
-            if (!deposit || deposit <= 0) continue;
-            
-            const match = remarks?.match(/UPI\/(?:CR|DR)\/(\d+)\//);
-            if (!match) continue;
-            
-            payments.push({
-              transaction_id: match[1],
-              amount: deposit
-            });
-          }
+          rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
         } else {
-          // CSV file
-          const lines = e.target.result.split("\n").map(l => l.trim()).filter(Boolean);
+          // Parse CSV file
+          const text = e.target.result;
+          rows = text.split("\n")
+            .map(line => line.split(",").map(cell => cell.replace(/"/g, "").trim()));
+        }
+        
+        // Find header indices (Date, Narration, Credit)
+        let dateIdx = -1, narrationIdx = -1, creditIdx = -1;
+        
+        // Look for the row containing headers
+        for (let i = 0; i < Math.min(10, rows.length); i++) {
+          const row = rows[i];
+          const rowStr = row.join(" ").toLowerCase();
           
-          let headerIndex = -1;
-          let headers = [];
-          
-          for (let i = 0; i < lines.length; i++) {
-            if (lines[i].toLowerCase().includes("deposit") &&
-                lines[i].toLowerCase().includes("remark")) {
-              headerIndex = i;
-              headers = lines[i].split(",");
+          if (rowStr.includes("narration") || rowStr.includes("description")) {
+            // Found likely header row
+            dateIdx = row.findIndex(cell => 
+              cell.toLowerCase().includes("date") && !cell.toLowerCase().includes("value"));
+            narrationIdx = row.findIndex(cell => 
+              cell.toLowerCase().includes("narration") || cell.toLowerCase().includes("description"));
+            creditIdx = row.findIndex(cell => 
+              cell.toLowerCase().includes("credit") || cell.toLowerCase().includes("deposit"));
+            
+            // If we found at least narration and credit, use this row
+            if (narrationIdx !== -1 && creditIdx !== -1) {
+              // Process from next row
+              rows = rows.slice(i + 1);
               break;
             }
           }
+        }
+        
+        if (narrationIdx === -1 || creditIdx === -1) {
+          reject(new Error("Could not find required columns (Narration and Credit)"));
+          return;
+        }
+        
+        // Process each transaction row
+        for (const row of rows) {
+          if (row.length <= Math.max(narrationIdx, creditIdx)) continue;
           
-          const dIndex = headers.findIndex(h => h.toLowerCase().includes("deposit"));
-          const rIndex = headers.findIndex(h => h.toLowerCase().includes("remark"));
+          const narration = row[narrationIdx]?.toString() || "";
+          const creditStr = row[creditIdx]?.toString().replace(/,/g, "").trim();
+          const credit = parseFloat(creditStr);
           
-          for (let i = headerIndex + 1; i < lines.length; i++) {
-            const cols = lines[i].split(",").map(v => v.replace(/"/g, "").trim());
-            const deposit = Number(cols[dIndex]);
-            const remarks = cols[rIndex];
-            
-            if (!deposit || deposit <= 0) continue;
-            const match = remarks?.match(/UPI\/(?:CR|DR)\/(\d+)\//);
-            if (!match) continue;
-            
+          // Skip if no credit amount or zero
+          if (!credit || credit <= 0) continue;
+          
+          // Extract UPI transaction ID from narration
+          // Format: UPI/xxxxxxxxxxxx/CR/... or UPI/xxxxxxxxxxxx/DR/...
+          const upiMatch = narration.match(/UPI\/(\d+)\/(?:CR|DR)\//);
+          if (!upiMatch) continue;
+          
+          const transactionId = upiMatch[1];
+          
+          // Only include credit transactions
+          if (narration.includes("/CR/")) {
             payments.push({
-              transaction_id: match[1],
-              amount: deposit
+              transaction_id: transactionId,
+              amount: credit
             });
           }
         }
+        
+        // Remove duplicates (by transaction_id)
+        const unique = {};
+        payments.forEach(p => unique[p.transaction_id] = p);
+        payments = Object.values(unique);
         
         resolve(payments);
       } catch (error) {
@@ -526,7 +521,7 @@ async function readFile(file) {
     
     reader.onerror = () => reject(new Error("Failed to read file"));
     
-    file.name.endsWith(".csv")
+    file.name.toLowerCase().endsWith(".csv")
       ? reader.readAsText(file)
       : reader.readAsArrayBuffer(file);
   });
