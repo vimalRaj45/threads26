@@ -489,6 +489,8 @@ const participantResult = await client.query(
     if (client) client.release();
   }
 });
+
+
 fastify.post("/api/admin/verify-payments", async (request, reply) => {
   const client = await pool.connect();
 
@@ -3280,6 +3282,493 @@ const SONACSE_STUDENTS = {
   '61783323102703': 'DHARANEESHKAR R',
 };
 
+
+const SONACSE_STUDENTS_FIRST = {
+  '25AMLBE002': 'DINESH S',
+  '25AMLBE003': 'JAGAN NISANTH M',
+  '25AMLBE004': 'SARWAJITH S N',
+  '25AMLBE006': 'INDHUJA S',
+  '25AMLBE011': 'SHARMILA DEVI J',
+  '25AMLBE014': 'HARIPRASATH P',
+  '25AMLBE017': 'SUJAY PRANAV V',
+  '25AMLBE018': 'HARIHARAN C',
+  '25AMLBE019': 'FAREEN I',
+  '25AMLBE020': 'SANTHOSH KUMAR S',
+  '25AMLBE035': 'LOSHITHA J',
+  '25AMLBE041': 'NIHAREKHA S S',
+  '25AMLBE043': 'RAKSHITA G R',
+  '25AMLBE044': 'VAISHNAVI M',
+  '25AMLBE045': 'SHOHITH D',
+  '25AMLBE046': 'DHARSHINI S',
+  '25AMLBE047': 'SANJANA R',
+  '25AMLBE048': 'NAREN KARTHI P',
+  '25AMLBE049': 'BARATH S J',
+  '25AMLBE050': 'ARAVINDAN N',
+  '25AMLBE051': 'ISHANA G P',
+  '25AMLBE054': 'DHARUN KUMAR V',
+  '25AMLBE055': 'MOHAMMED SAMMER M',
+  '25AMLBE056': 'ANAGHA NAIR',
+  '25AMLBE057': 'SHRAVANI MAHESH KADAM',
+  '25AMLBE058': 'SWETHA G',
+  '25AMLBE059': 'SANMITHA S',
+  '25AMLBE060': 'TULASI U',
+  '25AMLBE061': 'SREE KHANISHKHA T',
+  '25AMLBE062': 'PAKYALA LUKHITH',
+  '25AMLBE063': 'NIYAM KUMAR JAIN',
+  '25AMLBE064': 'ARPUTHA RAJ',
+  '25AMLBE065': 'SURYES WARAN V',
+  '25AMLBE066': 'AMIRTHAVARSHINI P',
+  '25AMLBE067': 'NIKESH S',
+  '25AMLBE068': 'BHARANI KUMAR K',
+  '25AMLBE069': 'SUDHARSANA PRIYAN P',
+  '25AMLBE070': 'ATCHAYA S',
+  '25AMLBE071': 'VASANTH R',
+  '25AMLBE072': 'SOUNDARYA P',
+  '25AMLBE073': 'GURUPRASAD S',
+  '25AMLBE074': 'GAYATHIRI V',
+  '25AMLBE075': 'JEEVAN S',
+  '25AMLBE076': 'MANIKANDAN K V',
+  '25AMLBE077': 'DHAMODHARAN K',
+  '25AMLBE078': 'HARINI K',
+  '25AMLBE079': 'ARAVIND S M',
+  '25AMLBE080': 'RITISHA M',
+  '25AMLBE081': 'SUSHMITHA K',
+  '25AMLBE082': 'SHAMRUTHA SHANTHA KUMAR',
+  '25AMLBE083': 'ABINAV SURESHKUMAR',
+  '25AMLBE084': 'SUGAVANESWARAN A',
+  '25AMLBE085': 'HARINI V',
+  '25AMLBE086': 'PAVAN KUMAR S R',
+  '25AMLBE087': 'VIDHYA R',
+  '25AMLBE088': 'MEGANATH M',
+  '25AMLBE089': 'GOKUL S',
+  '25AMLBE090': 'MANISHA M',
+  '25AMLBE091': 'MONISH A S',
+  '25AMLBE092': 'KIZRATAJ S',
+  '25AMLBE093': 'NIGASHINI D',
+  '25AMLBE094': 'VENMATHI M',
+  '25AMLBE095': 'SHEIK MOHAMMED ARMAAN A',
+  '25AMLBE096': 'HARIHARAN T',
+  '25AMLBE097': 'GOKUL J',
+  '25AMLBE098': 'SUSMITHA S',
+  '25AMLBE099': 'SUJITHA G',
+  '25AMLBE100': 'MUGUNDHAN S K',
+  '25AMLBE101': 'KEERTHANA K',
+  '25AMLBE102': 'SIVAJIVASAN S',
+  '25AMLBE103': 'KEERTHANAA N',
+  '25AMLBE104': 'GIRIHARAN A',
+  '25AMLBE105': 'MUKILAN M',
+  '25AMLBE106': 'VISHNU G',
+  '25AMLBE107': 'SREELAYA G',
+  '25AMLBE108': 'DHEEPSHIKA B',
+  '25AMLBE109': 'POOJA SHREE A',
+  '25AMLBE110': 'BIKRAM RAJBANSHI',
+  '25AMLBE111': 'ARYAN AYDI',
+  '25AMLBE112': 'NAVEENA KUMARI R',
+  '25AMLBE113': 'PRADEEP P',
+  '25AMLBE114': 'AKASH S',
+  '25AMLBE115': 'SREESHA R',
+  '25AMLBE116': 'ARSHATH A',
+  '25AMLBE117': 'ACHYUT MANI RISAL',
+  '25AMLBE118': 'YOG RAJ DEV',
+  '25AMLBE119': 'MILAN RAJ JOSHI',
+  '25AMLBE120': 'MADHUMITHA T',
+  '25AMLBE121': 'KANISHKA D',
+  '25AMLBE122': 'HARISH B',
+  '25AMLBE123': 'SHERYL OPHELIA R',
+  '25AMLBE124': 'JAYAMALAR V',
+  '25AMLBE125': 'SAKTHI PRIYAN M',
+  '25AMLBE126': 'GOKULNAATH S',
+  '25AMLBE127': 'NISHALINI M',
+  '25CBEBE002': 'ABIRAMI V S',
+  '25CBEBE008': 'NITHYAA SHREE S',
+  '25CBEBE019': 'TRINETRA S',
+  '25CBEBE020': 'YAZHINI R',
+  '25CBEBE021': 'ELAYABOOPATHI T',
+  '25CBEBE022': 'DINESH S P',
+  '25CBEBE024': 'HARITHA D',
+  '25CBEBE026': 'ANUSHRI M',
+  '25CBEBE028': 'SHRIHARI S',
+  '25CBEBE029': 'KENNETH LAMBART D',
+  '25CBEBE030': 'RICHA S',
+  '25CBEBE032': 'KENISHA R',
+  '25CBEBE033': 'AAKASH S',
+  '25CBEBE034': 'JOSHNA ASHLYN J',
+  '25CBEBE035': 'DURGESH S.K',
+  '25CBEBE037': 'SRI AISHVARYAN P K',
+  '25CBEBE044': 'KABILESH K',
+  '25CBEBE045': 'ANU GAYATHRI N',
+  '25CBEBE046': 'NATHIKA M',
+  '25CBEBE047': 'POOJAMBIKAI R',
+  '25CBEBE048': 'HARIKISHOR R',
+  '25CBEBE049': 'THIRUKUMARAN P',
+  '25CBEBE050': 'DHANAKUMARAN J',
+  '25CBEBE051': 'PRAVINKUMAR S',
+  '25CBEBE052': 'GURUBALAJI S',
+  '25CBEBE053': 'NIVASH K',
+  '25CBEBE054': 'DEEPAK R',
+  '25CBEBE055': 'THARSHINI J P',
+  '25CBEBE056': 'YOKESH NARAYAN S',
+  '25CBEBE057': 'MADESH B',
+  '25CBEBE058': 'NIVETHA V',
+  '25CBEBE059': 'SADHANA SJ',
+  '25CBEBE060': 'THIRUPPATHI U',
+  '25CBEBE061': 'VIVEKA A',
+  '25CBEBE062': 'FOUZUL HIDHAYA H',
+  '25CBEBE063': 'INBASEKARAN K',
+  '25CBEBE064': 'KESAVAN R',
+  '25CBEBE065': 'VARNIKA LAKSHMI R',
+  '25CBEBE066': 'JAISURYA M J',
+  '25CBEBE067': 'NARESH PRIYAN R',
+  '25CBEBE068': 'SUNDARAGANESAN S',
+  '25CBEBE069': 'AJITHRA N',
+  '25CBEBE070': 'LOCHANA SRI J',
+  '25CBEBE071': 'SRIAKASH S',
+  '25CBEBE072': 'AAKASH G',
+  '25CBEBE073': 'LINGESHWARAN S',
+  '25CBEBE074': 'KIRTHANA N',
+  '25CBEBE075': 'PRAVIN U',
+  '25CBEBE076': 'HEERA S R',
+  '25CBEBE077': 'DISHA D',
+  '25CBEBE078': 'MADAVAN S',
+  '25CBEBE079': 'KAVIYA V',
+  '25CBEBE080': 'URJEETA A R',
+  '25CBEBE081': 'RITHIKA V',
+  '25CBEBE083': 'PRIYADHARSHINI R',
+  '25CSDBE001': 'DUSHYANTH S K',
+  '25CSDBE002': 'DIYAA TEJASSWINI S',
+  '25CSDBE006': 'ROSHINI K',
+  '25CSDBE010': 'VIGNESHWAR M',
+  '25CSDBE012': 'SANJAY P J',
+  '25CSDBE015': 'LOKESH G',
+  '25CSDBE017': 'KAVINRAJ E',
+  '25CSDBE019': 'ROSHITHA S',
+  '25CSDBE022': 'DIVYA SHREE M',
+  '25CSDBE025': 'VIKASPRANAV M P',
+  '25CSDBE026': 'ABRAR AHAMED S',
+  '25CSDBE027': 'KANISHKA S.S',
+  '25CSDBE028': 'SRIDHAR T',
+  '25CSDBE029': 'NIRESH S',
+  '25CSDBE030': 'MEDHA M',
+  '25CSDBE032': 'SIVAKARTHIKEYAN R',
+  '25CSDBE034': 'PRITHIVIRAJ R S',
+  '25CSDBE037': 'SRUTHIKA M',
+  '25CSDBE038': 'DEEPIKA S',
+  '25CSDBE039': 'KEERTHANA S',
+  '25CSDBE040': 'BALA MURUGAN S',
+  '25CSDBE041': 'VIKASHINI S',
+  '25CSDBE042': 'ELAVARASAN M',
+  '25CSDBE043': 'YOGAPRADAKSHINA A',
+  '25CSDBE044': 'MANO S',
+  '25CSDBE045': 'THIRUMOORTHY S',
+  '25CSDBE046': 'PRAVEEN M',
+  '25CSDBE047': 'JANANI M',
+  '25CSDBE048': 'ARYA S V',
+  '25CSDBE050': 'HEMANTH S',
+  '25CSDBE051': 'RITIKA S',
+  '25CSDBE052': 'ASHVIKA S R',
+  '25CSDBE053': 'SANTHOSH M',
+  '25CSDBE054': 'KAVITHA M',
+  '25CSDBE055': 'RASEENA R',
+  '25CSDBE056': 'PUJHAA SRINITEE S',
+  '25CSDBE057': 'SIRISHA S',
+  '25CSDBE060': 'THARUN N',
+  '25CSDBE061': 'DHARINEESH P R',
+  '25CSDBE062': 'SANDHIYA P',
+  '25CSDBE063': 'TEHJAASVARTANAN S',
+  '25CSDBE064': 'THIRUNISHANTH I',
+  '25CSDBE065': 'MANISHAA K',
+  '25CSDBE066': 'KANNAN T',
+  '25CSDBE067': 'BASIMA PARVEEN J',
+  '25CSDBE068': 'RAMPRASANTH S',
+  '25CSDBE069': 'KEERTHANA S',
+  '25CSDBE070': 'DEEPIKA V',
+  '25CSDBE071': 'SHARATH RAJKUMAR',
+  '25CSDBE072': 'PRIYA VADHANA U P',
+  '25CSDBE073': 'RUBAN K',
+  '25CSDBE074': 'DIVAGER R',
+  '25CSDBE075': 'SIVAPUGALVAN J',
+  '25CSDBE076': 'MANEESHA M',
+  '25CSDBE077': 'SANDHVANA P S',
+  '25CSDBE078': 'MONIKA C',
+  '25CSDBE079': 'SHIVAGOKUL S V',
+  '25CSDBE080': 'JAGATHISH C',
+  '25CSDBE081': 'GAYATHTHIRI P',
+  '25CSDBE082': 'RAGHU M',
+  '25CSDBE083': 'NATHIYA A R',
+  '25CSDBE084': 'SRISARVESH J',
+  '25CSEBE003': 'PRAJITH P',
+  '25CSEBE009': 'DHANANJAYAN A V',
+  '25CSEBE010': 'ARAVIND K B',
+  '25CSEBE012': 'KELVIN MAMMEN M',
+  '25CSEBE015': 'MOHAMMAD ZUNAITH A',
+  '25CSEBE020': 'HARINI R',
+  '25CSEBE021': 'RAKSHITHA S',
+  '25CSEBE023': 'DHIVYASREE M',
+  '25CSEBE025': 'SIBI SAKTHI S',
+  '25CSEBE029': 'MITHUN MUKESH K M',
+  '25CSEBE030': 'NAREN VENKAAT U G',
+  '25CSEBE031': 'NAKSHATRA U G',
+  '25CSEBE032': 'SRIRAMGURU V J',
+  '25CSEBE033': 'MONIKA S',
+  '25CSEBE034': 'OBU HARINI O',
+  '25CSEBE035': 'DHARANI PRIYA A V',
+  '25CSEBE038': 'NIRANJAN B A',
+  '25CSEBE044': 'TUHAAJASY M',
+  '25CSEBE047': 'SUJITHKUMAR M',
+  '25CSEBE048': 'KANISHKA S',
+  '25CSEBE051': 'SOORIYA PRABHA K',
+  '25CSEBE053': 'VARUN V',
+  '25CSEBE057': 'NIHALL KUMAR M',
+  '25CSEBE065': 'JANASHRI N V',
+  '25CSEBE066': 'SAMRITHA S',
+  '25CSEBE072': 'PRADHISHA S',
+  '25CSEBE080': 'THARUNKUMAR M',
+  '25CSEBE083': 'NIRANJANA A',
+  '25CSEBE084': 'VAISHNAVI D',
+  '25CSEBE086': 'SRIJA R',
+  '25CSEBE099': 'CHITHIEIS A P',
+  '25CSEBE101': 'AADHITHYA NARAYANAN C',
+  '25CSEBE105': 'GOKUL KRISNAN C',
+  '25CSEBE113': 'YOGAPRIYA V',
+  '25CSEBE114': 'RAKSHITHA S',
+  '25CSEBE124': 'PAVATHARANI R G',
+  '25CSEBE125': 'SELVAABIRAMI S',
+  '25CSEBE126': 'PREETHI T',
+  '25CSEBE127': 'KARUNIKA C',
+  '25CSEBE128': 'SURIYA R',
+  '25CSEBE129': 'YASHWIKA S',
+  '25CSEBE130': 'KAPIL KANNA S',
+  '25CSEBE131': 'AMBRESHH R A',
+  '25CSEBE132': 'MAHATHI SHRI S V',
+  '25CSEBE133': 'THANUJA ANIL PADATARE',
+  '25CSEBE135': 'THAKSHIN RAJAN S.B',
+  '25CSEBE136': 'LOGANATHAN P',
+  '25CSEBE138': 'PRATHAP M',
+  '25CSEBE139': 'NETHRA P R',
+  '25CSEBE140': 'HARI EASWAR V',
+  '25CSEBE141': 'RINTHIYA A S',
+  '25CSEBE142': 'KANISHK R',
+  '25CSEBE143': 'JAYANTH J',
+  '25CSEBE144': 'GAYATHRI S A',
+  '25CSEBE147': 'KAVIN M',
+  '25CSEBE150': 'SARAN B',
+  '25CSEBE152': 'JANANI K',
+  '25CSEBE153': 'SHEIK SAMEER S',
+  '25CSEBE155': 'ISHARUTHIGA T M',
+  '25CSEBE157': 'SABARIMURUGAN S',
+  '25CSEBE159': 'SABARI V',
+  '25CSEBE160': 'PRAVEEN S',
+  '25CSEBE161': 'ANANDITHA RANGASAMY',
+  '25CSEBE163': 'DEVI K',
+  '25CSEBE164': 'KAYALNETHRA S',
+  '25CSEBE165': 'INJMAMUL HAK M D',
+  '25CSEBE166': 'VASUNDRA M',
+  '25CSEBE168': 'SAFRIN A',
+  '25CSEBE169': 'PRETESH S',
+  '25CSEBE170': 'VANSHIKA JAIN R',
+  '25CSEBE171': 'NANDHANA P',
+  '25CSEBE172': 'VASHUNDTHERA S',
+  '25CSEBE173': 'GANESH B',
+  '25CSEBE174': 'INIYAMOZHI J',
+  '25CSEBE175': 'KRISHNAN P',
+  '25CSEBE176': 'KISHOR KUMAR J',
+  '25CSEBE178': 'TAMILARASU D',
+  '25CSEBE179': 'SABARIVASAN T',
+  '25CSEBE180': 'PRANIKKA R',
+  '25CSEBE181': 'KAVYA M',
+  '25CSEBE182': 'SOWNDHARYA K',
+  '25CSEBE183': 'KAUSHIK S',
+  '25CSEBE184': 'MAGHASHREE S',
+  '25CSEBE185': 'ANGULAKSHMI T',
+  '25CSEBE186': 'KABILAN R',
+  '25CSEBE187': 'KALAIYARASI J',
+  '25CSEBE188': 'NITHEESH S',
+  '25CSEBE190': 'THARUN K S',
+  '25CSEBE191': 'ANBUMANI B',
+  '25CSEBE192': 'ANITHA R',
+  '25CSEBE193': 'ARUL KUMARAN S',
+  '25CSEBE194': 'KARTHICK S',
+  '25CSEBE195': 'HARITHRA E',
+  '25CSEBE196': 'JAYASHAKTHI K',
+  '25CSEBE197': 'KAVIYAN S S',
+  '25CSEBE198': 'HARINI S',
+  '25CSEBE199': 'HARINI V',
+  '25CSEBE200': 'SAKTHIVEL V',
+  '25CSEBE201': 'SABITHA S',
+  '25CSEBE202': 'PRITHIKA R S',
+  '25CSEBE203': 'HARINI S',
+  '25CSEBE204': 'NANDHINI C',
+  '25CSEBE205': 'SUGAVANESH R A',
+  '25CSEBE206': 'RAAJESHVAR S R',
+  '25CSEBE207': 'VARNIKASHREE K P',
+  '25CSEBE208': 'KARTHICK SELVA V',
+  '25CSEBE209': 'VARUNASRI S',
+  '25CSEBE210': 'SWATHY P',
+  '25CSEBE211': 'ARCHANA S',
+  '25CSEBE212': 'NISHANTH S',
+  '25CSEBE213': 'SUDHARSHAN D',
+  '25CSEBE214': 'SATHANA M',
+  '25CSEBE215': 'SASMITHA R',
+  '25CSEBE216': 'SUSHMITHA V',
+  '25CSEBE217': 'DHANUSRI S',
+  '25CSEBE218': 'NOWFALLALI M',
+  '25CSEBE219': 'JEEVANANTHAM A',
+  '25CSEBE220': 'YOGA SRI S',
+  '25CSEBE221': 'VIBASHINI S',
+  '25CSEBE222': 'ARIKARAN S',
+  '25CSEBE223': 'MOHAMED SHOHIL A',
+  '25CSEBE224': 'DHARANI M',
+  '25CSEBE225': 'MIRUNALINI M',
+  '25CSEBE226': 'SHIVAGNAANA SUNDARAN K P',
+  '25CSEBE227': 'OM KUMAR SINGH',
+  '25CSEBE228': 'SIRAJ AHAMED J',
+  '25CSEBE229': 'RITHIGA A',
+  '25CSEBE230': 'VISHNUVIKAS R',
+  '25CSEBE231': 'VENU MADHAW K',
+  '25CSEBE232': 'ABINAYA R A',
+  '25CSEBE233': 'THIRUMALBHARATHI S',
+  '25CSEBE234': 'NANDHINI V',
+  '25CSEBE235': 'DELITTA RAJ S',
+  '25CSEBE236': 'SASMITHA R',
+  '25CSEBE237': 'NARMAATHA S',
+  '25CSEBE238': 'SUPRIYA M',
+  '25CSEBE239': 'SAM GLADSON A',
+  '25CSEBE240': 'SABARINATHAN R',
+  '25CSEBE241': 'POORANI B D',
+  '25CSEBE242': 'SURIYAH M',
+  '25CSEBE243': 'SANTHOSH R',
+  '25CSEBE244': 'ROHITHKUMAR P',
+  '25CSEBE245': 'ARUNRAJ G',
+  '25CSEBE246': 'ASHIKA V',
+  '25CSEBE247': 'RAJESH S S',
+  '25CSEBE248': 'KEERTHANA S',
+  '25CSEBE249': 'RESHMA MEERA',
+  '25CSEBE250': 'DHARANEESH M R',
+  '25CSEBE251': 'PRASANNA S D',
+  '25CSEBE252': 'SOWBIGASRI S',
+  '25CSEBE253': 'LINGESHWARAN A',
+  '25CSEBE254': 'MOHAMED HADIL S',
+  '25CSEBE255': 'MEGALA V',
+  '25CSEBE256': 'SUBHASHINI U',
+  '25CSEBE257': 'KAVIYA M',
+  '25CSEBE258': 'ARAVIND R',
+  '25CSEBE259': 'ARSHATH RAHAMAAN KAVERIPATTINAM AYUBKHAN RISWANA',
+  '25CSEBE260': 'KAVIYARASAN A',
+  '25CSEBE261': 'VIGNESH T',
+  '25CSEBE263': 'VIMAL V',
+  '25CSEBE264': 'LAKSHAN G M',
+  '25CSEBE265': 'KAMALI R',
+  '25CSEBE266': 'KOKILA MITHIRAN M C',
+  '25CSEBE267': 'SHARVITHAA RAHINI R',
+  '25CSEBE268': 'RAGULNATH G',
+  '25CSEBE269': 'HARINI D',
+  '25CSEBE270': 'PREETHI SASI S',
+  '25CSEBE271': 'JERCY PRECILLA B',
+  '25CSEBE272': 'DEEPSHIKA N',
+  '25CSEBE273': 'SHRI HARISH T',
+  '25CSEBE274': 'NITHISH R M',
+  '25CSEBE276': 'VIDHYATHARAN K R',
+  '25CSEBE277': 'DIWAGAR G K',
+  '25CSEBE278': 'SWATHI T',
+  '25CSEBE279': 'JAISHREE M',
+  '25CSEBE280': 'RAHUL PATEL',
+  '25CSEBE281': 'SANDHYA YADAV',
+  '25CSEBE282': 'SATYAM CHAURASIYA',
+  '25CSEBE283': 'MENIKA KUMARI TIWARI',
+  '25CSEBE284': 'RABI MISHRA',
+  '25CSEBE285': 'SUSMITA TRIPATHI',
+  '25CSEBE286': 'ANSH RAJ TIWARI',
+  '25CSEBE287': 'DHANANJAY RAJ TIWARI',
+  '25CSEBE288': 'KHEM NARAYAN CHAUHAN',
+  '25CSEBE289': 'AGALYA M',
+  '25CSEBE290': 'NANDHINI V',
+  '25CSEBE291': 'KANISHKA S',
+  '25CSEBE292': 'STAM BC',
+  '25CSEBE293': 'ANISHA SHIWAKOTI',
+  '25CSEBE294': 'PRASANTA WAIBA',
+  '25CSEBE295': 'RAMU PRASAD PATEL',
+  '25CSEBE296': 'NIRANJAN SAH',
+  '25CSEBE297': 'LOHITHA B',
+  '25CSEBE298': 'RAJESH KUMAR MAHATO',
+  '25CSEBE299': 'ABINAYA R',
+  '25CSEBE300': 'INBARASAN D',
+  '25CSEBE301': 'DHARSHINI V',
+  '25CSEBE302': 'JEEVAN N',
+  '25CSEBE303': 'LAKSHITHA B',
+  '25CSEBE304': 'NITHIN N',
+  '25CSEBE305': 'POOVARASI S',
+  '25CSEBE307': 'ARAYANA R',
+  '25CSEBE308': 'ALAGU VELAVAN M',
+  '25CSEBE309': 'BASOV ROY B',
+  '25CSEBE310': 'HEAMANTH KUMAR K M',
+  '25CSEBE311': 'DEVI BALA S',
+  '25CSEBE312': 'DHIVYA DHARSHINI P',
+  '25CSEBE313': 'SUBHA SHREE R',
+  '25SCEBE001': 'MADHAVAN M',
+  '25SCEBE003': 'AMREEN BANU F',
+  '25SCEBE005': 'EZHIL KUMARAN I',
+  '25SCEBE006': 'VALLARASU A',
+  '25SCEBE007': 'KAMALESH S V',
+  '25SCEBE009': 'SARVESH M S',
+  '25SCEBE011': 'RAMYA M',
+  '25SCEBE013': 'KIRUTHIKA SRI R',
+  '25SCEBE014': 'NITHISH M',
+  '25SCEBE017': 'ASHWELL A',
+  '25SCEBE020': 'GOWMIKA K',
+  '25SCEBE022': 'VAISHNAVI G',
+  '25SCEBE028': 'JANISHAA G',
+  '25SCEBE031': 'PRIYA DHARSHINI S',
+  '25SCEBE032': 'JENISHA A',
+  '25SCEBE033': 'MANASHA S',
+  '25SCEBE035': 'ABINANDHAN R',
+  '25SCEBE037': 'KUJALARAJAN V',
+  '25SCEBE038': 'HARISHANKAR A S',
+  '25SCEBE039': 'MOHAMED ALHASIR S',
+  '25SCEBE041': 'GOKULRAJ U',
+  '25SCEBE044': 'SURYA SHREE T',
+  '25SCEBE045': 'RAJARAJESHWARI J',
+  '25SCEBE046': 'KHAVENA SREE D',
+  '25SCEBE047': 'VISHAL V',
+  '25SCEBE048': 'KALAIYARASAN V',
+  '25SCEBE049': 'KIRUTHIKA M',
+  '25SCEBE051': 'PRADEEP V',
+  '25SCEBE052': 'ARUL JONES D',
+  '25SCEBE053': 'GOKUL S',
+  '25SCEBE054': 'JAIDEEP S',
+  '25SCEBE055': 'RAMYA S',
+  '25SCEBE056': 'SHALINI K',
+  '25SCEBE057': 'HARIHARAN G K',
+  '25SCEBE058': 'ARJUN B',
+  '25SCEBE059': 'KARISHMA I',
+  '25SCEBE060': 'DHARSHINI A',
+  '25SCEBE061': 'RAJKUMAR N',
+  '25SCEBE062': 'MAHENDRAAPRABHU A',
+  '25SCEBE063': 'JYOTSANA S',
+  '25SCEBE064': 'MEENAKSHI G',
+  '25SCEBE065': 'BRINTHA D',
+  '25SCEBE066': 'MITHRASHREE M',
+  '25SCEBE067': 'NISHA R',
+  '25SCEBE068': 'YUGASHREE S',
+  '25SCEBE069': 'DHAARINIKASRI T',
+  '25SCEBE070': 'ROSHINI P',
+  '25SCEBE071': 'SAKTHIVEL M',
+  '25SCEBE072': 'MOHAMED YAZIR L',
+  '25SCEBE073': 'VISHAAL S',
+  '25SCEBE074': 'SOUNDHARYA J',
+  '25SCEBE075': 'NIKITHA K.V',
+  '25SCEBE076': 'MAIYARASAN T',
+  '25SCEBE077': 'SAKTHI PARAMESWAR P',
+  '25SCEBE078': 'SATHISH KUMAR S',
+  '25SCEBE079': 'BOOMIKA P',
+  '25SCEBE080': 'SUREKA M J',
+  '25SCEBE081': 'SADHANA T',
+  '25SCEBE082': 'SALAMAN S',
+  '25SCEBE083': 'DHANUSH K',
+  '25SCEBE084': 'SUPRIYA S',
+  '25SCEBE085': 'ATCHAYA M V',
+  '25SCEBE086': 'KISHORE KUMAR V'
+};
+
 fastify.post('/api/sonacse/register', async (request, reply) => {
   const client = await pool.connect();
   
@@ -3289,12 +3778,21 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
     // 1. VALIDATE ALL REQUIRED FIELDS WITH SONACSE-SPECIFIC VALIDATION
     const validationErrors = [];
     let studentName = null;
+    let isFirstYear = false;
     
     if (!request.body.roll_number || request.body.roll_number.trim() === '') {
       validationErrors.push('ROLL_NUMBER_REQUIRED: Roll number is required for SONACSE registration');
     } else {
       const rollNumber = request.body.roll_number.trim().toUpperCase();
-      studentName = SONACSE_STUDENTS[rollNumber];
+      
+      // Check in first year students first
+      studentName = SONACSE_STUDENTS_FIRST[rollNumber];
+      if (studentName) {
+        isFirstYear = true;
+      } else {
+        // Then check in regular students
+        studentName = SONACSE_STUDENTS[rollNumber];
+      }
       
       if (!studentName) {
         validationErrors.push('INVALID_SONACSE_ROLL: Roll number not found in SONACSE student list');
@@ -3340,9 +3838,10 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
     } = request.body;
     
     const cleanRollNumber = roll_number.trim().toUpperCase();
-    const full_name = studentName; // Use name from SONACSE_STUDENTS object
+    const full_name = studentName;
+    const year = parseInt(year_of_study);
     
-    const department = 'CSE'; // Force CSE for SONACSE students
+    const department = 'CSE';
     const college_name = 'Sona College of Technology (SONACSE)';
     
     // 2. CHECK REGISTRATION DEADLINE
@@ -3366,9 +3865,49 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
       throw new Error('NO_EVENTS_SELECTED: Please select at least one workshop or event');
     }
     
-    // 5. CHECK IF ANY WORKSHOPS ARE SELECTED
-    const hasWorkshops = workshop_selections.length > 0;
-    const hasEventsOnly = workshop_selections.length === 0 && event_selections.length > 0;
+    // 5. CALCULATE DISCOUNTS BASED ON RULES
+    const eventCount = event_selections.length;
+    const workshopCount = workshop_selections.length;
+    
+    // Calculate events amount with first year discount
+    let eventsAmount = 0;
+    if (eventCount > 0) {
+      const baseEventsAmount = eventCount * 25; // ₹25 per event
+      
+      if (year === 1) {
+        // First Year Students: ₹50 TOTAL discount on ALL events combined
+        eventsAmount = Math.max(0, baseEventsAmount - 50);
+        console.log(`First year discount applied: ₹50 off events (was ₹${baseEventsAmount}, now ₹${eventsAmount})`);
+      } else if ([2, 3, 4].includes(year)) {
+        // Senior Students (2nd-4th year): Events are completely FREE
+        eventsAmount = 0;
+        console.log(`Senior student (Year ${year}): Events are FREE`);
+      } else {
+        eventsAmount = baseEventsAmount;
+      }
+    }
+    
+    // Calculate workshops amount with CSE student discount
+    let workshopsAmount = 0;
+    if (workshopCount > 0) {
+      // All CSE Students: ₹100 discount per workshop
+      const workshopPriceAfterDiscount = 400 - 100; // ₹300 per workshop after discount
+      workshopsAmount = workshopCount * workshopPriceAfterDiscount;
+      
+      console.log(`CSE student discount applied: ₹100 off per workshop (${workshopCount} workshops × ₹300 = ₹${workshopsAmount})`);
+    }
+    
+    const totalAmount = eventsAmount + workshopsAmount;
+    const needsPayment = workshopsAmount > 0;
+    
+    console.log('=== DISCOUNT CALCULATION ===');
+    console.log(`Year of study: ${year}`);
+    console.log(`Events: ${eventCount} × ₹25 = ₹${eventCount * 25}`);
+    console.log(`Events after discount: ₹${eventsAmount}`);
+    console.log(`Workshops: ${workshopCount} × ₹400 = ₹${workshopCount * 400}`);
+    console.log(`Workshops after ₹100 discount: ₹${workshopsAmount}`);
+    console.log(`TOTAL TO PAY: ₹${totalAmount}`);
+    console.log('===========================');
     
     // 6. INSERT PARTICIPANT
     const participantResult = await client.query(
@@ -3383,20 +3922,18 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
         phone.replace(/\D/g, ''),
         college_name,
         department,
-        parseInt(year_of_study),
-        'Salem', // Default for SONACSE
-        'Tamil Nadu', // Default for SONACSE
-        false, // Default no accommodation for SONACSE
+        year,
+        'Salem',
+        'Tamil Nadu',
+        false,
         gender || 'Not Specified'
       ]
     );
     
     const participantId = participantResult.rows[0].participant_id;
     const registrationIds = [];
-    let totalAmount = 0;
-    let needsPayment = false;
     
-    // 7. DEFINE SEAT CHECK FUNCTION FOR SONACSE (CSE seats only)
+    // 7. DEFINE SEAT CHECK FUNCTION FOR SONACSE
     const checkSeatAvailability = async (eventId) => {
       const event = await client.query(
         `SELECT 
@@ -3423,7 +3960,7 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
       }
       
       if (eventData.cse_available_seats <= 0) {
-        throw new Error(`SONACSE_SEATS_FULL: No SONACSE seats available for "${eventData.event_name}". Available: ${eventData.cse_available_seats}`);
+        throw new Error(`SONACSE_SEATS_FULL: No SONACSE seats available for "${eventData.event_name}"`);
       }
       
       return eventData;
@@ -3440,7 +3977,7 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
       );
     };
     
-    // 9. PROCESS EVENTS (FREE - immediate seat decrement)
+    // 9. PROCESS EVENTS
     const processedEvents = [];
     for (const eventId of event_selections) {
       const eventIdNum = parseInt(eventId);
@@ -3448,17 +3985,14 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
         throw new Error(`INVALID_EVENT_ID: Event ID "${eventId}" is invalid`);
       }
       
-      // Check seat availability
       const eventData = await checkSeatAvailability(eventIdNum);
       
-      // Generate registration ID with SONACSE prefix
       const prefix = 'THREADS26-SONA-';
       const timestamp = Date.now().toString().slice(-9);
       const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
       const baseRegId = `${prefix}CSE-${timestamp}${randomSuffix}`;
       const regId = `${baseRegId}-${eventIdNum}`;
       
-      // Insert registration
       await client.query(
         `INSERT INTO registrations (
           participant_id, event_id, registration_unique_id,
@@ -3468,25 +4002,25 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
           participantId,
           eventIdNum,
           regId,
-          'Success', // Events are immediately confirmed (free)
-          0, // FREE for events
+          'Success',
+          0,
           eventData.event_name,
           eventData.day
         ]
       );
       
-      // DECREMENT SEATS IMMEDIATELY for events
       await decrementSeats(eventIdNum);
       
       registrationIds.push(regId);
       processedEvents.push({
         event_id: eventIdNum,
         event_name: eventData.event_name,
-        registration_id: regId
+        registration_id: regId,
+        amount: 0
       });
     }
     
-    // 10. PROCESS WORKSHOPS (PAID - seat check only, no decrement)
+    // 10. PROCESS WORKSHOPS
     const processedWorkshops = [];
     for (const eventId of workshop_selections) {
       const eventIdNum = parseInt(eventId);
@@ -3494,24 +4028,20 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
         throw new Error(`INVALID_WORKSHOP_ID: Workshop ID "${eventId}" is invalid`);
       }
       
-      // Check seat availability
       const eventData = await checkSeatAvailability(eventIdNum);
       
-      // Verify it's a workshop
       if (eventData.event_type !== 'workshop') {
-        throw new Error(`NOT_A_WORKSHOP: Event ID ${eventIdNum} is not a workshop (type: ${eventData.event_type})`);
+        throw new Error(`NOT_A_WORKSHOP: Event ID ${eventIdNum} is not a workshop`);
       }
       
-      const workshopFee = parseFloat(eventData.fee) || 0;
+      const discountedWorkshopFee = 300; // ₹400 - ₹100 = ₹300
       
-      // Generate registration ID with SONACSE prefix
       const prefix = 'THREADS26-SONA-';
       const timestamp = Date.now().toString().slice(-9);
       const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
       const baseRegId = `${prefix}CSE-${timestamp}${randomSuffix}`;
       const regId = `${baseRegId}-${eventIdNum}`;
       
-      // Insert registration as PENDING (needs payment)
       await client.query(
         `INSERT INTO registrations (
           participant_id, event_id, registration_unique_id,
@@ -3521,30 +4051,28 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
           participantId,
           eventIdNum,
           regId,
-          'Pending', // Needs payment
-          workshopFee,
+          'Pending',
+          discountedWorkshopFee,
           eventData.event_name,
           eventData.day
         ]
       );
       
-      // NO SEAT DECREMENT HERE - will happen after payment
-      
       registrationIds.push(regId);
-      totalAmount += workshopFee;
-      needsPayment = true;
       processedWorkshops.push({
         event_id: eventIdNum,
         event_name: eventData.event_name,
         registration_id: regId,
-        fee: workshopFee
+        original_fee: 400,
+        discount_applied: 100,
+        final_fee: discountedWorkshopFee
       });
     }
     
     // 11. COMMIT TRANSACTION
     await client.query('COMMIT');
     
-    // 12. GENERATE QR CODE IF NO PAYMENT NEEDED (events only)
+    // 12. GENERATE QR CODE IF NO PAYMENT NEEDED
     let qrCodeBase64 = null;
     let qrPayload = null;
     
@@ -3555,6 +4083,7 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
         registration_ids: registrationIds,
         event: "THREADS'26",
         type: "SONACSE_EVENTS_ONLY",
+        discount_applied: year === 1 ? 'First Year: ₹50 off events' : 'Senior: Events Free',
         timestamp: new Date().toISOString()
       };
       
@@ -3565,11 +4094,7 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
             errorCorrectionLevel: 'H',
             type: 'image/png',
             margin: 1,
-            width: 250,
-            color: {
-              dark: '#000000',
-              light: '#ffffff'
-            }
+            width: 250
           }
         );
       } catch (qrError) {
@@ -3577,26 +4102,64 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
       }
     }
     
-    // 13. CREATE PAYMENT REFERENCE IF WORKSHOPS SELECTED
+    // 13. CREATE PAYMENT REFERENCE
     let paymentReference = null;
     if (needsPayment) {
       paymentReference = `SONACSE-WS-${participantId}-${Date.now().toString().slice(-6)}`;
     }
     
-    // 14. RETURN RESPONSE BASED ON SELECTIONS
-    if (hasEventsOnly && !hasWorkshops) {
-      // EVENTS ONLY - FREE - IMMEDIATE CONFIRMATION
+    // 14. PREPARE DISCOUNT SUMMARY
+    const discountSummary = {
+      year_of_study: year,
+      rules_applied: []
+    };
+    
+    if (year === 1 && eventCount > 0) {
+      discountSummary.rules_applied.push({
+        rule: 'First Year Student Discount',
+        description: '₹50 total discount on all events combined',
+        events_original: eventCount * 25,
+        events_final: eventsAmount,
+        discount_amount: 50
+      });
+    } else if ([2, 3, 4].includes(year) && eventCount > 0) {
+      discountSummary.rules_applied.push({
+        rule: 'Senior Student Benefit',
+        description: 'Events are completely FREE for 2nd-4th year students',
+        events_original: eventCount * 25,
+        events_final: 0,
+        discount_amount: eventCount * 25
+      });
+    }
+    
+    if (workshopCount > 0) {
+      discountSummary.rules_applied.push({
+        rule: 'CSE Student Workshop Discount',
+        description: '₹100 discount per workshop for all CSE students',
+        workshops_original: workshopCount * 400,
+        workshops_final: workshopsAmount,
+        discount_per_workshop: 100,
+        total_discount: workshopCount * 100
+      });
+    }
+    
+    // 15. RETURN RESPONSE
+    if (processedEvents.length > 0 && processedWorkshops.length === 0) {
       return reply.code(201).send({
         success: true,
-        message: '✅ SONACSE Registration successful! Events confirmed immediately.',
-        registration_type: 'EVENTS_ONLY_FREE',
+        message: year === 1 
+          ? '✅ SONACSE First Year Registration successful! ₹50 discount applied to events.'
+          : '✅ SONACSE Senior Registration successful! Events are FREE.',
+        registration_type: 'EVENTS_ONLY',
         participant_details: {
           participant_id: participantId,
           participant_name: full_name,
           roll_number: cleanRollNumber,
+          year_of_study: year,
           department: department,
           college: college_name
         },
+        discount_summary: discountSummary,
         registrations: {
           events: processedEvents,
           workshops: [],
@@ -3615,8 +4178,8 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
         },
         next_steps: 'Show QR code at event entry. No payment required.'
       });
-    } else if (hasWorkshops) {
-      // HAS WORKSHOPS - NEEDS PAYMENT
+    } 
+    else if (processedWorkshops.length > 0) {
       return reply.code(201).send({
         success: true,
         message: '🎓 SONACSE Registration successful! Complete payment for workshops.',
@@ -3625,13 +4188,34 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
           participant_id: participantId,
           participant_name: full_name,
           roll_number: cleanRollNumber,
+          year_of_study: year,
           department: department,
           college: college_name
         },
+        discount_summary: discountSummary,
         registrations: {
           events: processedEvents,
-          workshops: processedWorkshops,
+          workshops: processedWorkshops.map(w => ({
+            ...w,
+            note: '₹100 CSE student discount applied'
+          })),
           total_registrations: processedEvents.length + processedWorkshops.length
+        },
+        bill_breakdown: {
+          events: {
+            count: eventCount,
+            original: eventCount * 25,
+            discount: eventCount * 25 - eventsAmount,
+            final: eventsAmount
+          },
+          workshops: {
+            count: workshopCount,
+            original: workshopCount * 400,
+            discount: workshopCount * 100,
+            final: workshopsAmount,
+            per_workshop: 300
+          },
+          total: totalAmount
         },
         payment: {
           required: true,
@@ -3641,13 +4225,15 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
         },
         seat_status: {
           message: `✅ ${processedEvents.length} event seats reserved | ⏳ ${processedWorkshops.length} workshop seats pending payment`,
-          note: 'Event seats reserved. Workshop seats will be reserved after payment.'
+          note: 'Event seats reserved. Workshop seats will be reserved after payment.',
+          workshop_seat_hold_duration: '48 hours'
         },
         next_steps: 'Complete payment using the payment reference above to reserve workshop seats.',
         payment_options: {
           upi_id: process.env.UPI_ID || 'threads26@okaxis',
           payment_reference: paymentReference,
-          amount: totalAmount
+          amount: totalAmount,
+          note: `Pay exactly ₹${totalAmount} for ${workshopCount} workshop(s)`
         }
       });
     }
@@ -3657,7 +4243,6 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
     
     console.error('SONACSE Registration Error:', error);
     
-    // 15. ERROR HANDLING
     const errorMessage = error.message;
     
     if (errorMessage.includes('VALIDATION_FAILED:')) {
@@ -3700,44 +4285,10 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
         error_code: 'EMAIL_ALREADY_REGISTERED',
         message: 'Email already registered',
         details: 'This email address is already registered for the event',
-        suggestion: 'Please use a different email or contact support if you think this is a mistake'
+        suggestion: 'Please use a different email or contact support'
       });
     }
     
-    if (errorMessage.includes('EVENT_NOT_FOUND')) {
-      return reply.code(400).send({
-        success: false,
-        error_type: 'EVENT_ERROR',
-        error_code: 'EVENT_NOT_FOUND',
-        message: 'Event not found',
-        details: errorMessage.replace('EVENT_NOT_FOUND: ', ''),
-        suggestion: 'Please select valid events from the list'
-      });
-    }
-    
-    if (errorMessage.includes('REGISTRATION_CLOSED')) {
-      return reply.code(400).send({
-        success: false,
-        error_type: 'DEADLINE_ERROR',
-        error_code: 'REGISTRATION_CLOSED',
-        message: 'Registration is closed',
-        details: 'The registration deadline has passed',
-        suggestion: 'Please contact organizers for late registration'
-      });
-    }
-    
-    if (errorMessage.includes('NO_EVENTS_SELECTED')) {
-      return reply.code(400).send({
-        success: false,
-        error_type: 'SELECTION_ERROR',
-        error_code: 'NO_EVENTS_SELECTED',
-        message: 'No events selected',
-        details: 'Please select at least one workshop or event',
-        suggestion: 'Choose events from the available list'
-      });
-    }
-    
-    // Default error response
     return reply.code(500).send({
       success: false,
       error_type: 'SERVER_ERROR',
@@ -3791,9 +4342,9 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
     const participantId = parseInt(participant_id);
     const cleanTransactionId = transaction_id.trim();
     
-    // 2. CHECK PARTICIPANT EXISTS AND GET DETAILS
+    // 2. CHECK PARTICIPANT EXISTS
     const participantCheck = await client.query(
-      'SELECT participant_id, full_name, department, college_name FROM participants WHERE participant_id = $1',
+      'SELECT participant_id, full_name, year_of_study, department, college_name FROM participants WHERE participant_id = $1',
       [participantId]
     );
     
@@ -3809,6 +4360,7 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
     }
     
     const participant = participantCheck.rows[0];
+    const year = parseInt(participant.year_of_study);
     
     // 3. CHECK FOR DUPLICATE TRANSACTION
     const duplicateCheck = await client.query(
@@ -3827,55 +4379,136 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
       });
     }
     
-    // 4. GET PENDING WORKSHOP REGISTRATIONS
-    const pendingWorkshops = await client.query(
+    // 4. GET ALL REGISTRATIONS FOR THIS PARTICIPANT
+    const allRegistrations = await client.query(
       `SELECT 
         r.registration_id,
         r.event_id,
         r.registration_unique_id,
         r.amount_paid,
+        r.payment_status,
         r.event_name,
         e.day,
         e.cse_available_seats,
-        e.available_seats
+        e.available_seats,
+        e.fee as original_fee,
+        e.event_type
        FROM registrations r
        JOIN events e ON r.event_id = e.event_id
-       WHERE r.participant_id = $1 
-         AND r.payment_status = 'Pending'
-         AND r.amount_paid > 0`,
+       WHERE r.participant_id = $1`,
       [participantId]
     );
     
-    if (pendingWorkshops.rows.length === 0) {
+    if (allRegistrations.rows.length === 0) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'NO_REGISTRATIONS',
+        error_code: 'NO_REGISTRATIONS_FOUND',
+        message: 'No registrations found for this participant',
+        participant_id: participantId,
+        suggestion: 'Please complete registration first'
+      });
+    }
+    
+    // Log all registrations for debugging
+    console.log('=== ALL REGISTRATIONS ===');
+    allRegistrations.rows.forEach(reg => {
+      console.log(`Event: ${reg.event_name}, Type: ${reg.event_type}, Amount: ${reg.amount_paid}, Status: ${reg.payment_status}`);
+    });
+    console.log('=========================');
+    
+    // 5. SEPARATE EVENTS AND WORKSHOPS
+    // FIXED: Events are those with amount_paid = 0 (regardless of event_type)
+    // This will capture all events that were registered for free
+    const events = allRegistrations.rows.filter(r => 
+      parseFloat(r.amount_paid) === 0
+    );
+    
+    // Pending workshops: payment_status = 'Pending' AND amount_paid > 0
+    const pendingWorkshops = allRegistrations.rows.filter(r => 
+      r.payment_status === 'Pending' && parseFloat(r.amount_paid) > 0
+    );
+    
+    // Already confirmed workshops
+    const confirmedWorkshops = allRegistrations.rows.filter(r => 
+      r.payment_status === 'Success' && parseFloat(r.amount_paid) > 0
+    );
+    
+    console.log('=== REGISTRATION BREAKDOWN ===');
+    console.log(`Events found: ${events.length}`);
+    console.log(`Pending workshops: ${pendingWorkshops.length}`);
+    console.log(`Confirmed workshops: ${confirmedWorkshops.length}`);
+    console.log('==============================');
+    
+    // 6. CALCULATE CORRECT TOTAL AMOUNT FROM REGISTRATION ENDPOINT
+    // Get the original event count from the events array
+    const eventCount = events.length;
+    const workshopCount = pendingWorkshops.length;
+    
+    // Calculate events amount with first year discount
+    let eventsAmount = 0;
+    if (eventCount > 0) {
+      const baseEventsAmount = eventCount * 25;
+      
+      if (year === 1) {
+        // First Year: ₹50 total discount on ALL events combined
+        eventsAmount = Math.max(0, baseEventsAmount - 50);
+        console.log(`First year discount applied: ₹50 off events (was ₹${baseEventsAmount}, now ₹${eventsAmount})`);
+      } else if ([2, 3, 4].includes(year)) {
+        // Senior: Events FREE
+        eventsAmount = 0;
+        console.log(`Senior student (Year ${year}): Events are FREE`);
+      } else {
+        eventsAmount = baseEventsAmount;
+      }
+    }
+    
+    // Workshops amount (₹300 each after discount)
+    const workshopsAmount = pendingWorkshops.length * 300;
+    const totalAmount = eventsAmount + workshopsAmount;
+    
+    console.log('=== PAYMENT VERIFICATION ===');
+    console.log(`Year of study: ${year}`);
+    console.log(`Events: ${eventCount} × ₹25 = ₹${eventCount * 25}`);
+    console.log(`Events after discount: ₹${eventsAmount}`);
+    console.log(`Workshops to confirm: ${pendingWorkshops.length} × ₹300 = ₹${workshopsAmount}`);
+    console.log(`TOTAL TO PAY: ₹${totalAmount}`);
+    console.log('===========================');
+    
+    // 7. VERIFY WE HAVE PENDING WORKSHOPS TO CONFIRM
+    if (pendingWorkshops.length === 0) {
       return reply.code(400).send({
         success: false,
         error_type: 'NO_PENDING_WORKSHOPS',
         error_code: 'NO_PAYMENT_REQUIRED',
         message: 'No pending workshops found',
         details: 'This participant has no workshops requiring payment',
-        participant_id: participantId,
-        participant_name: participant.full_name,
+        current_status: {
+          events_count: events.length,
+          events_amount: eventsAmount,
+          confirmed_workshops: confirmedWorkshops.length,
+          pending_workshops: 0
+        },
         suggestion: 'Check if payment was already completed'
       });
     }
     
-    // 5. CALCULATE TOTAL AMOUNT
-    const totalAmount = pendingWorkshops.rows.reduce(
-      (sum, reg) => sum + parseFloat(reg.amount_paid || 0),
-      0
-    );
+    // 8. VERIFY PAYMENT AMOUNT - Get amount from request body
+    const paidAmount = parseFloat(request.body.amount);
     
-    // 6. START TRANSACTION
+    if (Math.abs(paidAmount - totalAmount) > 0.01) {
+      throw new Error(`AMOUNT_MISMATCH: Expected ₹${totalAmount} (Events: ₹${eventsAmount} from ${eventCount} events + Workshops: ₹${workshopsAmount} from ${pendingWorkshops.length} workshops), but got ₹${paidAmount}`);
+    }
+    
+    // 9. START TRANSACTION
     await client.query('BEGIN');
     
-    // 7. CHECK AND RESERVE SEATS FOR EACH WORKSHOP
-    for (const reg of pendingWorkshops.rows) {
-      // Check seat availability
+    // 10. CHECK AND RESERVE SEATS FOR EACH PENDING WORKSHOP
+    for (const reg of pendingWorkshops) {
       if (reg.cse_available_seats <= 0) {
-        throw new Error(`SONACSE_WORKSHOP_SEATS_FULL: No SONACSE seats available for "${reg.event_name}". Seats filled before payment.`);
+        throw new Error(`SONACSE_WORKSHOP_SEATS_FULL: No SONACSE seats available for "${reg.event_name}"`);
       }
       
-      // Decrement seats
       await client.query(
         `UPDATE events SET 
           cse_available_seats = cse_available_seats - 1,
@@ -3883,9 +4516,11 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
          WHERE event_id = $1`,
         [reg.event_id]
       );
+      
+      console.log(`Seat reserved for workshop ${reg.event_name} (ID: ${reg.event_id})`);
     }
     
-    // 8. SAVE PAYMENT RECORD
+    // 11. SAVE PAYMENT RECORD
     const paymentResult = await client.query(
       `INSERT INTO payments (
         participant_id, 
@@ -3907,29 +4542,30 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
       ]
     );
     
-    // 9. MARK WORKSHOP REGISTRATIONS AS CONFIRMED
-    await client.query(
-      `UPDATE registrations
-       SET payment_status = 'Success'
-       WHERE participant_id = $1 AND payment_status = 'Pending' AND amount_paid > 0
-       RETURNING registration_unique_id`,
-      [participantId]
-    );
+    // 12. MARK PENDING WORKSHOPS AS CONFIRMED
+    if (pendingWorkshops.length > 0) {
+      await client.query(
+        `UPDATE registrations
+         SET payment_status = 'Success'
+         WHERE participant_id = $1 AND payment_status = 'Pending' AND amount_paid > 0`,
+        [participantId]
+      );
+    }
     
-    // 10. GET ALL CONFIRMED REGISTRATIONS (events + workshops)
-    const allRegistrations = await client.query(
-      `SELECT registration_unique_id, event_name, amount_paid
+    // 13. COMMIT TRANSACTION
+    await client.query('COMMIT');
+    
+    // 14. GET ALL CONFIRMED REGISTRATIONS
+    const confirmedRegistrations = await client.query(
+      `SELECT registration_unique_id, event_name, amount_paid, event_id
        FROM registrations 
-       WHERE participant_id = $1 AND payment_status = 'Success'
+       WHERE participant_id = $1 AND (payment_status = 'Success' OR amount_paid = 0)
        ORDER BY registered_at`,
       [participantId]
     );
     
-    // 11. COMMIT TRANSACTION
-    await client.query('COMMIT');
-    
-    // 12. GENERATE QR CODE
-    const registrationIds = allRegistrations.rows.map(r => r.registration_unique_id);
+    // 15. GENERATE QR CODE
+    const registrationIds = confirmedRegistrations.rows.map(r => r.registration_unique_id);
     
     const qrPayload = {
       participant_id: participantId,
@@ -3937,6 +4573,18 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
       registration_ids: registrationIds,
       event: "THREADS'26",
       type: "SONACSE_FULL_CONFIRMED",
+      discount_summary: {
+        year_of_study: year,
+        events_count: events.length,
+        events_original: events.length * 25,
+        events_discount: (events.length * 25) - eventsAmount,
+        events_final: eventsAmount,
+        workshops_count: pendingWorkshops.length + confirmedWorkshops.length,
+        workshops_original: (pendingWorkshops.length + confirmedWorkshops.length) * 400,
+        workshops_discount: (pendingWorkshops.length + confirmedWorkshops.length) * 100,
+        workshops_final: (pendingWorkshops.length + confirmedWorkshops.length) * 300,
+        total_paid: totalAmount
+      },
       timestamp: new Date().toISOString()
     };
     
@@ -3948,11 +4596,7 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
           errorCorrectionLevel: 'H',
           type: 'image/png',
           margin: 1,
-          width: 250,
-          color: {
-            dark: '#000000',
-            light: '#ffffff'
-          }
+          width: 250
         }
       );
     } catch (qrError) {
@@ -3960,13 +4604,52 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
       qrCodeBase64 = null;
     }
     
-    // 13. RETURN SUCCESS RESPONSE
+    // 16. PREPARE DISCOUNT SUMMARY
+    const discountSummary = {
+      year_of_study: year,
+      rules_applied: []
+    };
+    
+    if (year === 1 && events.length > 0) {
+      discountSummary.rules_applied.push({
+        rule: 'First Year Student Discount',
+        description: '₹50 total discount on all events combined',
+        events_count: events.length,
+        events_original: events.length * 25,
+        events_final: eventsAmount,
+        discount_amount: 50
+      });
+    } else if ([2, 3, 4].includes(year) && events.length > 0) {
+      discountSummary.rules_applied.push({
+        rule: 'Senior Student Benefit',
+        description: 'Events are completely FREE for 2nd-4th year students',
+        events_count: events.length,
+        events_original: events.length * 25,
+        events_final: 0,
+        discount_amount: events.length * 25
+      });
+    }
+    
+    if (pendingWorkshops.length > 0 || confirmedWorkshops.length > 0) {
+      discountSummary.rules_applied.push({
+        rule: 'CSE Student Workshop Discount',
+        description: '₹100 discount per workshop for all CSE students',
+        workshops_count: pendingWorkshops.length + confirmedWorkshops.length,
+        workshops_original: (pendingWorkshops.length + confirmedWorkshops.length) * 400,
+        workshops_final: (pendingWorkshops.length + confirmedWorkshops.length) * 300,
+        discount_per_workshop: 100,
+        total_discount: (pendingWorkshops.length + confirmedWorkshops.length) * 100
+      });
+    }
+    
+    // 17. RETURN SUCCESS RESPONSE
     return reply.send({
       success: true,
-      message: '✅ SONACSE Payment verified successfully! All seats reserved.',
+      message: `✅ SONACSE Payment verified successfully! Total paid: ₹${totalAmount} (Events: ₹${eventsAmount} from ${events.length} events + Workshops: ₹${workshopsAmount} from ${pendingWorkshops.length} workshops)`,
       participant_details: {
         participant_id: participantId,
         participant_name: participant.full_name,
+        year_of_study: participant.year_of_study,
         department: participant.department || 'CSE',
         college: participant.college_name || 'Sona College of Technology (SONACSE)'
       },
@@ -3975,20 +4658,40 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
         amount: totalAmount,
         payment_id: paymentResult.rows[0].payment_id,
         payment_date: paymentResult.rows[0].created_at,
-        payment_reference: paymentResult.rows[0].payment_reference
+        payment_reference: paymentResult.rows[0].payment_reference,
+        breakdown: {
+          events: {
+            count: events.length,
+            original: events.length * 25,
+            discount: (events.length * 25) - eventsAmount,
+            final: eventsAmount
+          },
+          workshops: {
+            count: pendingWorkshops.length,
+            original: pendingWorkshops.length * 400,
+            discount: pendingWorkshops.length * 100,
+            final: workshopsAmount,
+            per_workshop: 300
+          },
+          total: totalAmount
+        }
       },
+      discount_summary: discountSummary,
       registrations: {
-        total: allRegistrations.rows.length,
-        events: allRegistrations.rows.filter(r => r.amount_paid === 0).map(r => ({
+        total: confirmedRegistrations.rows.length,
+        events: confirmedRegistrations.rows.filter(r => parseFloat(r.amount_paid) === 0).map(r => ({
           event_name: r.event_name,
           registration_id: r.registration_unique_id,
           fee: 0,
-          status: 'Confirmed'
+          status: 'Confirmed',
+          note: year === 1 ? 'First year discount applied (₹50 total off)' : year >= 2 ? 'Free for seniors' : ''
         })),
-        workshops: allRegistrations.rows.filter(r => r.amount_paid > 0).map(r => ({
+        workshops: confirmedRegistrations.rows.filter(r => parseFloat(r.amount_paid) > 0).map(r => ({
           event_name: r.event_name,
           registration_id: r.registration_unique_id,
-          fee: r.amount_paid,
+          original_fee: 400,
+          discount_applied: 100,
+          final_fee: r.amount_paid,
           status: 'Confirmed'
         }))
       },
@@ -4013,6 +4716,17 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
       });
     }
     
+    if (errorMessage.includes('AMOUNT_MISMATCH')) {
+      return reply.code(400).send({
+        success: false,
+        error_type: 'PAYMENT_ERROR',
+        error_code: 'AMOUNT_MISMATCH',
+        message: 'Payment amount mismatch',
+        details: errorMessage.replace('AMOUNT_MISMATCH: ', ''),
+        suggestion: `Please verify you paid the correct amount`
+      });
+    }
+    
     return reply.code(400).send({
       success: false,
       error_type: 'PAYMENT_VERIFICATION_ERROR',
@@ -4026,10 +4740,6 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
     client.release();
   }    
 });
-
-
-
-
 
 // FAST SIMPLE ENDPOINT for quick loading
 fastify.get('/api/super-admin/quick', async (request, reply) => {
