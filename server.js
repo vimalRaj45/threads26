@@ -1292,7 +1292,7 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
           p.email,
           p.college_name,
           p.department,
-          p.year_of_study,  -- ADDED for year check
+          p.year_of_study,
 
           -- Get admin verification in same query
           (SELECT verified_by_admin FROM payments 
@@ -1333,20 +1333,22 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
     // 3️⃣ CHECK IF SONACSE
     const isSonacse = reg.registration_unique_id.startsWith('THREADS26-SONA-');
 
-    // 4️⃣ FAST PATH: Mark attendance based on rules
+    // 4️⃣ ATTENDANCE RULES BASED ON STUDENT TYPE AND YEAR
     let canMark = false;
     let message = '';
     let paymentInfo = null;
 
     if (isSonacse) {
-      // SONACSE STUDENTS
+      // ========== SONACSE STUDENTS ==========
       if (eventType !== 'workshop') {
-        // EVENTS - FREE for 2nd-4th, needs verification for 1st
-        if (yearOfStudy >= 2) {
+        // SONACSE EVENTS
+        if (yearOfStudy >= 2 && yearOfStudy <= 4) {
+          // 2nd-4th YEAR: NO CHECKS AT ALL - DIRECT ATTENDANCE ✅
           canMark = true;
-          message = '✅ SONACSE Senior Event attendance marked';
+          message = `✅ SONACSE Year ${yearOfStudy} Event attendance marked (Free Event - No verification needed)`;
+          console.log(`SONACSE Year ${yearOfStudy} event - NO CHECKS applied`);
         } else {
-          // First year needs verification
+          // 1st YEAR: Need admin verification and payment check
           if (!verifiedByAdmin) {
             return reply.code(403).send({
               success: false,
@@ -1354,66 +1356,83 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
               event_type: 'EVENT',
               year: yearOfStudy,
               message: 'First year SONACSE payment not verified',
-              details: 'Admin verification required',
+              details: 'Admin verification required for first year events',
               registration_id: reg.registration_unique_id,
               participant_id: reg.participant_id,
+              amount_paid: reg.amount_paid,
               suggestion: 'Wait for admin verification'
             });
           }
-          if (reg.payment_status !== 'Success') {
+          
+          if (reg.payment_status !== 'Success' && parseFloat(reg.amount_paid) > 0) {
             return reply.code(403).send({
               success: false,
               participant_type: 'SONACSE',
               event_type: 'EVENT',
               year: yearOfStudy,
               message: 'First year payment not completed',
-              details: `Status: ${reg.payment_status}`,
+              details: `Payment status: ${reg.payment_status}`,
               registration_id: reg.registration_unique_id,
-              participant_id: reg.participant_id
+              participant_id: reg.participant_id,
+              amount_paid: reg.amount_paid
             });
           }
+          
           canMark = true;
-          message = '✅ SONACSE First Year Event attendance marked';
+          message = '✅ SONACSE First Year Event attendance marked (₹50 discount applied)';
+          paymentInfo = {
+            amount_paid: reg.amount_paid,
+            payment_status: reg.payment_status,
+            admin_verified: verifiedByAdmin,
+            discount: '₹50 off total events'
+          };
         }
       } else {
-        // WORKSHOPS - Need verification for ALL years
+        // SONACSE WORKSHOPS - Need verification for ALL years (1st-4th)
         if (!verifiedByAdmin) {
           return reply.code(403).send({
             success: false,
             participant_type: 'SONACSE',
             event_type: 'WORKSHOP',
             year: yearOfStudy,
-            message: 'SONACSE workshop payment not verified',
-            details: 'Admin verification required',
+            message: 'SONACSE workshop payment not verified by admin',
+            details: 'Admin verification required for all workshop attendance',
             registration_id: reg.registration_unique_id,
             participant_id: reg.participant_id,
+            amount_paid: reg.amount_paid,
             suggestion: 'Wait for admin verification'
           });
         }
+
         if (reg.payment_status !== 'Success') {
           return reply.code(403).send({
             success: false,
             participant_type: 'SONACSE',
             event_type: 'WORKSHOP',
             year: yearOfStudy,
-            message: 'Workshop payment not completed',
-            details: `Status: ${reg.payment_status}`,
+            message: 'SONACSE workshop payment not completed',
+            details: `Payment status: ${reg.payment_status}`,
             registration_id: reg.registration_unique_id,
-            participant_id: reg.participant_id
+            participant_id: reg.participant_id,
+            amount_paid: reg.amount_paid
           });
         }
+
         canMark = true;
-        message = '✅ SONACSE Workshop attendance marked';
+        message = `✅ SONACSE Year ${yearOfStudy} Workshop attendance marked (₹100 discount applied)`;
         paymentInfo = {
           amount_paid: reg.amount_paid,
           payment_status: reg.payment_status,
-          admin_verified: verifiedByAdmin
+          admin_verified: verifiedByAdmin,
+          original_fee: 400,
+          discount_applied: 100,
+          final_fee: reg.amount_paid
         };
       }
     } else {
-      // REGULAR STUDENTS
+      // ========== REGULAR (NON-SONACSE) STUDENTS ==========
       if (eventType !== 'workshop') {
-        // EVENTS - Need admin verification
+        // REGULAR EVENTS - Need admin verification only
         if (!verifiedByAdmin) {
           return reply.code(403).send({
             success: false,
@@ -1422,13 +1441,18 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
             message: 'Payment not verified by admin',
             registration_id: reg.registration_unique_id,
             participant_id: reg.participant_id,
+            details: 'Admin verification required for event attendance',
             suggestion: 'Wait for admin verification'
           });
         }
+
         canMark = true;
         message = '✅ Event attendance marked';
+        paymentInfo = {
+          admin_verified: verifiedByAdmin
+        };
       } else {
-        // WORKSHOPS - Need both
+        // REGULAR WORKSHOPS - Need both admin verification AND payment success
         if (!verifiedByAdmin) {
           return reply.code(403).send({
             success: false,
@@ -1436,20 +1460,24 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
             event_type: 'WORKSHOP',
             message: 'Payment not verified by admin',
             registration_id: reg.registration_unique_id,
-            participant_id: reg.participant_id
+            participant_id: reg.participant_id,
+            details: 'Admin verification required for workshop attendance'
           });
         }
+
         if (reg.payment_status !== 'Success') {
           return reply.code(403).send({
             success: false,
             participant_type: 'REGULAR',
             event_type: 'WORKSHOP',
-            message: 'Payment not completed',
-            details: `Status: ${reg.payment_status}`,
+            message: 'Workshop payment not completed',
+            details: `Payment status: ${reg.payment_status}`,
             registration_id: reg.registration_unique_id,
-            participant_id: reg.participant_id
+            participant_id: reg.participant_id,
+            amount_paid: reg.amount_paid
           });
         }
+
         canMark = true;
         message = '✅ Workshop attendance marked';
         paymentInfo = {
@@ -1460,7 +1488,7 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
       }
     }
 
-    // 5️⃣ MARK ATTENDANCE (single update)
+    // 5️⃣ MARK ATTENDANCE
     if (canMark) {
       const result = await client.query(
         `UPDATE registrations
@@ -1493,7 +1521,6 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
       });
     }
 
-    // Fallback (should never reach here)
     return reply.code(500).send({
       success: false,
       error: 'Unable to determine attendance eligibility'
