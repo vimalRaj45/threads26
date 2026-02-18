@@ -1,9 +1,21 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Event Attendance Portal</title>
-    <script src="https://unpkg.com/html5-qrcode"></script>
+    <title>Event Attendance Portal - Enhanced Scanner</title>
+    <!-- Use multiple QR scanner libraries for better compatibility -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #f5f5f5;
+        }
+        
         .section {
             display: none;
             margin-bottom: 20px;
@@ -16,6 +28,8 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
         }
         .switch-btn {
             padding: 8px 16px;
@@ -24,6 +38,10 @@
             border: none;
             border-radius: 4px;
             cursor: pointer;
+            font-size: 14px;
+        }
+        .switch-btn:hover {
+            background: #45a049;
         }
         .input-group {
             margin: 15px 0;
@@ -37,9 +55,13 @@
             width: 100%;
             padding: 12px;
             box-sizing: border-box;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
             font-size: 16px;
+        }
+        .input-group input:focus {
+            border-color: #2196F3;
+            outline: none;
         }
         .action-btn {
             width: 100%;
@@ -47,10 +69,11 @@
             background: #2196F3;
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 8px;
             font-size: 16px;
             cursor: pointer;
             margin-top: 10px;
+            font-weight: 600;
         }
         .action-btn:hover {
             background: #1976D2;
@@ -58,9 +81,10 @@
         .result-box {
             margin-top: 15px;
             padding: 15px;
-            border-radius: 4px;
+            border-radius: 8px;
             background: #f9f9f9;
             border-left: 4px solid #4CAF50;
+            word-break: break-word;
         }
         .result-box.error {
             border-left-color: #f44336;
@@ -72,74 +96,185 @@
             width: 100%;
             max-width: 500px;
             margin: 0 auto;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        #reader video {
+            width: 100% !important;
+            height: auto !important;
+            border-radius: 12px;
         }
         .scanner-controls {
             text-align: center;
-            margin-top: 15px;
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
         }
         .control-btn {
-            padding: 10px 20px;
-            margin: 0 5px;
+            padding: 12px 24px;
+            margin: 0;
             background: #666;
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 8px;
             cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
         }
         .control-btn.start {
             background: #4CAF50;
         }
+        .control-btn.start:hover {
+            background: #45a049;
+        }
         .control-btn.stop {
             background: #f44336;
         }
+        .control-btn.stop:hover {
+            background: #da190b;
+        }
         .stats {
-            background: #f5f5f5;
-            padding: 15px;
-            border-radius: 5px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
             margin-top: 20px;
-            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 10px;
             margin-top: 10px;
         }
         .stat-item {
-            padding: 10px;
-            background: white;
-            border-radius: 4px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-item div:first-child {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
         }
         .stat-value {
             font-size: 24px;
             font-weight: bold;
             color: #2196F3;
         }
+        
+        /* Camera selection dropdown */
+        .camera-selector {
+            margin: 15px 0;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+        }
+        .camera-selector select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        /* QR size indicator */
+        .qr-size-indicator {
+            background: #e3f2fd;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        
+        /* Manual entry quick tips */
+        .quick-tips {
+            background: #fff3e0;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        
+        @media (max-width: 600px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .section-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .control-btn {
+                flex: 1;
+            }
+        }
+
+        /* Loading spinner */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
 
 <div id="portal" style="max-width: 800px; margin: 0 auto; padding: 20px;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
-        <h1 id="eventTitle">Event Attendance Portal</h1>
-        <button onclick="window.close()" style="padding: 8px 16px; background: #666; color: white; border: none; border-radius: 4px;">Close</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+        <h1 id="eventTitle" style="margin:0;">Event Attendance Portal</h1>
+        <button onclick="window.close()" style="padding: 8px 16px; background: #666; color: white; border: none; border-radius: 6px; cursor: pointer;">Close</button>
     </div>
 
     <!-- QR Scanner Section -->
     <div id="qr-section" class="section active">
         <div class="section-header">
-            <h2>📱 QR Code Scanner</h2>
+            <h2 style="margin:0;">📱 Enhanced QR Scanner</h2>
             <button class="switch-btn" onclick="switchToManual()">Switch to Manual Entry</button>
         </div>
         
-        <div style="background:#f9f9f9; padding:20px; border-radius:8px;">
-            <p style="color:#666; margin-bottom:15px;">Scan QR codes from Threads26 registration confirmation emails.</p>
+        <div style="background:white; padding:20px; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+            <p style="color:#666; margin-bottom:15px;">Hold camera steady over QR code. Large QR codes may need more distance.</p>
             
+            <!-- Camera selection -->
+            <div class="camera-selector">
+                <select id="cameraSelect" onchange="switchCamera()">
+                    <option value="">Loading cameras...</option>
+                </select>
+            </div>
+            
+            <!-- QR Size Indicator -->
+            <div class="qr-size-indicator" id="qrSizeIndicator">
+                📏 Hold phone 15-30 cm away from QR code for best results
+            </div>
+            
+            <!-- Scanner container -->
             <div id="reader"></div>
             
             <div class="scanner-controls">
                 <button class="control-btn start" onclick="startScanner()">▶ Start Scanner</button>
                 <button class="control-btn stop" onclick="stopScanner()">⏹ Stop Scanner</button>
+                <button class="control-btn" onclick="toggleTorch()" id="torchBtn" style="display:none;">🔦 Torch</button>
+            </div>
+            
+            <!-- Alternative scanner option for large QR codes -->
+            <div style="margin-top: 15px; text-align: center;">
+                <button onclick="tryHighResScan()" class="action-btn" style="background: #9C27B0; margin-top:0;">
+                    📸 Try High-Resolution Scan
+                </button>
+                <p style="font-size: 12px; color: #666; margin-top: 5px;">
+                    Use this for very large QR codes or when standard scanning fails
+                </p>
             </div>
             
             <div id="scanResult" style="margin-top:20px;"></div>
@@ -149,11 +284,11 @@
     <!-- Manual Attendance Section -->
     <div id="manual-section" class="section">
         <div class="section-header">
-            <h2>✏️ Manual Attendance Entry</h2>
+            <h2 style="margin:0;">✏️ Manual Attendance Entry</h2>
             <button class="switch-btn" onclick="switchToQR()">Switch to QR Scanner</button>
         </div>
         
-        <div style="background:#f9f9f9; padding:20px; border-radius:8px;">
+        <div style="background:white; padding:20px; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
             <p style="color:#666; margin-bottom:15px;">Enter Participant ID when QR code cannot be scanned.</p>
             
             <div class="input-group">
@@ -161,8 +296,9 @@
                 <input 
                     type="text" 
                     id="participantIdInput" 
-                    placeholder="Enter participant ID..."
+                    placeholder="Enter participant ID (e.g., THREADS26-XXX-123)..."
                     onkeypress="if(event.key === 'Enter') markManualAttendance()"
+                    autocomplete="off"
                 >
             </div>
             
@@ -172,18 +308,21 @@
             
             <div id="manualResult"></div>
             
-            <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 4px;">
-                <h4 style="margin-top:0;">💡 Tips:</h4>
-                <p>• Participant ID is shown in registration confirmation</p>
-                <p>• You can also find it in the registrations table below</p>
-                <p>• Press Enter after typing ID to mark attendance quickly</p>
+            <div class="quick-tips">
+                <h4 style="margin-top:0; color:#e65100;">💡 Quick Tips:</h4>
+                <ul style="margin-bottom:0; padding-left:20px;">
+                    <li>Participant ID is shown in registration confirmation email</li>
+                    <li>Format: THREADS26-XXXX-{event_id}</li>
+                    <li>You can also copy-paste the ID directly</li>
+                    <li>Press Enter after typing to mark attendance quickly</li>
+                </ul>
             </div>
         </div>
     </div>
 
     <!-- Statistics -->
     <div class="stats">
-        <h3>📊 Attendance Statistics</h3>
+        <h3 style="margin-top:0;">📊 Attendance Statistics</h3>
         <div class="stats-grid">
             <div class="stat-item">
                 <div>Total Registered</div>
@@ -205,21 +344,21 @@
     </div>
 
     <!-- Registrations Table -->
-    <div style="margin-top: 30px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
-            <h3>👥 All Registrations</h3>
-            <div>
+    <div style="margin-top: 30px; background:white; padding:20px; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+            <h3 style="margin:0;">👥 All Registrations</h3>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <input
                     id="searchBox"
                     placeholder="Search by name, ID, or college..."
-                    style="padding:8px; width:250px; margin-right:10px;"
+                    style="padding:10px; width:250px; border:2px solid #ddd; border-radius:6px;"
                     onkeyup="filterRegistrations()"
                 >
-                <button onclick="refreshRegistrations()" style="padding:8px 16px;">Refresh</button>
+                <button onclick="refreshRegistrations()" style="padding:10px 20px; background:#4CAF50; color:white; border:none; border-radius:6px; cursor:pointer;">Refresh</button>
             </div>
         </div>
         
-        <div id="registrationsContainer"></div>
+        <div id="registrationsContainer" style="overflow-x: auto;"></div>
     </div>
 </div>
 
@@ -232,18 +371,29 @@ let eventName = localStorage.getItem('currentEventName');
 let allRegistrations = [];
 let html5QrCode;
 let scanning = false;
+let currentCameraId = null;
+let torchEnabled = false;
 
 /* ---------------- INIT ---------------- */
-window.onload = () => {
+window.onload = async () => {
     if (!token || !eventId) {
-        alert('Login required');
-        window.close();
+        alert('Login required. Please login again.');
+        window.location.href = 'login.html';
         return;
     }
     document.getElementById('eventTitle').textContent =
         `${eventName} - Attendance Portal`;
-    loadEventRegistrations();
-    startScanner();
+    
+    // Load cameras first
+    await loadCameras();
+    
+    // Load registrations
+    await loadEventRegistrations();
+    
+    // Start scanner after a short delay
+    setTimeout(() => {
+        startScanner();
+    }, 1000);
     
     // Focus on participant ID input when switching to manual section
     document.getElementById('participantIdInput').addEventListener('focus', function() {
@@ -251,73 +401,136 @@ window.onload = () => {
     });
 };
 
-/* ---------------- SECTION SWITCHING ---------------- */
-function switchToManual() {
-    stopScanner();
-    document.getElementById('qr-section').classList.remove('active');
-    document.getElementById('manual-section').classList.add('active');
-    document.getElementById('participantIdInput').focus();
+/* ---------------- CAMERA MANAGEMENT ---------------- */
+async function loadCameras() {
+    try {
+        const devices = await Html5Qrcode.getCameras();
+        const select = document.getElementById('cameraSelect');
+        
+        if (devices && devices.length) {
+            select.innerHTML = devices.map(device => 
+                `<option value="${device.id}">${device.label || `Camera ${device.id.slice(0,5)}`}</option>`
+            ).join('');
+            
+            // Prefer back camera
+            const backCamera = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('rear'));
+            if (backCamera) {
+                select.value = backCamera.id;
+                currentCameraId = backCamera.id;
+            } else {
+                currentCameraId = devices[0].id;
+            }
+            
+            // Show torch button if supported (check on scanner start)
+        }
+    } catch (err) {
+        console.error('Error loading cameras:', err);
+        document.getElementById('cameraSelect').innerHTML = '<option value="">No cameras found</option>';
+    }
 }
 
-function switchToQR() {
-    document.getElementById('manual-section').classList.remove('active');
-    document.getElementById('qr-section').classList.add('active');
-    startScanner();
+async function switchCamera() {
+    const select = document.getElementById('cameraSelect');
+    currentCameraId = select.value;
+    
+    if (scanning) {
+        await stopScanner();
+        await startScanner();
+    }
 }
 
 /* ---------------- QR SCANNER ---------------- */
-function startScanner() {
+async function startScanner() {
     if (scanning) return;
+    
+    if (!currentCameraId) {
+        await loadCameras();
+    }
 
     html5QrCode = new Html5Qrcode("reader");
     scanning = true;
 
-    html5QrCode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: 250 },
-        onScanSuccess,
-        () => {}
-    ).catch(() => scanning = false);
+    const config = {
+        fps: 15, // Increased FPS for better responsiveness
+        qrbox: { width: 350, height: 350 }, // Larger scanning area
+        aspectRatio: 1.0,
+        showTorchButtonIfSupported: true,
+        rememberLastUsedCamera: true,
+        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
+    };
+
+    try {
+        await html5QrCode.start(
+            currentCameraId || { facingMode: "environment" },
+            config,
+            onScanSuccess,
+            onScanError
+        );
+        
+        // Check if torch is available
+        if (html5QrCode.hasTorch()) {
+            document.getElementById('torchBtn').style.display = 'inline-block';
+        }
+        
+    } catch (error) {
+        console.error('Error starting scanner:', error);
+        scanning = false;
+        document.getElementById('scanResult').innerHTML = 
+            '<div class="result-box error">❌ Failed to start camera. Please check permissions.</div>';
+    }
 }
 
 function stopScanner() {
     if (html5QrCode && scanning) {
-        html5QrCode.stop().then(() => {
-            html5QrCode.clear();
+        return html5QrCode.stop().then(() => {
             scanning = false;
-        });
+            document.getElementById('torchBtn').style.display = 'none';
+        }).catch(() => {});
     }
+    return Promise.resolve();
+}
+
+function onScanError(error) {
+    // Silent error handling
+    console.debug('Scan error:', error);
 }
 
 async function onScanSuccess(decodedText) {
-    stopScanner();
+    // Stop scanner while processing
+    await stopScanner();
+    
     const scanDiv = document.getElementById('scanResult');
-    scanDiv.innerHTML = '<div class="result-box">Processing QR code...</div>';
+    scanDiv.innerHTML = '<div class="result-box">Processing QR code... <span class="spinner"></span></div>';
 
     let scannedIds = [];
 
     try {
+        // Try parsing as JSON first
         const qrData = JSON.parse(decodedText);
-        scannedIds = qrData.registration_ids || [];
+        scannedIds = qrData.registration_ids || [qrData.registration_id].filter(Boolean);
     } catch {
+        // Try various delimiters
         scannedIds = decodedText
-            .split(/[\n, ]+/)
+            .split(/[\n,;:\s]+/)
             .map(x => x.trim())
-            .filter(Boolean);
+            .filter(id => id && id.length > 5);
+    }
+
+    if (scannedIds.length === 0) {
+        scannedIds = [decodedText]; // Use raw text as fallback
     }
 
     // Validate registration IDs
     const validIds = scannedIds.filter(id => {
         try {
-            const isThreadsId = id.startsWith('THREADS26-');
+            // More flexible validation
+            const isThreadsId = id.includes('THREADS26');
             if (!isThreadsId) return false;
             
             const parts = id.split('-');
-            if (parts.length < 4) return false;
+            if (parts.length < 3) return false;
             
             const extractedEventId = parts[parts.length - 1];
-            if (!/^\d+$/.test(extractedEventId)) return false;
-            
             return extractedEventId === String(eventId);
         } catch (error) {
             return false;
@@ -325,10 +538,15 @@ async function onScanSuccess(decodedText) {
     });
 
     if (validIds.length === 0) {
-        scanDiv.innerHTML = '<div class="result-box error">❌ Invalid QR code (Event mismatch or invalid format)</div>';
-        setTimeout(startScanner, 1500);
+        scanDiv.innerHTML = '<div class="result-box error">❌ Invalid QR code for this event. Please check and try again.</div>';
+        setTimeout(() => {
+            startScanner();
+        }, 2000);
         return;
     }
+
+    let successCount = 0;
+    let results = [];
 
     for (let id of validIds) {
         try {
@@ -341,43 +559,133 @@ async function onScanSuccess(decodedText) {
             const data = await res.json();
             
             if (data.success) {
-                scanDiv.innerHTML = `<div class="result-box">
-                    ✅ <strong>Attendance Marked Successfully!</strong><br>
-                    <small>Registration: ${id}</small><br>
-                    <small>Participant: ${data.participant?.full_name || 'N/A'}</small><br>
-                    <small>${data.message}</small>
-                </div>`;
+                successCount++;
+                results.push(`✅ ${id}: Success (${data.participant?.full_name || 'N/A'})`);
                 
                 // Update registration status
                 const r = allRegistrations.find(x => x.registration_unique_id === id);
                 if (r) {
                     r.attendance_status = 'ATTENDED';
-                    r.verification_status = data.payment_info?.admin_verified ? 'Verified' : 'Pending';
                 }
             } else {
-                scanDiv.innerHTML = `<div class="result-box error">
-                    ❌ <strong>Attendance Failed</strong><br>
-                    <small>Registration: ${id}</small><br>
-                    <small>${data.message}</small><br>
-                    ${data.details ? `<small style="color:orange">${data.details}</small><br>` : ''}
-                    ${data.suggestion ? `<small style="color:blue">${data.suggestion}</small>` : ''}
-                </div>`;
+                results.push(`❌ ${id}: ${data.message || 'Failed'}`);
             }
         } catch (error) {
-            scanDiv.innerHTML = `<div class="result-box error">
-                ❌ <strong>Error</strong><br>
-                <small>${error.message}</small>
-            </div>`;
+            results.push(`❌ ${id}: Error - ${error.message}`);
         }
+    }
+
+    // Display results
+    if (successCount > 0) {
+        scanDiv.innerHTML = `<div class="result-box">
+            ✅ <strong>${successCount} Registration(s) Marked Successfully!</strong><br>
+            <small>${results.join('<br>')}</small>
+        </div>`;
+    } else {
+        scanDiv.innerHTML = `<div class="result-box error">
+            ❌ <strong>No Successful Scans</strong><br>
+            <small>${results.join('<br>')}</small>
+        </div>`;
     }
 
     updateStats();
     filterRegistrations();
 
+    // Restart scanner after delay
     setTimeout(() => {
         scanDiv.innerHTML = '';
         startScanner();
     }, 3000);
+}
+
+/* ---------------- HIGH RES SCAN ---------------- */
+async function tryHighResScan() {
+    await stopScanner();
+    
+    const scanDiv = document.getElementById('scanResult');
+    scanDiv.innerHTML = '<div class="result-box">📸 Preparing high-resolution scan... <span class="spinner"></span></div>';
+    
+    // Use file input for high-res image
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.capture = 'environment';
+    
+    fileInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        scanDiv.innerHTML = '<div class="result-box">🔍 Scanning high-res image... <span class="spinner"></span></div>';
+        
+        try {
+            // Use jsQR for high-res scanning
+            const imageUrl = URL.createObjectURL(file);
+            const img = new Image();
+            img.src = imageUrl;
+            
+            await new Promise((resolve) => {
+                img.onload = resolve;
+            });
+            
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            
+            // Get image data
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
+            // Use jsQR
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: "dontInvert"
+            });
+            
+            if (code) {
+                await onScanSuccess(code.data);
+            } else {
+                scanDiv.innerHTML = '<div class="result-box error">❌ No QR code found in image</div>';
+                setTimeout(() => startScanner(), 2000);
+            }
+        } catch (error) {
+            scanDiv.innerHTML = `<div class="result-box error">❌ Error: ${error.message}</div>`;
+            setTimeout(() => startScanner(), 2000);
+        }
+        
+        URL.revokeObjectURL(imageUrl);
+    };
+    
+    fileInput.click();
+}
+
+/* ---------------- TORCH ---------------- */
+async function toggleTorch() {
+    if (!html5QrCode || !scanning) return;
+    
+    try {
+        torchEnabled = !torchEnabled;
+        await html5QrCode.setTorch(torchEnabled);
+        document.getElementById('torchBtn').style.background = torchEnabled ? '#ff9800' : '#666';
+    } catch (error) {
+        console.error('Torch error:', error);
+        alert('Torch not available on this device');
+    }
+}
+
+/* ---------------- SECTION SWITCHING ---------------- */
+function switchToManual() {
+    stopScanner().then(() => {
+        document.getElementById('qr-section').classList.remove('active');
+        document.getElementById('manual-section').classList.add('active');
+        document.getElementById('participantIdInput').focus();
+    });
+}
+
+function switchToQR() {
+    document.getElementById('manual-section').classList.remove('active');
+    document.getElementById('qr-section').classList.add('active');
+    startScanner();
 }
 
 /* ---------------- MANUAL ATTENDANCE ---------------- */
@@ -390,7 +698,7 @@ async function markManualAttendance() {
         return;
     }
     
-    resultDiv.innerHTML = '<div class="result-box">Processing...</div>';
+    resultDiv.innerHTML = '<div class="result-box">Processing... <span class="spinner"></span></div>';
     
     try {
         const res = await fetch(`${BASE_URL}/api/manual-attendance`, {
@@ -407,16 +715,15 @@ async function markManualAttendance() {
         if (data.success) {
             resultDiv.innerHTML = `<div class="result-box">
                 ✅ <strong>Attendance Marked Successfully!</strong><br>
-                <small>Participant ID: ${participantId}</small><br>
+                <small>ID: ${participantId}</small><br>
                 <small>Name: ${data.participant?.full_name || 'N/A'}</small><br>
-                <small>${data.message}</small>
+                <small>${data.message || ''}</small>
             </div>`;
             
             // Update registration in our list
             const r = allRegistrations.find(x => x.participant_id == participantId && x.event_id == eventId);
             if (r) {
                 r.attendance_status = 'ATTENDED';
-                r.verification_status = data.payment_info?.admin_verified ? 'Verified' : 'Pending';
             }
             
             updateStats();
@@ -429,9 +736,8 @@ async function markManualAttendance() {
         } else {
             resultDiv.innerHTML = `<div class="result-box error">
                 ❌ <strong>Attendance Failed</strong><br>
-                <small>${data.message}</small><br>
+                <small>${data.message || 'Unknown error'}</small><br>
                 ${data.details ? `<small style="color:orange">${data.details}</small><br>` : ''}
-                ${data.suggestion ? `<small style="color:blue">${data.suggestion}</small>` : ''}
             </div>`;
         }
     } catch (error) {
@@ -459,7 +765,8 @@ async function loadEventRegistrations() {
         updateStats();
     } catch (error) {
         console.error('Error loading registrations:', error);
-        alert('Failed to load registrations. Please try again.');
+        document.getElementById('registrationsContainer').innerHTML = 
+            '<div class="result-box error">❌ Failed to load registrations. Please refresh.</div>';
     }
 }
 
@@ -470,49 +777,41 @@ function displayRegistrations(list) {
         return;
     }
 
-    let html = `<div style="overflow-x:auto;">
-        <table border="1" cellpadding="10" width="100%" style="border-collapse:collapse; font-size:14px;">
-            <thead style="background-color:#f2f2f2;">
+    let html = `<table style="width:100%; border-collapse:collapse; font-size:14px;">
+        <thead style="background-color:#f8f9fa;">
             <tr>
-                <th>Name</th>
-                <th>Participant ID</th>
-                <th>College</th>
-                <th>Payment</th>
-                <th>Verified</th>
-                <th>Attendance</th>
+                <th style="padding:12px; text-align:left;">Name</th>
+                <th style="padding:12px; text-align:left;">Participant ID</th>
+                <th style="padding:12px; text-align:left;">College</th>
+                <th style="padding:12px; text-align:left;">Payment</th>
+                <th style="padding:12px; text-align:left;">Attendance</th>
             </tr>
-            </thead>
-            <tbody>`;
+        </thead>
+        <tbody>`;
 
     list.forEach(r => {
         const isPresent = r.attendance_status === 'ATTENDED';
-        html += `<tr style="${isPresent ? 'background-color: #e8f5e9;' : 'background-color: #fff;'}">
-            <td><strong>${r.full_name || 'N/A'}</strong></td>
-            <td><code style="background:#f5f5f5; padding:2px 6px; border-radius:3px;">${r.participant_id || 'N/A'}</code></td>
-            <td>${r.college_name || 'N/A'}</td>
-            <td>
-                <span style="padding:2px 8px; border-radius:3px; 
-                    background-color:${r.payment_status === 'Success' ? '#d4edda' : 
-                                     r.payment_status === 'Pending' ? '#fff3cd' : 
-                                     r.payment_status === 'Failed' ? '#f8d7da' : '#f2f2f2'};">
+        html += `<tr style="border-bottom:1px solid #dee2e6; ${isPresent ? 'background-color: #e8f5e9;' : ''}">
+            <td style="padding:12px;"><strong>${r.full_name || 'N/A'}</strong></td>
+            <td style="padding:12px;"><code style="background:#f1f3f5; padding:2px 6px; border-radius:4px;">${r.participant_id || 'N/A'}</code></td>
+            <td style="padding:12px;">${r.college_name || 'N/A'}</td>
+            <td style="padding:12px;">
+                <span style="padding:4px 8px; border-radius:4px; background-color:${
+                    r.payment_status === 'Success' ? '#d4edda' : 
+                    r.payment_status === 'Pending' ? '#fff3cd' : '#f8d7da'
+                };">
                     ${r.payment_status || 'N/A'}
                 </span>
             </td>
-            <td>
-                <span style="padding:2px 8px; border-radius:3px; 
-                    background-color:${r.verification_status === 'Verified' ? '#d4edda' : '#fff3cd'};">
-                    ${r.verification_status || 'Pending'}
-                </span>
-            </td>
-            <td>
+            <td style="padding:12px;">
                 <strong style="color:${isPresent ? '#155724' : '#721c24'};">
-                    ${r.attendance_status || 'PENDING'}
+                    ${isPresent ? '✅ PRESENT' : '⭕ ABSENT'}
                 </strong>
             </td>
         </tr>`;
     });
 
-    html += '</tbody></table></div>';
+    html += '</tbody></table>';
     document.getElementById('registrationsContainer').innerHTML = html;
 }
 
@@ -562,6 +861,9 @@ window.addEventListener('beforeunload', () => {
 });
 
 </script>
+
+<!-- Load jsQR for high-res scanning -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
 </body>
 </html>
