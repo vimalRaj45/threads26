@@ -496,102 +496,90 @@ function onScanError(error) {
 }
 
 async function onScanSuccess(decodedText) {
-    // Stop scanner while processing
-    await stopScanner();
-    
+    stopScanner();
     const scanDiv = document.getElementById('scanResult');
-    scanDiv.innerHTML = '<div class="result-box">Processing QR code... <span class="spinner"></span></div>';
-
-    let scannedIds = [];
+    scanDiv.innerHTML = '<div class="result-box">Processing QR code...</div>';
 
     try {
-        // Try parsing as JSON first
-        const qrData = JSON.parse(decodedText);
-        scannedIds = qrData.registration_ids || [qrData.registration_id].filter(Boolean);
-    } catch {
-        // Try various delimiters
-        scannedIds = decodedText
-            .split(/[\n,;:\s]+/)
-            .map(x => x.trim())
-            .filter(id => id && id.length > 5);
-    }
-
-    if (scannedIds.length === 0) {
-        scannedIds = [decodedText]; // Use raw text as fallback
-    }
-
-    // Validate registration IDs
-    const validIds = scannedIds.filter(id => {
+        // Try to parse as JSON first (optimized format)
+        let qrData;
         try {
-            // More flexible validation
-            const isThreadsId = id.includes('THREADS26');
-            if (!isThreadsId) return false;
-            
-            const parts = id.split('-');
-            if (parts.length < 3) return false;
-            
-            const extractedEventId = parts[parts.length - 1];
-            return extractedEventId === String(eventId);
-        } catch (error) {
-            return false;
+            qrData = JSON.parse(decodedText);
+        } catch {
+            // If not JSON, treat as raw registration ID
+            qrData = { regs: decodedText };
         }
-    });
 
-    if (validIds.length === 0) {
-        scanDiv.innerHTML = '<div class="result-box error">❌ Invalid QR code for this event. Please check and try again.</div>';
-        setTimeout(() => {
-            startScanner();
-        }, 2000);
-        return;
-    }
+        // Extract registration IDs from optimized format
+        let registrationIds = [];
+        
+        if (qrData.regs) {
+            // Comma-separated registration IDs
+            registrationIds = qrData.regs.split(',');
+        } else if (qrData.r) {
+            // Alternative compact format
+            registrationIds = qrData.r.split(',');
+        } else if (qrData.registration_ids) {
+            // Original format
+            registrationIds = qrData.registration_ids;
+        } else {
+            // Single registration ID
+            registrationIds = [decodedText];
+        }
 
-    let successCount = 0;
-    let results = [];
+        // Process first registration ID for attendance
+        if (registrationIds.length === 0) {
+            throw new Error('No registration IDs found in QR code');
+        }
 
-    for (let id of validIds) {
-        try {
-            const res = await fetch(`${BASE_URL}/api/scan-attendance`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ registration_id: id })
-            });
+        const primaryRegistrationId = registrationIds[0];
+        
+        // Send to server with QR data
+        const res = await fetch(`${BASE_URL}/api/scan-attendance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                registration_id: primaryRegistrationId,
+                qr_data: qrData  // Send full QR data for reference
+            })
+        });
 
-            const data = await res.json();
+        const data = await res.json();
+        
+        if (data.success) {
+            scanDiv.innerHTML = `<div class="result-box">
+                ✅ <strong>Attendance Marked Successfully!</strong><br>
+                <small>Registration: ${primaryRegistrationId}</small><br>
+                <small>Participant: ${data.participant?.full_name || 'N/A'}</small><br>
+                <small>${data.message}</small>
+                ${registrationIds.length > 1 ? 
+                    `<br><small>📌 This QR contains ${registrationIds.length} registrations</small>` : ''}
+            </div>`;
             
-            if (data.success) {
-                successCount++;
-                results.push(`✅ ${id}: Success (${data.participant?.full_name || 'N/A'})`);
-                
-                // Update registration status
-                const r = allRegistrations.find(x => x.registration_unique_id === id);
-                if (r) {
-                    r.attendance_status = 'ATTENDED';
-                }
-            } else {
-                results.push(`❌ ${id}: ${data.message || 'Failed'}`);
+            // Update registration status
+            const r = allRegistrations.find(x => x.registration_unique_id === primaryRegistrationId);
+            if (r) {
+                r.attendance_status = 'ATTENDED';
+                r.verification_status = data.payment_info?.admin_verified ? 'Verified' : 'Pending';
             }
-        } catch (error) {
-            results.push(`❌ ${id}: Error - ${error.message}`);
+        } else {
+            scanDiv.innerHTML = `<div class="result-box error">
+                ❌ <strong>Attendance Failed</strong><br>
+                <small>${data.message}</small><br>
+                ${data.details ? `<small style="color:orange">${data.details}</small><br>` : ''}
+                ${data.suggestion ? `<small style="color:blue">${data.suggestion}</small>` : ''}
+            </div>`;
         }
-    }
-
-    // Display results
-    if (successCount > 0) {
-        scanDiv.innerHTML = `<div class="result-box">
-            ✅ <strong>${successCount} Registration(s) Marked Successfully!</strong><br>
-            <small>${results.join('<br>')}</small>
-        </div>`;
-    } else {
+    } catch (error) {
         scanDiv.innerHTML = `<div class="result-box error">
-            ❌ <strong>No Successful Scans</strong><br>
-            <small>${results.join('<br>')}</small>
+            ❌ <strong>Error</strong><br>
+            <small>${error.message}</small>
         </div>`;
     }
 
     updateStats();
     filterRegistrations();
 
-    // Restart scanner after delay
     setTimeout(() => {
         scanDiv.innerHTML = '';
         startScanner();
