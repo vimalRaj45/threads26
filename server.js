@@ -1244,41 +1244,16 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
   const client = await pool.connect();
 
   try {
-    const { registration_id, qr_data } = request.body;
-    
-    let targetRegistrationId = registration_id;
-    
-    // If QR data is provided, parse the optimized format
-    if (qr_data) {
-      try {
-        const qrPayload = typeof qr_data === 'string' ? JSON.parse(qr_data) : qr_data;
-        
-        // Extract registration IDs from optimized payload
-        if (qrPayload.regs) {
-          targetRegistrationId = qrPayload.regs.split(',')[0];
-        } else if (qrPayload.r) {
-          targetRegistrationId = qrPayload.r.split(',')[0];
-        }
-        
-        console.log('Extracted from QR:', { 
-          participant: qrPayload.pid || qrPayload.p,
-          registration: targetRegistrationId 
-        });
-        
-      } catch (e) {
-        console.log('QR parse error:', e.message);
-        targetRegistrationId = registration_id || qr_data;
-      }
-    }
+    const { registration_id } = request.body;
 
-    if (!targetRegistrationId) {
+    if (!registration_id) {
       return reply.code(400).send({ 
         success: false,
         error: 'registration_id is required' 
       });
     }
 
-    // 1️⃣ Get registration details with participant year info
+    // 1️⃣ Get registration details
     const { rows } = await client.query(
       `SELECT 
           r.registration_unique_id,
@@ -1289,20 +1264,19 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
           r.amount_paid,
           r.event_name,
 
-          e.event_type,
+          e.event_type,  -- Get event type: 'workshop', 'technical', 'non-technical', etc.
           e.fee,
 
           p.full_name,
           p.email,
           p.college_name,
-          p.department,
-          p.year_of_study
+          p.department
 
        FROM registrations r
        JOIN participants p ON r.participant_id = p.participant_id
        JOIN events e ON r.event_id = e.event_id
        WHERE r.registration_unique_id = $1`,
-      [targetRegistrationId]
+      [registration_id]
     );
 
     if (rows.length === 0) {
@@ -1314,7 +1288,6 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
 
     const reg = rows[0];
     const eventType = reg.event_type;
-    const yearOfStudy = parseInt(reg.year_of_study);
 
     // 2️⃣ CHECK IF ATTENDANCE ALREADY MARKED
     if (reg.attendance_status === 'ATTENDED') {
@@ -1331,7 +1304,7 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
     // 3️⃣ CHECK IF THIS IS A SONACSE REGISTRATION
     const isSonacse = reg.registration_unique_id.startsWith('THREADS26-SONA-');
     
-    // 4️⃣ GET ADMIN VERIFICATION STATUS
+    // 4️⃣ GET ADMIN VERIFICATION STATUS (for both SONACSE and others)
     const paymentCheck = await client.query(
       `SELECT 
         py.verified_by_admin
@@ -1344,120 +1317,44 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
 
     const verifiedByAdmin = paymentCheck.rows[0]?.verified_by_admin || false;
 
-    // 5️⃣ LOGIC BASED ON STUDENT TYPE, YEAR, AND EVENT TYPE
+    // 5️⃣ LOGIC BASED ON STUDENT TYPE AND EVENT TYPE
     
     // ------ SONACSE STUDENTS ------
     if (isSonacse) {
-      // SONACSE EVENT (non-workshop)
+      // SONACSE EVENT (non-workshop) - NO CHECKS
       if (eventType !== 'workshop') {
-        // Check if event has amount_paid > 0 (should be 0 for SONACSE events)
-        const eventRequiresPayment = parseFloat(reg.amount_paid) > 0;
-        
-        // For 2nd-4th year: Events are FREE - NO CHECKS regardless of payment status
-        if (yearOfStudy >= 2 && yearOfStudy <= 4) {
-          const result = await client.query(
-            `UPDATE registrations
-             SET attendance_status = 'ATTENDED',
-                 attended_at = NOW()
-             WHERE registration_unique_id = $1
-             RETURNING registration_unique_id, attendance_status, event_id`,
-            [targetRegistrationId]
-          );
+        const result = await client.query(
+          `UPDATE registrations
+           SET attendance_status = 'ATTENDED',
+               attended_at = NOW()
+           WHERE registration_unique_id = $1
+           RETURNING registration_unique_id, attendance_status, event_id`,
+          [registration_id]
+        );
 
-          return reply.send({
-            success: true,
-            message: '✅ SONACSE Senior Event attendance marked successfully',
-            participant_type: 'SONACSE',
-            event_type: 'EVENT',
-            year_of_study: yearOfStudy,
-            registration: result.rows[0],
-            participant: {
-              participant_id: reg.participant_id,
-              full_name: reg.full_name,
-              college_name: reg.college_name,
-              department: reg.department,
-              year: yearOfStudy
-            },
-            note: `SONACSE Year ${yearOfStudy} events are free - no verification required`
-          });
-        }
-        
-        // For 1st year: Events have ₹50 total discount - need payment check
-        else if (yearOfStudy === 1) {
-          // Check admin verification for first year
-          if (!verifiedByAdmin) {
-            return reply.code(403).send({
-              success: false,
-              participant_type: 'SONACSE',
-              event_type: 'EVENT',
-              year_of_study: 1,
-              message: 'First year SONACSE payment not verified by admin',
-              details: 'Admin verification required for first year event attendance',
-              registration_id: reg.registration_unique_id,
-              participant_id: reg.participant_id,
-              amount_paid: reg.amount_paid,
-              suggestion: 'Wait for admin verification or contact SONACSE coordinators'
-            });
-          }
-
-          // Check payment status for first year
-          if (reg.payment_status !== 'Success' && parseFloat(reg.amount_paid) > 0) {
-            return reply.code(403).send({
-              success: false,
-              participant_type: 'SONACSE',
-              event_type: 'EVENT',
-              year_of_study: 1,
-              message: 'First year SONACSE payment not completed',
-              details: `Payment status: ${reg.payment_status}`,
-              registration_id: reg.registration_unique_id,
-              participant_id: reg.participant_id,
-              amount_paid: reg.amount_paid,
-              suggestion: 'Complete payment to attend event'
-            });
-          }
-
-          const result = await client.query(
-            `UPDATE registrations
-             SET attendance_status = 'ATTENDED',
-                 attended_at = NOW()
-             WHERE registration_unique_id = $1
-             RETURNING registration_unique_id, attendance_status, event_id`,
-            [targetRegistrationId]
-          );
-
-          return reply.send({
-            success: true,
-            message: '✅ SONACSE First Year Event attendance marked successfully',
-            participant_type: 'SONACSE',
-            event_type: 'EVENT',
-            year_of_study: 1,
-            registration: result.rows[0],
-            participant: {
-              participant_id: reg.participant_id,
-              full_name: reg.full_name,
-              college_name: reg.college_name,
-              department: reg.department,
-              year: 1
-            },
-            payment_info: {
-              amount_paid: reg.amount_paid,
-              payment_status: reg.payment_status,
-              admin_verified: verifiedByAdmin
-            },
-            note: 'First year discount applied (₹50 total off)'
-          });
-        }
+        return reply.send({
+          success: true,
+          message: '✅ SONACSE Event attendance marked successfully',
+          participant_type: 'SONACSE',
+          event_type: 'EVENT',
+          registration: result.rows[0],
+          participant: {
+            participant_id: reg.participant_id,
+            full_name: reg.full_name,
+            college_name: reg.college_name,
+            department: reg.department
+          },
+          note: 'SONACSE events are free - no verification required'
+        });
       }
-      
-      // SONACSE WORKSHOP - CHECK BOTH PAYMENT AND ADMIN VERIFICATION FOR ALL YEARS
+      // SONACSE WORKSHOP - CHECK BOTH PAYMENT AND ADMIN VERIFICATION
       else if (eventType === 'workshop') {
-        // Check admin verification (required for all SONACSE workshops)
+        // Check admin verification
         if (!verifiedByAdmin) {
           return reply.code(403).send({
             success: false,
             participant_type: 'SONACSE',
             event_type: 'WORKSHOP',
-            year_of_study: yearOfStudy,
             message: 'SONACSE workshop payment not verified by admin',
             details: 'Admin verification required for SONACSE workshop attendance',
             registration_id: reg.registration_unique_id,
@@ -1467,13 +1364,12 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
           });
         }
 
-        // Check payment status (required for all SONACSE workshops)
+        // Check payment status
         if (reg.payment_status !== 'Success') {
           return reply.code(403).send({
             success: false,
             participant_type: 'SONACSE',
             event_type: 'WORKSHOP',
-            year_of_study: yearOfStudy,
             message: 'SONACSE workshop payment not completed',
             details: `Payment status: ${reg.payment_status}`,
             registration_id: reg.registration_unique_id,
@@ -1489,37 +1385,34 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
                attended_at = NOW()
            WHERE registration_unique_id = $1
            RETURNING registration_unique_id, attendance_status, event_id`,
-          [targetRegistrationId]
+          [registration_id]
         );
 
         return reply.send({
           success: true,
-          message: `✅ SONACSE Workshop attendance marked successfully (Year ${yearOfStudy})`,
+          message: '✅ SONACSE Workshop attendance marked successfully',
           participant_type: 'SONACSE',
           event_type: 'WORKSHOP',
-          year_of_study: yearOfStudy,
           registration: result.rows[0],
           participant: {
             participant_id: reg.participant_id,
             full_name: reg.full_name,
             college_name: reg.college_name,
-            department: reg.department,
-            year: yearOfStudy
+            department: reg.department
           },
           payment_info: {
             amount_paid: reg.amount_paid,
             payment_status: reg.payment_status,
-            admin_verified: verifiedByAdmin,
-            discount_applied: yearOfStudy >= 2 ? 'Senior discount applied' : 'First year discount applied'
+            admin_verified: verifiedByAdmin
           }
         });
       }
     }
-    
-    // ------ OTHER (NON-SONACSE) STUDENTS ------
+    // ------ OTHER STUDENTS ------
     else {
-      // Non-SONACSE events - require admin verification
+      // OTHER STUDENTS EVENT - CHECK ONLY ADMIN VERIFICATION
       if (eventType !== 'workshop') {
+        // Check admin verification
         if (!verifiedByAdmin) {
           return reply.code(403).send({
             success: false,
@@ -1538,7 +1431,7 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
                attended_at = NOW()
            WHERE registration_unique_id = $1
            RETURNING registration_unique_id, attendance_status, event_id`,
-          [targetRegistrationId]
+          [registration_id]
         );
 
         return reply.send({
@@ -1558,9 +1451,9 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
           }
         });
       }
-      
-      // Non-SONACSE workshops - require both payment and admin verification
+      // OTHER STUDENTS WORKSHOP - CHECK BOTH PAYMENT AND ADMIN VERIFICATION
       else if (eventType === 'workshop') {
+        // Check admin verification
         if (!verifiedByAdmin) {
           return reply.code(403).send({
             success: false,
@@ -1573,6 +1466,7 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
           });
         }
 
+        // Check payment status
         if (reg.payment_status !== 'Success') {
           return reply.code(403).send({
             success: false,
@@ -1592,7 +1486,7 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
              attended_at = NOW()
            WHERE registration_unique_id = $1
            RETURNING registration_unique_id, attendance_status, event_id`,
-          [targetRegistrationId]
+          [registration_id]
         );
 
         return reply.send({
@@ -1616,14 +1510,14 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
       }
     }
 
-    // Fallback (should never reach here)
+    // If we reach here, event_type is valid but logic didn't match
     const result = await client.query(
       `UPDATE registrations
        SET attendance_status = 'ATTENDED',
            attended_at = NOW()
        WHERE registration_unique_id = $1
        RETURNING registration_unique_id, attendance_status, event_id`,
-      [targetRegistrationId]
+      [registration_id]
     );
 
     return reply.send({
@@ -1649,6 +1543,7 @@ fastify.post('/api/scan-attendance', async (request, reply) => {
     client.release();
   }
 });
+
 
 // -------------------- Mark Attendance by Participant ID (Manual Fallback) --------------------
 fastify.post('/api/manual-attendance', async (request, reply) => {
@@ -4177,41 +4072,35 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
     // 11. COMMIT TRANSACTION
     await client.query('COMMIT');
     
-    // 12. GENERATE QR CODE WITH OPTIMIZED PAYLOAD
-let qrCodeBase64 = null;
-let qrPayload = null;
-
-if (!needsPayment && processedEvents.length > 0) {
-  // OPTIMIZED: Smaller payload with encoded data
-  qrPayload = {
-    pid: participantId,           // participant_id
-    ev: processedEvents.map(e => e.event_id), // event_ids array only
-    ts: Date.now(),               // timestamp
-    regs: registrationIds.join(',')  // All registration IDs
-  };
-  
-
-  
-  try {
-    qrCodeBase64 = await QRCode.toDataURL(
-      JSON.stringify(qrPayload),
-      {
-        errorCorrectionLevel: 'L', // Lower error correction = smaller QR
-        type: 'image/png',
-        margin: 0,                 // Remove margin to save space
-        width: 200,                // Smaller QR code
-        color: {
-          dark: '#000000',
-          light: '#ffffff'
-        }
-      }
-    );
+    // 12. GENERATE QR CODE IF NO PAYMENT NEEDED
+    let qrCodeBase64 = null;
+    let qrPayload = null;
     
-    console.log(`QR Payload size: ${JSON.stringify(qrPayload).length} bytes`);
-  } catch (qrError) {
-    console.error('QR generation error:', qrError);
-  }
-}
+    if (!needsPayment && processedEvents.length > 0) {
+      qrPayload = {
+        participant_id: participantId,
+        roll_number: cleanRollNumber,
+        registration_ids: registrationIds,
+        event: "THREADS'26",
+        type: "SONACSE_EVENTS_ONLY",
+        discount_applied: year === 1 ? 'First Year: ₹50 off events' : 'Senior: Events Free',
+        timestamp: new Date().toISOString()
+      };
+      
+      try {
+        qrCodeBase64 = await QRCode.toDataURL(
+          JSON.stringify(qrPayload),
+          {
+            errorCorrectionLevel: 'H',
+            type: 'image/png',
+            margin: 1,
+            width: 250
+          }
+        );
+      } catch (qrError) {
+        console.error('QR generation error:', qrError);
+      }
+    }
     
     // 13. CREATE PAYMENT REFERENCE
     let paymentReference = null;
@@ -4675,44 +4564,45 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
       [participantId]
     );
     
-    // 15. GENERATE QR CODE WITH OPTIMIZED PAYLOAD
-const registrationIds = confirmedRegistrations.rows.map(r => r.registration_unique_id);
-
-// OPTIMIZED: Compact QR payload
-const qrPayload = {
-  pid: participantId,
-  pn: participant.full_name.split(' ')[0], // Only first name to save space
-  regs: registrationIds.join(','),
-  ev: confirmedRegistrations.rows
-    .filter(r => parseFloat(r.amount_paid) === 0)
-    .map(r => r.event_id)
-    .join(','),
-  ws: confirmedRegistrations.rows
-    .filter(r => parseFloat(r.amount_paid) > 0)
-    .map(r => r.event_id)
-    .join(','),
-  ts: Date.now()
-};
-
-let qrCodeBase64;
-try {
-  qrCodeBase64 = await QRCode.toDataURL(
-    JSON.stringify(qrPayload),
-    {
-      errorCorrectionLevel: 'L',  // Lower error correction = smaller QR
-      type: 'image/png',
-      margin: 0,                  // Remove margin
-      width: 200,                 // Smaller QR code
-      color: {
-        dark: '#000000',
-        light: '#ffffff'
-      }
+    // 15. GENERATE QR CODE
+    const registrationIds = confirmedRegistrations.rows.map(r => r.registration_unique_id);
+    
+    const qrPayload = {
+      participant_id: participantId,
+      participant_name: participant.full_name,
+      registration_ids: registrationIds,
+      event: "THREADS'26",
+      type: "SONACSE_FULL_CONFIRMED",
+      discount_summary: {
+        year_of_study: year,
+        events_count: events.length,
+        events_original: events.length * 25,
+        events_discount: (events.length * 25) - eventsAmount,
+        events_final: eventsAmount,
+        workshops_count: pendingWorkshops.length + confirmedWorkshops.length,
+        workshops_original: (pendingWorkshops.length + confirmedWorkshops.length) * 400,
+        workshops_discount: (pendingWorkshops.length + confirmedWorkshops.length) * 100,
+        workshops_final: (pendingWorkshops.length + confirmedWorkshops.length) * 300,
+        total_paid: totalAmount
+      },
+      timestamp: new Date().toISOString()
+    };
+    
+    let qrCodeBase64;
+    try {
+      qrCodeBase64 = await QRCode.toDataURL(
+        JSON.stringify(qrPayload),
+        {
+          errorCorrectionLevel: 'H',
+          type: 'image/png',
+          margin: 1,
+          width: 250
+        }
+      );
+    } catch (qrError) {
+      console.error('QR generation error:', qrError);
+      qrCodeBase64 = null;
     }
-  );
-} catch (qrError) {
-  console.error('QR generation error:', qrError);
-  qrCodeBase64 = null;
-}
     
     // 16. PREPARE DISCOUNT SUMMARY
     const discountSummary = {
