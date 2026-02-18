@@ -272,9 +272,10 @@ function startScanner() {
     html5QrCode = new Html5Qrcode("reader");
     scanning = true;
 
+    // OPTIMIZED: Higher FPS for faster scanning
     html5QrCode.start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: 250 },
+        { fps: 15, qrbox: 300 }, // Increased FPS and scan box
         onScanSuccess,
         () => {}
     ).catch(() => scanning = false);
@@ -292,92 +293,115 @@ function stopScanner() {
 async function onScanSuccess(decodedText) {
     stopScanner();
     const scanDiv = document.getElementById('scanResult');
-    scanDiv.innerHTML = '<div class="result-box">Processing QR code...</div>';
-
-    let scannedIds = [];
+    scanDiv.innerHTML = '<div class="result-box">⚡ Processing QR code...</div>';
 
     try {
+        // Parse QR data
         const qrData = JSON.parse(decodedText);
-        scannedIds = qrData.registration_ids || [];
-    } catch {
-        scannedIds = decodedText
-            .split(/[\n, ]+/)
-            .map(x => x.trim())
-            .filter(Boolean);
-    }
-
-    // Validate registration IDs
-    const validIds = scannedIds.filter(id => {
-        try {
-            const isThreadsId = id.startsWith('THREADS26-');
-            if (!isThreadsId) return false;
-            
-            const parts = id.split('-');
-            if (parts.length < 4) return false;
-            
-            const extractedEventId = parts[parts.length - 1];
-            if (!/^\d+$/.test(extractedEventId)) return false;
-            
-            return extractedEventId === String(eventId);
-        } catch (error) {
-            return false;
+        
+        // Handle optimized format {pid:123, ids:"id1|id2|id3"}
+        let registrationIds = [];
+        
+        if (qrData.ids) {
+            // Split pipe-separated IDs
+            registrationIds = qrData.ids.split('|');
+            console.log(`Found ${registrationIds.length} registrations in QR`);
+        } else if (qrData.registration_ids) {
+            // Old array format
+            registrationIds = qrData.registration_ids;
+        } else {
+            registrationIds = [decodedText];
         }
-    });
 
-    if (validIds.length === 0) {
-        scanDiv.innerHTML = '<div class="result-box error">❌ Invalid QR code (Event mismatch or invalid format)</div>';
-        setTimeout(startScanner, 1500);
-        return;
-    }
+        if (registrationIds.length === 0) {
+            throw new Error('No registration IDs found');
+        }
 
-    for (let id of validIds) {
-        try {
-            const res = await fetch(`${BASE_URL}/api/scan-attendance`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ registration_id: id })
-            });
-
-            const data = await res.json();
-            
-            if (data.success) {
-                scanDiv.innerHTML = `<div class="result-box">
-                    ✅ <strong>Attendance Marked Successfully!</strong><br>
-                    <small>Registration: ${id}</small><br>
-                    <small>Participant: ${data.participant?.full_name || 'N/A'}</small><br>
-                    <small>${data.message}</small>
-                </div>`;
-                
-                // Update registration status
-                const r = allRegistrations.find(x => x.registration_unique_id === id);
-                if (r) {
-                    r.attendance_status = 'ATTENDED';
-                    r.verification_status = data.payment_info?.admin_verified ? 'Verified' : 'Pending';
-                }
-            } else {
-                scanDiv.innerHTML = `<div class="result-box error">
-                    ❌ <strong>Attendance Failed</strong><br>
-                    <small>Registration: ${id}</small><br>
-                    <small>${data.message}</small><br>
-                    ${data.details ? `<small style="color:orange">${data.details}</small><br>` : ''}
-                    ${data.suggestion ? `<small style="color:blue">${data.suggestion}</small>` : ''}
-                </div>`;
+        // Filter for current event
+        const validIds = registrationIds.filter(id => {
+            try {
+                if (!id.startsWith('THREADS26-')) return false;
+                const parts = id.split('-');
+                const extractedEventId = parts[parts.length - 1];
+                return extractedEventId === String(eventId);
+            } catch {
+                return false;
             }
-        } catch (error) {
-            scanDiv.innerHTML = `<div class="result-box error">
-                ❌ <strong>Error</strong><br>
-                <small>${error.message}</small>
+        });
+
+        if (validIds.length === 0) {
+            scanDiv.innerHTML = '<div class="result-box error">❌ No valid registrations for this event</div>';
+            setTimeout(startScanner, 1500);
+            return;
+        }
+
+        // Show multi-registration warning
+        if (validIds.length > 5) {
+            scanDiv.innerHTML = `<div class="result-box warning">
+                📌 Found ${validIds.length} registrations. Processing first one...
             </div>`;
         }
+
+        // Process ONLY the first registration ID for speed
+        const primaryId = validIds[0];
+        
+        const res = await fetch(`${BASE_URL}/api/scan-attendance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                registration_id: primaryId,
+                qr_data: qrData // Send full QR data for reference
+            })
+        });
+
+        const data = await res.json();
+        
+        if (data.success) {
+            let resultHtml = `<div class="result-box">
+                ✅ <strong>Attendance Marked!</strong><br>
+                <small>${data.participant?.full_name || 'Participant'}</small><br>
+                <small>${data.message}</small>`;
+            
+            if (validIds.length > 1) {
+                resultHtml += `<br><small>📌 QR contains ${validIds.length} total registrations</small>`;
+            }
+            
+            if (data.year_of_study) {
+                resultHtml += `<br><small>Year: ${data.year_of_study}</small>`;
+            }
+            
+            resultHtml += `</div>`;
+            
+            scanDiv.innerHTML = resultHtml;
+            
+            // Update registration status in table
+            const reg = allRegistrations.find(x => x.registration_unique_id === primaryId);
+            if (reg) {
+                reg.attendance_status = 'ATTENDED';
+            }
+        } else {
+            scanDiv.innerHTML = `<div class="result-box error">
+                ❌ ${data.message || 'Attendance failed'}<br>
+                ${data.details ? `<small>${data.details}</small><br>` : ''}
+                ${data.suggestion ? `<small>💡 ${data.suggestion}</small>` : ''}
+            </div>`;
+        }
+        
+    } catch (error) {
+        console.error('Scan error:', error);
+        scanDiv.innerHTML = `<div class="result-box error">
+            ❌ Error: ${error.message}
+        </div>`;
     }
 
     updateStats();
     filterRegistrations();
 
+    // Restart scanner faster
     setTimeout(() => {
         scanDiv.innerHTML = '';
         startScanner();
-    }, 3000);
+    }, 2000);
 }
 
 /* ---------------- MANUAL ATTENDANCE ---------------- */
