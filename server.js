@@ -11,6 +11,14 @@ import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import moment from 'moment';
+import rateLimit from '@fastify/rate-limit';
+
+// After your other plugin registrations
+await fastify.register(rateLimit, {
+  max: 100,
+  timeWindow: '1 minute'
+});
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
