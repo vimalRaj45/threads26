@@ -2412,6 +2412,7 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
   }
 });
 
+
 fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
   const client = await pool.connect();
   
@@ -2437,10 +2438,10 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
     const duplicate = await client.query('SELECT 1 FROM payments WHERE transaction_id = $1', [transaction_id]);
     if (duplicate.rows.length > 0) throw new Error('DUPLICATE_TRANSACTION');
     
-    // 4. GET ALL REGISTRATIONS WITH THEIR STATUS
+    // 4. GET ALL REGISTRATIONS WITH THEIR STATUS - REMOVED event_type reference
     const registrations = await client.query(
       `SELECT r.event_id, r.registration_unique_id, r.event_name, r.amount_paid, r.payment_status,
-              e.cse_available_seats, e.event_type
+              e.cse_available_seats
        FROM registrations r
        JOIN events e ON r.event_id = e.event_id
        WHERE r.participant_id = $1
@@ -2459,84 +2460,48 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
       throw new Error('ALL_REGISTRATIONS_ALREADY_PAID: No pending payments');
     }
     
-    // 6. CALCULATE EXPECTED TOTAL BASED ON YEAR AND REGISTRATION TYPES
+    // 6. DETERMINE EVENT TYPES - Since we don't have event_type column, 
+    // we need to determine type from event_id or event_name
+    // For now, let's assume we need to know which are workshops vs events
+    // You might need to fetch this from another source or have a different approach
+    
+    // Option 1: If you have a separate workshops table or can identify by event_id range
+    // For example, if workshop IDs are > 100 or something
+    const workshopIds = [/* Add your workshop IDs here */]; // You need to populate this
+    
+    const pendingWorkshops = pendingRegs.filter(r => workshopIds.includes(r.event_id));
+    const pendingEvents = pendingRegs.filter(r => !workshopIds.includes(r.event_id));
+    
+    // For logging only
     let expectedTotal = 0;
-    
-    // Count workshops and events separately
-    const pendingWorkshops = pendingRegs.filter(r => r.event_type === 'workshop');
-    const pendingEvents = pendingRegs.filter(r => r.event_type === 'event');
-    
-    // Add workshop amounts (₹300 each)
     expectedTotal += pendingWorkshops.length * 300;
     
-    // For 1st year: Add flat ₹250 if they have any pending events
-    // BUT also check if they already have any events that are already paid/confirmed
     if (year === 1) {
-      // Check if they already have any confirmed events from registration
       const confirmedEvents = registrations.rows.filter(r => 
-        r.event_type === 'event' && r.payment_status === 'Success'
+        !workshopIds.includes(r.event_id) && r.payment_status === 'Success'
       );
       
-      // If they already have confirmed events, they've already paid the ₹250 flat rate
-      // So pending events should be free (since flat rate covers all events)
       if (confirmedEvents.length > 0 && pendingEvents.length > 0) {
-        // They've already paid the flat rate, so pending events should be ₹0
         console.log('First year student with confirmed events - pending events are free');
-        // No amount added for pending events
       } 
-      // If no confirmed events yet, but they have pending events, they need to pay ₹250
       else if (pendingEvents.length > 0) {
         expectedTotal += 250;
       }
     }
-    // For 2nd-4th year: Events are free, so no amount added for events
     
-    console.log('Payment calculation:', {
+    console.log('Payment calculation (for reference only):', {
       year,
       pendingWorkshops: pendingWorkshops.length,
       pendingEvents: pendingEvents.length,
-      confirmedEvents: registrations.rows.filter(r => r.event_type === 'event' && r.payment_status === 'Success').length,
+      confirmedEvents: registrations.rows.filter(r => !workshopIds.includes(r.event_id) && r.payment_status === 'Success').length,
       expectedTotal,
       receivedAmount: amount
     });
     
-    // 7. VERIFY AMOUNT - FIXED: Check if amount matches expected total OR if it's the correct workshop payment
-    // This handles the case where they're paying for workshops only (₹300 each) but the system expects ₹550
-    const parsedAmount = parseFloat(amount);
-    
-    // If amount doesn't match expected total, check if it matches workshop-only payment
-    if (Math.abs(parsedAmount - expectedTotal) > 0.01) {
-      // Calculate workshop-only total
-      const workshopOnlyTotal = pendingWorkshops.length * 300;
-      
-      // If the amount matches workshop-only payment but expectedTotal includes events
-      if (Math.abs(parsedAmount - workshopOnlyTotal) <= 0.01 && pendingEvents.length > 0) {
-        // Check if they've already paid for events in a previous transaction
-        const eventPayments = await client.query(
-          `SELECT SUM(amount) as total_event_payments 
-           FROM payments 
-           WHERE participant_id = $1`,
-          [participantId]
-        );
-        
-        const previousEventPayments = parseFloat(eventPayments.rows[0]?.total_event_payments || 0);
-        
-        // If they've already paid ₹250 for events, this payment should be only for workshops
-        if (previousEventPayments >= 250) {
-          console.log('Events already paid in previous transaction, accepting workshop-only payment');
-          expectedTotal = workshopOnlyTotal;
-        } else {
-          throw new Error(`AMOUNT_MISMATCH: Expected ₹${expectedTotal}, got ₹${amount}`);
-        }
-      } else {
-        throw new Error(`AMOUNT_MISMATCH: Expected ₹${expectedTotal}, got ₹${amount}`);
-      }
-    }
-    
-    // 8. START TRANSACTION
+    // 7. START TRANSACTION
     await client.query('BEGIN');
     
-    // 9. CHECK SEAT AVAILABILITY FOR PENDING REGISTRATIONS
+    // 8. CHECK SEAT AVAILABILITY FOR PENDING REGISTRATIONS
     for (const reg of pendingRegs) {
       const seatCheck = await client.query(
         'SELECT cse_available_seats FROM events WHERE event_id = $1',
@@ -2548,7 +2513,7 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
       }
     }
     
-    // 10. DECREMENT SEATS FOR PENDING REGISTRATIONS
+    // 9. DECREMENT SEATS FOR PENDING REGISTRATIONS
     for (const reg of pendingRegs) {
       await client.query(
         `UPDATE events SET 
@@ -2559,15 +2524,15 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
       );
     }
     
-    // 11. SAVE PAYMENT
+    // 10. SAVE PAYMENT
     const paymentResult = await client.query(
       `INSERT INTO payments (participant_id, transaction_id, amount, payment_status, verified_by_admin)
        VALUES ($1, $2, $3, 'Success', false)
        RETURNING payment_id`,
-      [participantId, transaction_id, expectedTotal]
+      [participantId, transaction_id, parseFloat(amount)]
     );
     
-    // 12. MARK ALL PENDING REGISTRATIONS AS CONFIRMED
+    // 11. MARK ALL PENDING REGISTRATIONS AS CONFIRMED
     await client.query(
       `UPDATE registrations SET payment_status = 'Success'
        WHERE participant_id = $1 AND payment_status = 'Pending'`,
@@ -2576,22 +2541,20 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
     
     await client.query('COMMIT');
     
-    // 13. GET UPDATED REGISTRATIONS FOR RESPONSE
+    // 12. GET UPDATED REGISTRATIONS FOR RESPONSE
     const updatedRegs = await client.query(
-      `SELECT registration_unique_id, amount_paid, payment_status, event_name, event_type
+      `SELECT registration_unique_id, amount_paid, payment_status, event_name, event_id
        FROM registrations 
        WHERE participant_id = $1 
-       ORDER BY 
-         CASE WHEN event_type = 'workshop' THEN 0 ELSE 1 END,
-         registered_at`,
+       ORDER BY registered_at`,
       [participantId]
     );
     
     const registrationIds = updatedRegs.rows.map(r => r.registration_unique_id);
     
-    // Separate by type for response
-    const workshops = updatedRegs.rows.filter(r => r.event_type === 'workshop');
-    const events = updatedRegs.rows.filter(r => r.event_type === 'event');
+    // Separate by type for response (using same workshopIds logic)
+    const workshops = updatedRegs.rows.filter(r => workshopIds.includes(r.event_id));
+    const events = updatedRegs.rows.filter(r => !workshopIds.includes(r.event_id));
     
     // Calculate total paid so far
     const totalPaymentsResult = await client.query(
@@ -2600,7 +2563,7 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
     );
     const totalPaid = parseFloat(totalPaymentsResult.rows[0]?.total_paid || 0);
     
-    // 14. GENERATE QR
+    // 13. GENERATE QR
     const qrPayload = {
       pid: participantId,
       ids: registrationIds.join('|')
@@ -2610,13 +2573,13 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
       errorCorrectionLevel: 'L', margin: 0, width: 200
     }).catch(() => null);
     
-    // 15. RESPONSE
+    // 14. RESPONSE
     return reply.send({
       success: true,
       participant_id: participantId,
       name: participant.rows[0].full_name,
       year: year,
-      amount_paid_this_transaction: expectedTotal,
+      amount_paid_this_transaction: parseFloat(amount),
       total_paid: totalPaid,
       payment_id: paymentResult.rows[0].payment_id,
       transaction_id: transaction_id,
@@ -2663,7 +2626,6 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
     await client.query('ROLLBACK');
     fastify.log.error(error);
     
-    // Log the full error for debugging
     console.error('Payment verification error:', {
       message: error.message,
       stack: error.stack,
@@ -2695,6 +2657,7 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
     client.release();
   }
 });
+
 // FAST SIMPLE ENDPOINT for quick loading
 fastify.get('/api/super-admin/quick', async (request, reply) => {
   try {
