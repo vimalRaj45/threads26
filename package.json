@@ -2,9 +2,10 @@
   "name": "symp",
   "version": "1.0.0",
   "description": "",
-  "main": "server.js",
+  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +18,8 @@
     "@fastify/multipart": "^9.4.0",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/static": "^9.0.0",
+    "@fastify/swagger": "^9.7.0",
+    "@fastify/swagger-ui": "^5.2.5",
     "@upstash/redis": "^1.36.2",
     "bullmq": "^5.67.3",
     "crypto": "^1.0.1",
@@ -25,12 +28,18 @@
     "fastify": "^5.7.4",
     "fastify-cors": "^6.0.3",
     "fastify-formbody": "^5.2.0",
+    "fs": "^0.0.1-security",
+    "k6": "^0.0.0",
     "moment": "^2.30.1",
     "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
     "pdfkit": "^0.17.2",
     "pg": "^8.18.0",
     "qrcode": "^1.5.4",
+    "stream": "^0.0.3",
     "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "autocannon": "^8.0.0"
   }
 }
