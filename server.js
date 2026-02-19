@@ -2433,59 +2433,85 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
     
     const year = parseInt(participant.rows[0].year_of_study);
     
-    // Note: We're not checking sonacse_registrations table anymore
-    // The student is identified as SONACSE through the registration flow
-    
     // 3. CHECK DUPLICATE TRANSACTION
     const duplicate = await client.query('SELECT 1 FROM payments WHERE transaction_id = $1', [transaction_id]);
     if (duplicate.rows.length > 0) throw new Error('DUPLICATE_TRANSACTION');
     
-    // 4. GET ONLY PENDING REGISTRATIONS
-    const pending = await client.query(
-      `SELECT r.event_id, r.registration_unique_id, r.event_name, r.amount_paid, e.cse_available_seats
+    // 4. GET ALL REGISTRATIONS WITH THEIR STATUS
+    const registrations = await client.query(
+      `SELECT r.event_id, r.registration_unique_id, r.event_name, r.amount_paid, r.payment_status,
+              e.cse_available_seats, e.event_type
        FROM registrations r
        JOIN events e ON r.event_id = e.event_id
-       WHERE r.participant_id = $1 AND r.payment_status = 'Pending'`,
+       WHERE r.participant_id = $1
+       ORDER BY r.registered_at`,
       [participantId]
     );
     
-    if (pending.rows.length === 0) {
-      // Check if there are any registrations at all
-      const anyRegs = await client.query(
-        'SELECT COUNT(*) FROM registrations WHERE participant_id = $1',
-        [participantId]
-      );
-      
-      if (parseInt(anyRegs.rows[0].count) === 0) {
-        throw new Error('NO_REGISTRATIONS_FOUND');
-      } else {
-        throw new Error('ALL_REGISTRATIONS_ALREADY_PAID: No pending payments');
-      }
+    if (registrations.rows.length === 0) {
+      throw new Error('NO_REGISTRATIONS_FOUND');
     }
     
-    // 5. CALCULATE EXPECTED TOTAL
-    const expectedTotal = pending.rows.reduce((sum, r) => sum + parseFloat(r.amount_paid), 0);
+    // 5. SEPARATE REGISTRATIONS BY TYPE AND STATUS
+    const pendingWorkshops = registrations.rows.filter(r => 
+      r.payment_status === 'Pending' && r.event_type === 'workshop'
+    );
     
-    // 6. VERIFY AMOUNT
+    // For 1st year: Check if they have pending events that need the flat fee
+    const hasPendingEvents = registrations.rows.some(r => 
+      r.payment_status === 'Pending' && r.event_type === 'event'
+    );
+    
+    // Check if there are any pending registrations at all
+    const hasAnyPending = registrations.rows.some(r => r.payment_status === 'Pending');
+    
+    if (!hasAnyPending) {
+      throw new Error('ALL_REGISTRATIONS_ALREADY_PAID: No pending payments');
+    }
+    
+    // 6. CALCULATE EXPECTED TOTAL
+    let expectedTotal = 0;
+    
+    // Add workshop amounts (₹300 each)
+    expectedTotal += pendingWorkshops.length * 300;
+    
+    // For 1st year: Add flat ₹250 if they have any pending events
+    if (year === 1 && hasPendingEvents) {
+      expectedTotal += 250;
+    }
+    
+    // Note: For 2nd-4th year, events are free, so they won't have pending events
+    
+    // 7. VERIFY AMOUNT
     if (Math.abs(parseFloat(amount) - expectedTotal) > 0.01) {
       throw new Error(`AMOUNT_MISMATCH: Expected ₹${expectedTotal}, got ₹${amount}`);
     }
     
-    // 7. START TRANSACTION
+    // 8. START TRANSACTION
     await client.query('BEGIN');
     
-    // 8. CHECK AND RESERVE SEATS FOR PENDING REGISTRATIONS
-    for (const reg of pending.rows) {
-      if (reg.cse_available_seats <= 0) throw new Error(`SEATS_FULL: ${reg.event_name}`);
-      
-      await client.query(
-        `UPDATE events SET cse_available_seats = cse_available_seats - 1, available_seats = available_seats - 1
-         WHERE event_id = $1`, 
-        [reg.event_id]
-      );
+    // 9. CHECK SEAT AVAILABILITY FOR PENDING REGISTRATIONS
+    for (const reg of registrations.rows) {
+      if (reg.payment_status === 'Pending') {
+        if (reg.cse_available_seats <= 0) {
+          throw new Error(`SEATS_FULL: ${reg.event_name}`);
+        }
+      }
     }
     
-    // 9. SAVE PAYMENT
+    // 10. DECREMENT SEATS FOR PENDING REGISTRATIONS
+    for (const reg of registrations.rows) {
+      if (reg.payment_status === 'Pending') {
+        await client.query(
+          `UPDATE events SET cse_available_seats = cse_available_seats - 1, 
+               available_seats = available_seats - 1
+           WHERE event_id = $1`, 
+          [reg.event_id]
+        );
+      }
+    }
+    
+    // 11. SAVE PAYMENT
     const paymentResult = await client.query(
       `INSERT INTO payments (participant_id, transaction_id, amount, payment_status, verified_by_admin)
        VALUES ($1, $2, $3, 'Success', false)
@@ -2493,7 +2519,7 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
       [participantId, transaction_id, expectedTotal]
     );
     
-    // 10. MARK PENDING REGISTRATIONS AS CONFIRMED
+    // 12. MARK ALL PENDING REGISTRATIONS AS CONFIRMED
     await client.query(
       `UPDATE registrations SET payment_status = 'Success'
        WHERE participant_id = $1 AND payment_status = 'Pending'`,
@@ -2502,24 +2528,24 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
     
     await client.query('COMMIT');
     
-    // 11. GET ALL REGISTRATION IDs
-    const allRegs = await client.query(
-      `SELECT registration_unique_id, amount_paid, payment_status, event_name
+    // 13. GET UPDATED REGISTRATIONS FOR RESPONSE
+    const updatedRegs = await client.query(
+      `SELECT registration_unique_id, amount_paid, payment_status, event_name, event_type
        FROM registrations 
        WHERE participant_id = $1 
        ORDER BY 
-         CASE WHEN amount_paid > 0 THEN 0 ELSE 1 END,
+         CASE WHEN event_type = 'workshop' THEN 0 ELSE 1 END,
          registered_at`,
       [participantId]
     );
     
-    const registrationIds = allRegs.rows.map(r => r.registration_unique_id);
+    const registrationIds = updatedRegs.rows.map(r => r.registration_unique_id);
     
-    // Separate paid vs free
-    const paidRegistrations = allRegs.rows.filter(r => r.amount_paid > 0);
-    const freeRegistrations = allRegs.rows.filter(r => r.amount_paid === 0);
+    // Separate by type for response
+    const workshops = updatedRegs.rows.filter(r => r.event_type === 'workshop');
+    const events = updatedRegs.rows.filter(r => r.event_type === 'event');
     
-    // 12. GENERATE QR
+    // 14. GENERATE QR
     const qrPayload = {
       pid: participantId,
       ids: registrationIds.join('|')
@@ -2529,7 +2555,7 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
       errorCorrectionLevel: 'L', margin: 0, width: 200
     }).catch(() => null);
     
-    // 13. RESPONSE
+    // 15. RESPONSE
     return reply.send({
       success: true,
       participant_id: participantId,
@@ -2538,29 +2564,39 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
       amount_paid: expectedTotal,
       payment_id: paymentResult.rows[0].payment_id,
       transaction_id: transaction_id,
-      summary: {
-        total_registrations: allRegs.rows.length,
-        paid_registrations: paidRegistrations.length,
-        free_registrations: freeRegistrations.length,
-        confirmed_now: pending.rows.length
+      breakdown: {
+        workshops: {
+          count: workshops.length,
+          amount: workshops.length * 300,
+          items: workshops.map(w => ({
+            name: w.event_name,
+            amount: 300,
+            registration_id: w.registration_unique_id
+          }))
+        },
+        events: {
+          count: events.length,
+          amount: (year === 1 && events.length > 0) ? 250 : 0,
+          items: events.map(e => ({
+            name: e.event_name,
+            amount: 0, // Individual events show as 0 since it's a package
+            registration_id: e.registration_unique_id
+          }))
+        }
       },
-      registrations_confirmed: {
-        paid: paidRegistrations.map(r => ({
-          event: r.event_name,
-          amount: r.amount_paid,
-          registration_id: r.registration_unique_id
-        })),
-        free: freeRegistrations.map(r => ({
-          event: r.event_name,
-          amount: 0,
-          registration_id: r.registration_unique_id
-        }))
+      summary: {
+        total_registrations: updatedRegs.rows.length,
+        workshops_confirmed: workshops.length,
+        events_confirmed: events.length,
+        confirmed_now: registrations.rows.filter(r => r.payment_status === 'Pending').length
       },
       qr_code: qrCode,
       registration_ids: registrationIds,
       message: year === 1 
-        ? "Payment verified for 1st year events and workshops" 
-        : `Payment verified for Year ${year} workshops (events were free)`
+        ? events.length > 0 
+          ? `Payment verified: ₹250 for ${events.length} event(s) + ₹${workshops.length * 300} for ${workshops.length} workshop(s)`
+          : `Payment verified: ₹${workshops.length * 300} for ${workshops.length} workshop(s)`
+        : `Payment verified: ₹${workshops.length * 300} for ${workshops.length} workshop(s) (events were free)`
     });
     
   } catch (error) {
@@ -2592,7 +2628,6 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
     client.release();
   }
 });
-
 
 // FAST SIMPLE ENDPOINT for quick loading
 fastify.get('/api/super-admin/quick', async (request, reply) => {
