@@ -2203,7 +2203,6 @@ fastify.get('/api/admin/check-registration-status', async (request) => {
 });
 
 
-
 fastify.post('/api/sonacse/register', async (request, reply) => {
   const client = await pool.connect();
   
@@ -2256,18 +2255,18 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
     }
     
     // 5. CALCULATE AMOUNT - FIXED RATES WITH YEAR RULES
-    const EVENT_FIXED_RATE = 250;
+    const EVENT_FLAT_RATE = 250;  // Flat rate for 1st year (all events combined)
     const WORKSHOP_DISCOUNTED_RATE = 300;
     
     const eventCount = event_selections.length;
     const workshopCount = workshop_selections.length;
     
-    // Events: 
-    // - 1st year: Pay ₹250 each
+    // EVENTS:
+    // - 1st year: Flat ₹250 for ALL events combined (regardless of count)
     // - 2nd-4th year: FREE
-    const eventsAmount = year === 1 ? eventCount * EVENT_FIXED_RATE : 0;
+    const eventsAmount = (year === 1 && eventCount > 0) ? EVENT_FLAT_RATE : 0;
     
-    // Workshops: All years pay ₹300 each
+    // WORKSHOPS: All years pay ₹300 each
     const workshopsAmount = workshopCount * WORKSHOP_DISCOUNTED_RATE;
     
     const totalAmount = eventsAmount + workshopsAmount;
@@ -2312,12 +2311,16 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
         // All years pay for workshops
         amount = WORKSHOP_DISCOUNTED_RATE;
       } else { // event
-        // Only 1st year pays for events
-        amount = year === 1 ? EVENT_FIXED_RATE : 0;
+        // For 1st year: Even though they pay a flat ₹250 total,
+        // we need to distribute the payment across events
+        // Since they're paying a flat rate, set individual event amount to 0
+        // The total eventsAmount (₹250) will be handled as a package
+        amount = 0; // Individual events show as ₹0 since it's a package deal
       }
       
-      // Payment status: 'Pending' if amount > 0, 'Success' if free
-      const status = amount > 0 ? 'Pending' : 'Success';
+      // Payment status: For 1st year events, we'll mark them all with the same payment reference
+      // For workshops: 'Pending' if amount > 0, 'Success' if free (never happens for workshops)
+      const status = (type === 'workshop') ? 'Pending' : 'Success';
       
       await client.query(
         `INSERT INTO registrations (participant_id, event_id, registration_unique_id, payment_status, amount_paid, event_name, day)
@@ -2371,7 +2374,7 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
       year: year,
       events: processedEvents.length,
       workshops: processedWorkshops.length,
-      event_rate: year === 1 ? EVENT_FIXED_RATE : 0,
+      event_rate: year === 1 ? EVENT_FLAT_RATE : 0,
       workshop_rate: WORKSHOP_DISCOUNTED_RATE,
       events_amount: eventsAmount,
       workshops_amount: workshopsAmount,
@@ -2393,8 +2396,8 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
         }))
       },
       message: year === 1 
-        ? "1st Year: Pay for events (₹250 each) and workshops (₹300 each)" 
-        : "2nd-4th Year: Events FREE, Pay for workshops (₹300 each)"
+        ? "1st Year: Flat ₹250 for ALL events + ₹300 per workshop" 
+        : "2nd-4th Year: Events FREE, Pay ₹300 per workshop"
     });
     
   } catch (error) {
