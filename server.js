@@ -138,327 +138,340 @@ fastify.get('/api/events', async (request, reply) => {
   }
 });
 
+
 fastify.post('/api/register', async (request, reply) => {
-  let client = null;
-  
-  try {
-    // ===========================================
-    // PHASE 1: FAST VALIDATION (No DB)
-    // ===========================================
-    const body = request.body;
-    
-    // Quick validation with early returns
-    if (!body.full_name?.trim()) throw new Error('VALIDATION_FAILED: Full name is required');
-    if (!body.email?.trim()) throw new Error('VALIDATION_FAILED: Email is required');
-    if (!body.email.includes('@')) throw new Error('VALIDATION_FAILED: Invalid email format');
-    
-    const cleanPhone = body.phone?.replace(/\D/g, '') || '';
-    if (cleanPhone.length < 10) throw new Error('VALIDATION_FAILED: Valid phone required');
-    
-    if (!body.college_name?.trim()) throw new Error('VALIDATION_FAILED: College name required');
-    
-    const dept = body.department?.toUpperCase() || '';
-    if (!['CSE','IT','ECE','EEE','MECH','OTH'].includes(dept)) {
-      throw new Error('VALIDATION_FAILED: Invalid department');
-    }
-    
-    const year = parseInt(body.year_of_study);
-    if (![1,2,3,4].includes(year)) throw new Error('VALIDATION_FAILED: Year must be 1-4');
-    
-    // Check selections
-    const workshopSelections = body.workshop_selections || [];
-    const eventSelections = body.event_selections || [];
-    if (workshopSelections.length === 0 && eventSelections.length === 0) {
-      throw new Error('NO_EVENTS_SELECTED: Select at least one event');
-    }
-    
-    // Check deadline
-    if (moment().isAfter(moment(EVENT_DATES.registration_closes))) {
-      throw new Error('REGISTRATION_CLOSED');
-    }
-    
-    // ===========================================
-    // PHASE 2: CONNECT & EXECUTE (Optimized)
-    // ===========================================
-    client = await pool.connect();
-    await client.query('BEGIN');
-    
-    // Check duplicate email (single query)
-    const existing = await client.query(
-      'SELECT 1 FROM participants WHERE LOWER(email)=LOWER($1)',
-      [body.email]
-    );
-    if (existing.rows.length > 0) throw new Error('EMAIL_EXISTS');
-    
-    // Insert participant (faster with fewer fields)
-    const participant = await client.query(
-      `INSERT INTO participants (full_name, email, phone, college_name, department, year_of_study, gender, city, state, accommodation_required)
+    let client = null;
+
+    try {
+        // ===========================================
+        // PHASE 1: FAST VALIDATION (No DB)
+        // ===========================================
+        const body = request.body;
+
+        // Quick validation with early returns
+        if (!body.full_name?.trim()) throw new Error('VALIDATION_FAILED: Full name is required');
+        if (!body.email?.trim()) throw new Error('VALIDATION_FAILED: Email is required');
+        if (!body.email.includes('@')) throw new Error('VALIDATION_FAILED: Invalid email format');
+
+        const cleanPhone = body.phone?.replace(/\D/g, '') || '';
+        if (cleanPhone.length < 10) throw new Error('VALIDATION_FAILED: Valid phone required');
+
+        if (!body.college_name?.trim()) throw new Error('VALIDATION_FAILED: College name required');
+
+        const dept = body.department?.trim() || '';
+        if (!dept) throw new Error('VALIDATION_FAILED: Department is required');
+
+        const year = parseInt(body.year_of_study);
+        if (![1, 2, 3, 4].includes(year)) throw new Error('VALIDATION_FAILED: Year must be 1-4');
+
+        // Check selections
+        const workshopSelections = body.workshop_selections || [];
+        const eventSelections = body.event_selections || [];
+        if (workshopSelections.length === 0 && eventSelections.length === 0) {
+            throw new Error('NO_EVENTS_SELECTED: Select at least one event');
+        }
+
+        // Check deadline
+        if (moment().isAfter(moment(EVENT_DATES.registration_closes))) {
+            throw new Error('REGISTRATION_CLOSED');
+        }
+
+        // ===========================================
+        // PHASE 2: CONNECT & EXECUTE (Optimized)
+        // ===========================================
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        // Check duplicate email (single query)
+        const existing = await client.query(
+            'SELECT 1 FROM participants WHERE LOWER(email)=LOWER($1)',
+            [body.email]
+        );
+        if (existing.rows.length > 0) throw new Error('EMAIL_EXISTS');
+
+        // Insert participant (faster with fewer fields)
+        const participant = await client.query(
+            `INSERT INTO participants (full_name, email, phone, college_name, department, year_of_study, gender, city, state, accommodation_required)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING participant_id`,
-      [
-        body.full_name.trim(),
-        body.email.toLowerCase().trim(),
-        cleanPhone,
-        body.college_name.trim(),
-        dept,
-        year,
-        body.gender || 'Not Specified',
-        body.city?.trim() || '',
-        body.state?.trim() || '',
-        Boolean(body.accommodation_required)
-      ]
-    );
-    
-    const participantId = participant.rows[0].participant_id;
-    const registrationIds = [];
-    let totalAmount = 0; // ✅ FIXED: Initialize as number, not string
-    
-    // OPTIMIZED: Single query to get all event details
-    const allEventIds = [...workshopSelections, ...eventSelections].map(id => parseInt(id));
-    const eventDetails = await client.query(
-      `SELECT event_id, event_name, fee, day, event_type, available_seats 
+            [
+                body.full_name.trim(),
+                body.email.toLowerCase().trim(),
+                cleanPhone,
+                body.college_name.trim(),
+                dept,
+                year,
+                body.gender || 'Not Specified',
+                body.city?.trim() || '',
+                body.state?.trim() || '',
+                Boolean(body.accommodation_required)
+            ]
+        );
+
+        const participantId = participant.rows[0].participant_id;
+        const registrationIds = [];
+        let totalAmount = 0; // Initialize as number
+
+        // FIXED PRICING FOR OTHER COLLEGES:
+        const WORKSHOP_FEE = 400;   // ₹400 per workshop
+        const EVENT_FLAT_FEE = 300; // ₹300 flat for ALL events combined (regardless of count)
+
+        // OPTIMIZED: Single query to get all event details
+        const allEventIds = [...workshopSelections, ...eventSelections].map(id => parseInt(id));
+        const eventDetails = await client.query(
+            `SELECT event_id, event_name, fee, day, event_type, available_seats 
        FROM events WHERE event_id = ANY($1::int[]) AND is_active = true`,
-      [allEventIds]
-    );
-    
-    // Create map for O(1) lookup
-    const eventMap = new Map();
-    eventDetails.rows.forEach(e => eventMap.set(e.event_id, e));
-    
-    // Process workshops
-    for (const eventId of workshopSelections) {
-      const e = eventMap.get(parseInt(eventId));
-      if (!e) throw new Error(`WORKSHOP_NOT_FOUND: ${eventId}`);
-      if (e.event_type !== 'workshop') throw new Error(`NOT_A_WORKSHOP: ${eventId}`);
-      if (e.available_seats <= 0) throw new Error(`SEATS_FULL: ${e.event_name}`);
-      
-      const regId = `THREADS26-WS-${Date.now()}-${eventId}`;
-      const fee = parseFloat(e.fee) || 0; // ✅ Ensure number
-      
-      await client.query(
-        `INSERT INTO registrations (participant_id, event_id, registration_unique_id, payment_status, amount_paid, event_name, day)
+            [allEventIds]
+        );
+
+        // Create map for O(1) lookup
+        const eventMap = new Map();
+        eventDetails.rows.forEach(e => eventMap.set(e.event_id, e));
+
+        // Process workshops - ₹400 each
+        for (const eventId of workshopSelections) {
+            const e = eventMap.get(parseInt(eventId));
+            if (!e) throw new Error(`WORKSHOP_NOT_FOUND: ${eventId}`);
+            if (e.event_type !== 'workshop') throw new Error(`NOT_A_WORKSHOP: ${eventId}`);
+            if (e.available_seats <= 0) throw new Error(`SEATS_FULL: ${e.event_name}`);
+
+            const regId = `THREADS26-WS-${Date.now()}-${eventId}`;
+
+            await client.query(
+                `INSERT INTO registrations (participant_id, event_id, registration_unique_id, payment_status, amount_paid, event_name, day)
          VALUES ($1,$2,$3,'Pending',$4,$5,$6)`,
-        [participantId, eventId, regId, fee, e.event_name, e.day]
-      );
-      
-      registrationIds.push(regId);
-      totalAmount += fee; // ✅ Number addition
-    }
-    
-    // Process events
-    for (const eventId of eventSelections) {
-      const e = eventMap.get(parseInt(eventId));
-      if (!e) throw new Error(`EVENT_NOT_FOUND: ${eventId}`);
-      if (e.day !== 2) throw new Error(`NOT_DAY2_EVENT: ${eventId}`);
-      if (e.available_seats <= 0) throw new Error(`SEATS_FULL: ${e.event_name}`);
-      
-      const regId = `THREADS26-EV-${Date.now()}-${eventId}`;
-      const fee = parseFloat(e.fee) || 0; // ✅ Ensure number
-      
-      await client.query(
-        `INSERT INTO registrations (participant_id, event_id, registration_unique_id, payment_status, amount_paid, event_name, day)
+                [participantId, eventId, regId, WORKSHOP_FEE, e.event_name, e.day]
+            );
+
+            registrationIds.push(regId);
+            totalAmount += WORKSHOP_FEE;
+        }
+
+        // Process events - flat ₹300 for ALL events combined
+        // First event carries the full ₹300, rest are ₹0 (package deal)
+        let eventFeeAssigned = false;
+        for (const eventId of eventSelections) {
+            const e = eventMap.get(parseInt(eventId));
+            if (!e) throw new Error(`EVENT_NOT_FOUND: ${eventId}`);
+            if (e.available_seats <= 0) throw new Error(`SEATS_FULL: ${e.event_name}`);
+
+            const regId = `THREADS26-EV-${Date.now()}-${eventId}`;
+            // Flat ₹300 for the package: first event holds the fee, rest are 0
+            const fee = eventFeeAssigned ? 0 : EVENT_FLAT_FEE;
+            if (!eventFeeAssigned) {
+                totalAmount += EVENT_FLAT_FEE;
+                eventFeeAssigned = true;
+            }
+
+            await client.query(
+                `INSERT INTO registrations (participant_id, event_id, registration_unique_id, payment_status, amount_paid, event_name, day)
          VALUES ($1,$2,$3,'Pending',$4,$5,$6)`,
-        [participantId, eventId, regId, fee, e.event_name, e.day]
-      );
-      
-      registrationIds.push(regId);
-      totalAmount += fee; // ✅ Number addition
+                [participantId, eventId, regId, fee, e.event_name, e.day]
+            );
+
+            registrationIds.push(regId);
+        }
+
+        await client.query('COMMIT');
+
+        // Format amount to 2 decimal places
+        const formattedAmount = parseFloat(totalAmount.toFixed(2));
+
+        // Fast response
+        return reply.code(201).send({
+            success: true,
+            message: 'Registration successful!',
+            participant_id: participantId,
+            participant_name: body.full_name,
+            registration_ids: registrationIds,
+            workshops_registered: workshopSelections.length,
+            events_registered: eventSelections.length,
+            total_amount: formattedAmount,
+            payment_reference: `THREADS26-${participantId}-${Date.now().toString().slice(-6)}`,
+            seat_status: { message: 'Seats checked - pay to reserve' },
+            payment_options: {
+                upi_id: process.env.UPI_ID || 'threads26@okaxis',
+                amount: formattedAmount
+            },
+            pricing_info: {
+                workshop_fee: WORKSHOP_FEE,
+                event_flat_fee: eventSelections.length > 0 ? EVENT_FLAT_FEE : 0,
+                note: `₹${WORKSHOP_FEE} per workshop + ₹${EVENT_FLAT_FEE} flat for all events`
+            }
+        });
+
+    } catch (error) {
+        if (client) await client.query('ROLLBACK').catch(() => { });
+
+        const msg = error.message;
+        if (msg.includes('SEATS_FULL')) return reply.code(400).send({ success: false, error: 'SEATS_FULL', details: msg });
+        if (msg.includes('VALIDATION_FAILED')) return reply.code(400).send({ success: false, error: 'VALIDATION_FAILED', details: msg });
+        if (msg.includes('EMAIL_EXISTS')) return reply.code(400).send({ success: false, error: 'EMAIL_EXISTS' });
+
+        return reply.code(400).send({ success: false, error: 'REGISTRATION_ERROR', details: msg });
+    } finally {
+        if (client) client.release();
     }
-    
-    await client.query('COMMIT');
-    
-    // Format amount to 2 decimal places
-    const formattedAmount = parseFloat(totalAmount.toFixed(2));
-    
-    // Fast response
-    return reply.code(201).send({
-      success: true,
-      message: 'Registration successful!',
-      participant_id: participantId,
-      participant_name: body.full_name,
-      registration_ids: registrationIds,
-      workshops_registered: workshopSelections.length,
-      events_registered: eventSelections.length,
-      total_amount: formattedAmount, // ✅ Fixed: Now shows correct number like 400.00
-      payment_reference: `THREADS26-${participantId}-${Date.now().toString().slice(-6)}`,
-      seat_status: { message: 'Seats checked - pay to reserve' },
-      payment_options: {
-        upi_id: process.env.UPI_ID || 'threads26@okaxis',
-        amount: formattedAmount
-      }
-    });
-    
-  } catch (error) {
-    if (client) await client.query('ROLLBACK').catch(() => {});
-    
-    const msg = error.message;
-    if (msg.includes('SEATS_FULL')) return reply.code(400).send({ success: false, error: 'SEATS_FULL', details: msg });
-    if (msg.includes('VALIDATION_FAILED')) return reply.code(400).send({ success: false, error: 'VALIDATION_FAILED', details: msg });
-    if (msg.includes('EMAIL_EXISTS')) return reply.code(400).send({ success: false, error: 'EMAIL_EXISTS' });
-    
-    return reply.code(400).send({ success: false, error: 'REGISTRATION_ERROR', details: msg });
-  } finally {
-    if (client) client.release();
-  }
 });
 
 fastify.post('/api/verify-payment', async (request, reply) => {
-  const client = await pool.connect();
-  
-  try {
-    // ===========================================
-    // PHASE 1: FAST VALIDATION
-    // ===========================================
-    const { participant_id, transaction_id, payment_reference, payment_method = 'UPI' } = request.body;
-    
-    if (!participant_id) throw new Error('PARTICIPANT_ID_REQUIRED');
-    if (!transaction_id?.trim()) throw new Error('TRANSACTION_ID_REQUIRED');
-    if (transaction_id.length < 5) throw new Error('TRANSACTION_ID_INVALID');
-    
-    const participantId = parseInt(participant_id);
-    const cleanTransactionId = transaction_id.trim();
-    
-    // ===========================================
-    // PHASE 2: PARALLEL QUERIES WHERE POSSIBLE
-    // ===========================================
-    await client.query('BEGIN');
-    
-    // Run checks in parallel
-    const [duplicateCheck, participantCheck] = await Promise.all([
-      client.query('SELECT 1 FROM payments WHERE transaction_id = $1', [cleanTransactionId]),
-      client.query('SELECT participant_id, full_name FROM participants WHERE participant_id = $1', [participantId])
-    ]);
-    
-    if (duplicateCheck.rows.length > 0) throw new Error('DUPLICATE_TRANSACTION');
-    if (participantCheck.rows.length === 0) throw new Error('PARTICIPANT_NOT_FOUND');
-    
-    const participant = participantCheck.rows[0];
-    
-    // Get pending registrations with seat info in one query
-    const pending = await client.query(
-      `SELECT r.registration_id, r.event_id, r.registration_unique_id, r.amount_paid, r.event_name,
+    const client = await pool.connect();
+
+    try {
+        // ===========================================
+        // PHASE 1: FAST VALIDATION
+        // ===========================================
+        const { participant_id, transaction_id, payment_reference, payment_method = 'UPI' } = request.body;
+
+        if (!participant_id) throw new Error('PARTICIPANT_ID_REQUIRED');
+        if (!transaction_id?.trim()) throw new Error('TRANSACTION_ID_REQUIRED');
+        if (transaction_id.length < 5) throw new Error('TRANSACTION_ID_INVALID');
+
+        const participantId = parseInt(participant_id);
+        const cleanTransactionId = transaction_id.trim();
+
+        // ===========================================
+        // PHASE 2: PARALLEL QUERIES WHERE POSSIBLE
+        // ===========================================
+        await client.query('BEGIN');
+
+        // Run checks in parallel
+        const [duplicateCheck, participantCheck] = await Promise.all([
+            client.query('SELECT 1 FROM payments WHERE transaction_id = $1', [cleanTransactionId]),
+            client.query('SELECT participant_id, full_name FROM participants WHERE participant_id = $1', [participantId])
+        ]);
+
+        if (duplicateCheck.rows.length > 0) throw new Error('DUPLICATE_TRANSACTION');
+        if (participantCheck.rows.length === 0) throw new Error('PARTICIPANT_NOT_FOUND');
+
+        const participant = participantCheck.rows[0];
+
+        // Get pending registrations with seat info in one query
+        const pending = await client.query(
+            `SELECT r.registration_id, r.event_id, r.registration_unique_id, r.amount_paid, r.event_name,
               e.available_seats, e.event_type, e.day
        FROM registrations r
        JOIN events e ON r.event_id = e.event_id
        WHERE r.participant_id = $1 AND r.payment_status = 'Pending'`,
-      [participantId]
-    );
-    
-    if (pending.rows.length === 0) throw new Error('NO_PENDING_REGISTRATIONS');
-    
-    // Calculate total (faster with reduce)
-    const totalAmount = pending.rows.reduce((sum, r) => sum + parseFloat(r.amount_paid || 0), 0);
-    if (totalAmount <= 0) throw new Error('INVALID_AMOUNT');
-    
-    // Check seats availability (fast loop with early exit)
-    for (const reg of pending.rows) {
-      if (reg.available_seats <= 0) {
-        throw new Error(`SEATS_FULL_AT_PAYMENT: No seats for ${reg.event_name}`);
-      }
-    }
-    
-    // ===========================================
-    // PHASE 3: BATCH UPDATES
-    // ===========================================
-    
-    // Save payment
-    const payment = await client.query(
-      `INSERT INTO payments (participant_id, transaction_id, payment_reference, amount, payment_method, payment_status, verified_by_admin, verified_at, created_at)
+            [participantId]
+        );
+
+        if (pending.rows.length === 0) throw new Error('NO_PENDING_REGISTRATIONS');
+
+        // Calculate total (faster with reduce)
+        const totalAmount = pending.rows.reduce((sum, r) => sum + parseFloat(r.amount_paid || 0), 0);
+        if (totalAmount <= 0) throw new Error('INVALID_AMOUNT');
+
+        // Check seats availability (fast loop with early exit)
+        for (const reg of pending.rows) {
+            if (reg.available_seats <= 0) {
+                throw new Error(`SEATS_FULL_AT_PAYMENT: No seats for ${reg.event_name}`);
+            }
+        }
+
+        // ===========================================
+        // PHASE 3: BATCH UPDATES
+        // ===========================================
+
+        // Save payment
+        const payment = await client.query(
+            `INSERT INTO payments (participant_id, transaction_id, payment_reference, amount, payment_method, payment_status, verified_by_admin, verified_at, created_at)
        VALUES ($1,$2,$3,$4,$5,'Success',false,NOW(),NOW()) RETURNING payment_id, created_at`,
-      [
-        participantId,
-        cleanTransactionId,
-        payment_reference?.trim() || `PAY-${Date.now().toString().slice(-8)}`,
-        totalAmount,
-        payment_method
-      ]
-    );
-    
-    // Update seats (batch update)
-    const eventIds = pending.rows.map(r => r.event_id);
-    await client.query(
-      `UPDATE events SET available_seats = available_seats - 1
+            [
+                participantId,
+                cleanTransactionId,
+                payment_reference?.trim() || `PAY-${Date.now().toString().slice(-8)}`,
+                totalAmount,
+                payment_method
+            ]
+        );
+
+        // Update seats (batch update)
+        const eventIds = pending.rows.map(r => r.event_id);
+        await client.query(
+            `UPDATE events SET available_seats = available_seats - 1
        WHERE event_id = ANY($1::int[])`,
-      [eventIds]
-    );
-    
-    // Mark registrations as confirmed
-    await client.query(
-      `UPDATE registrations SET payment_status = 'Success'
+            [eventIds]
+        );
+
+        // Mark registrations as confirmed
+        await client.query(
+            `UPDATE registrations SET payment_status = 'Success'
        WHERE participant_id = $1 AND payment_status = 'Pending'`,
-      [participantId]
-    );
-    
-    await client.query('COMMIT');
-    
-    // Get all registration IDs (single query)
-    const allRegs = await client.query(
-      `SELECT registration_unique_id FROM registrations 
+            [participantId]
+        );
+
+        await client.query('COMMIT');
+
+        // Get all registration IDs (single query)
+        const allRegs = await client.query(
+            `SELECT registration_unique_id FROM registrations 
        WHERE participant_id = $1 AND payment_status = 'Success'
        ORDER BY registered_at`,
-      [participantId]
-    );
-    
-    const registrationIds = allRegs.rows.map(r => r.registration_unique_id);
-    
-    // Generate QR (fast, no await needed for response)
-    let qrCode = null;
-    try {
-      const qrPayload = { pid: participantId, ids: registrationIds.join('|') };
-      qrCode = await QRCode.toDataURL(JSON.stringify(qrPayload), {
-        errorCorrectionLevel: 'L', margin: 0, width: 200
-      });
-    } catch (e) {}
-    
-    // Fast response
-    return reply.send({
-      success: true,
-      message: '✅ Payment verified!',
-      payment_details: {
-        participant_id: participantId,
-        participant_name: participant.full_name,
-        transaction_id: cleanTransactionId,
-        amount: totalAmount,
-        payment_id: payment.rows[0].payment_id,
-        payment_date: payment.rows[0].created_at
-      },
-      seat_status: {
-        message: '✅ Seats reserved',
-        seats_reserved: pending.rows.length
-      },
-      registration_details: {
-        total_registrations: registrationIds.length,
-        registration_ids: registrationIds,
-        events_registered: pending.rows.map(r => ({
-          event_name: r.event_name,
-          registration_id: r.registration_unique_id,
-          amount: r.amount_paid
-        }))
-      },
-      qr_code: qrCode,
-      qr_payload: { pid: participantId, ids: registrationIds.join('|') }
-    });
-    
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
-    
-    const msg = error.message;
-    if (msg.includes('SEATS_FULL_AT_PAYMENT')) {
-      return reply.code(400).send({ success: false, error: 'SEATS_FULL', details: msg });
+            [participantId]
+        );
+
+        const registrationIds = allRegs.rows.map(r => r.registration_unique_id);
+
+        // Generate QR (fast, no await needed for response)
+        let qrCode = null;
+        try {
+            const qrPayload = { pid: participantId, ids: registrationIds.join('|') };
+            qrCode = await QRCode.toDataURL(JSON.stringify(qrPayload), {
+                errorCorrectionLevel: 'L', margin: 0, width: 200
+            });
+        } catch (e) { }
+
+        // Fast response
+        return reply.send({
+            success: true,
+            message: '✅ Payment verified!',
+            payment_details: {
+                participant_id: participantId,
+                participant_name: participant.full_name,
+                transaction_id: cleanTransactionId,
+                amount: totalAmount,
+                payment_id: payment.rows[0].payment_id,
+                payment_date: payment.rows[0].created_at
+            },
+            seat_status: {
+                message: '✅ Seats reserved',
+                seats_reserved: pending.rows.length
+            },
+            registration_details: {
+                total_registrations: registrationIds.length,
+                registration_ids: registrationIds,
+                events_registered: pending.rows.map(r => ({
+                    event_name: r.event_name,
+                    registration_id: r.registration_unique_id,
+                    amount: r.amount_paid
+                }))
+            },
+            qr_code: qrCode,
+            qr_payload: { pid: participantId, ids: registrationIds.join('|') }
+        });
+
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => { });
+
+        const msg = error.message;
+        if (msg.includes('SEATS_FULL_AT_PAYMENT')) {
+            return reply.code(400).send({ success: false, error: 'SEATS_FULL', details: msg });
+        }
+        if (msg.includes('DUPLICATE_TRANSACTION')) {
+            return reply.code(400).send({ success: false, error: 'DUPLICATE_TRANSACTION' });
+        }
+
+        return reply.code(400).send({
+            success: false,
+            error: 'PAYMENT_FAILED',
+            details: msg
+        });
+
+    } finally {
+        client.release();
     }
-    if (msg.includes('DUPLICATE_TRANSACTION')) {
-      return reply.code(400).send({ success: false, error: 'DUPLICATE_TRANSACTION' });
-    }
-    
-    return reply.code(400).send({ 
-      success: false, 
-      error: 'PAYMENT_FAILED', 
-      details: msg 
-    });
-    
-  } finally {
-    client.release();
-  }
 });
+
 
 fastify.post("/api/admin/verify-payments", async (request, reply) => {
   const client = await pool.connect();
