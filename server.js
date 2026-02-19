@@ -2616,16 +2616,6 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
       body: request.body
     });
     
-    // Handle specific error cases
-    if (error.message.includes('AMOUNT_MISMATCH')) {
-      return reply.code(400).send({
-        success: false,
-        error: 'AMOUNT_MISMATCH',
-        details: error.message,
-        expected: parseFloat(error.message.match(/₹(\d+)/g)?.[0]?.replace('₹', '') || '0'),
-        received: parseFloat(error.message.match(/₹(\d+)/g)?.[1]?.replace('₹', '') || '0')
-      });
-    }
     
     if (error.message.includes('ALL_REGISTRATIONS_ALREADY_PAID')) {
       return reply.code(400).send({
