@@ -2452,35 +2452,37 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
       throw new Error('NO_REGISTRATIONS_FOUND');
     }
     
-    // 5. SEPARATE REGISTRATIONS BY TYPE AND STATUS
-    const pendingWorkshops = registrations.rows.filter(r => 
-      r.payment_status === 'Pending' && r.event_type === 'workshop'
-    );
+    // 5. CHECK IF ANY REGISTRATIONS ARE PENDING
+    const pendingRegs = registrations.rows.filter(r => r.payment_status === 'Pending');
     
-    // For 1st year: Check if they have pending events that need the flat fee
-    const hasPendingEvents = registrations.rows.some(r => 
-      r.payment_status === 'Pending' && r.event_type === 'event'
-    );
-    
-    // Check if there are any pending registrations at all
-    const hasAnyPending = registrations.rows.some(r => r.payment_status === 'Pending');
-    
-    if (!hasAnyPending) {
+    if (pendingRegs.length === 0) {
       throw new Error('ALL_REGISTRATIONS_ALREADY_PAID: No pending payments');
     }
     
-    // 6. CALCULATE EXPECTED TOTAL
+    // 6. CALCULATE EXPECTED TOTAL BASED ON YEAR AND REGISTRATION TYPES
     let expectedTotal = 0;
+    
+    // Count workshops and events separately
+    const pendingWorkshops = pendingRegs.filter(r => r.event_type === 'workshop');
+    const pendingEvents = pendingRegs.filter(r => r.event_type === 'event');
     
     // Add workshop amounts (₹300 each)
     expectedTotal += pendingWorkshops.length * 300;
     
     // For 1st year: Add flat ₹250 if they have any pending events
-    if (year === 1 && hasPendingEvents) {
+    if (year === 1 && pendingEvents.length > 0) {
       expectedTotal += 250;
     }
     
-    // Note: For 2nd-4th year, events are free, so they won't have pending events
+    // For 2nd-4th year: Events are free, so no amount added for events
+    
+    console.log('Payment calculation:', {
+      year,
+      pendingWorkshops: pendingWorkshops.length,
+      pendingEvents: pendingEvents.length,
+      expectedTotal,
+      receivedAmount: amount
+    });
     
     // 7. VERIFY AMOUNT
     if (Math.abs(parseFloat(amount) - expectedTotal) > 0.01) {
@@ -2491,24 +2493,26 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
     await client.query('BEGIN');
     
     // 9. CHECK SEAT AVAILABILITY FOR PENDING REGISTRATIONS
-    for (const reg of registrations.rows) {
-      if (reg.payment_status === 'Pending') {
-        if (reg.cse_available_seats <= 0) {
-          throw new Error(`SEATS_FULL: ${reg.event_name}`);
-        }
+    for (const reg of pendingRegs) {
+      const seatCheck = await client.query(
+        'SELECT cse_available_seats FROM events WHERE event_id = $1',
+        [reg.event_id]
+      );
+      
+      if (seatCheck.rows[0].cse_available_seats <= 0) {
+        throw new Error(`SEATS_FULL: ${reg.event_name}`);
       }
     }
     
     // 10. DECREMENT SEATS FOR PENDING REGISTRATIONS
-    for (const reg of registrations.rows) {
-      if (reg.payment_status === 'Pending') {
-        await client.query(
-          `UPDATE events SET cse_available_seats = cse_available_seats - 1, 
-               available_seats = available_seats - 1
-           WHERE event_id = $1`, 
-          [reg.event_id]
-        );
-      }
+    for (const reg of pendingRegs) {
+      await client.query(
+        `UPDATE events SET 
+           cse_available_seats = cse_available_seats - 1, 
+           available_seats = available_seats - 1
+         WHERE event_id = $1`, 
+        [reg.event_id]
+      );
     }
     
     // 11. SAVE PAYMENT
@@ -2579,7 +2583,7 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
           amount: (year === 1 && events.length > 0) ? 250 : 0,
           items: events.map(e => ({
             name: e.event_name,
-            amount: 0, // Individual events show as 0 since it's a package
+            amount: 0,
             registration_id: e.registration_unique_id
           }))
         }
@@ -2588,20 +2592,40 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
         total_registrations: updatedRegs.rows.length,
         workshops_confirmed: workshops.length,
         events_confirmed: events.length,
-        confirmed_now: registrations.rows.filter(r => r.payment_status === 'Pending').length
+        confirmed_now: pendingRegs.length
       },
       qr_code: qrCode,
       registration_ids: registrationIds,
       message: year === 1 
-        ? events.length > 0 
+        ? events.length > 0 && workshops.length > 0
           ? `Payment verified: ₹250 for ${events.length} event(s) + ₹${workshops.length * 300} for ${workshops.length} workshop(s)`
-          : `Payment verified: ₹${workshops.length * 300} for ${workshops.length} workshop(s)`
+          : events.length > 0
+            ? `Payment verified: ₹250 for ${events.length} event(s)`
+            : `Payment verified: ₹${workshops.length * 300} for ${workshops.length} workshop(s)`
         : `Payment verified: ₹${workshops.length * 300} for ${workshops.length} workshop(s) (events were free)`
     });
     
   } catch (error) {
     await client.query('ROLLBACK');
     fastify.log.error(error);
+    
+    // Log the full error for debugging
+    console.error('Payment verification error:', {
+      message: error.message,
+      stack: error.stack,
+      body: request.body
+    });
+    
+    // Handle specific error cases
+    if (error.message.includes('AMOUNT_MISMATCH')) {
+      return reply.code(400).send({
+        success: false,
+        error: 'AMOUNT_MISMATCH',
+        details: error.message,
+        expected: parseFloat(error.message.match(/₹(\d+)/g)?.[0]?.replace('₹', '') || '0'),
+        received: parseFloat(error.message.match(/₹(\d+)/g)?.[1]?.replace('₹', '') || '0')
+      });
+    }
     
     if (error.message.includes('ALL_REGISTRATIONS_ALREADY_PAID')) {
       return reply.code(400).send({
@@ -2628,7 +2652,6 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
     client.release();
   }
 });
-
 // FAST SIMPLE ENDPOINT for quick loading
 fastify.get('/api/super-admin/quick', async (request, reply) => {
   try {
