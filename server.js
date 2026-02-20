@@ -2343,7 +2343,12 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
       
       // Payment status: For 1st year events, we'll mark them all with the same payment reference
       // For workshops: 'Pending' if amount > 0, 'Success' if free (never happens for workshops)
-      const status = (type === 'workshop') ? 'Pending' : 'Success';
+let status;
+if (type === 'workshop') {
+    status = 'Pending'; // All years pay for workshops
+} else {
+    status = (year === 1) ? 'Pending' : 'Success'; // 1st year pays, others free
+}
       
       await client.query(
         `INSERT INTO registrations (participant_id, event_id, registration_unique_id, payment_status, amount_paid, event_name, day)
