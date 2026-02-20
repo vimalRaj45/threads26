@@ -1909,7 +1909,9 @@ fastify.get('/api/participant/:id/all', async (request, reply) => {
     // 5. Calculate totals
     const totalPaid = registrations.rows.filter(r => r.payment_status === 'Success').length;
     const totalPending = registrations.rows.filter(r => r.payment_status === 'Pending').length;
-    const totalAmount = payments.rows.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+    const totalAmount = payments.rows.length > 0
+    ? payments.rows.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0)
+    : registrations.rows.reduce((sum, r) => sum + parseFloat(r.amount_paid || 0), 0);
     
     // 6. Group registrations by day for easier display
     const registrationsByDay = {
