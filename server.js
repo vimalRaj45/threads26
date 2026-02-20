@@ -2268,9 +2268,20 @@ fastify.post('/api/sonacse/register', async (request, reply) => {
     if (!roll_number) throw new Error('VALIDATION_FAILED: Roll number required');
     if (!email || !email.includes('@')) throw new Error('VALIDATION_FAILED: Valid email required');
     if (!phone || phone.replace(/\D/g, '').length < 10) throw new Error('VALIDATION_FAILED: Valid phone required');
+
+    
     
     const year = parseInt(year_of_study);
     if (![1,2,3,4].includes(year)) throw new Error('VALIDATION_FAILED: Year must be 1-4');
+
+
+    // MUST SELECT AT LEAST ONE EVENT OR ONE WORKSHOP
+if (
+  (!Array.isArray(event_selections) || event_selections.length === 0) &&
+  (!Array.isArray(workshop_selections) || workshop_selections.length === 0)
+) {
+  throw new Error('SELECTION_REQUIRED: Select at least one event or one workshop');
+}
     
     // 2. VALIDATE SONACSE STUDENT - Using only sonacse_students table
     const cleanRoll = roll_number.trim().toUpperCase();
