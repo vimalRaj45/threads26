@@ -13,11 +13,6 @@ import { fileURLToPath } from 'url';
 import moment from 'moment';
 import rateLimit from '@fastify/rate-limit';
 
-
-
-
-
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -34,7 +29,7 @@ const allowedOrigins = [
   'https://threadscse.co.in',
   'https://threads26.netlify.app',
   'https://vimalraj45.github.io',
-  'http://localhost:4545',
+  process.env.LOCAL_URL,
 ];
 
 await fastify.register(cors, {
