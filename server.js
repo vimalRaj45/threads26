@@ -32,7 +32,8 @@ const fastify = Fastify({
 // -------------------- CORS Configuration (Strict) --------------------
 const allowedOrigins = [
   'https://threadscse.co.in',
-  'https://threads26.netlify.app'
+  'https://threads26.netlify.app',
+  'http://localhost:5173',
 ];
 
 await fastify.register(cors, {
