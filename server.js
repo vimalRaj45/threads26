@@ -16,6 +16,8 @@ import rateLimit from '@fastify/rate-limit';
 
 
 
+
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -27,6 +29,40 @@ const fastify = Fastify({
   bodyLimit: 10485760
 });
 
+// -------------------- CORS Configuration (Strict) --------------------
+const allowedOrigins = [
+  'https://threadscse.co.in',
+  'https://threads26.netlify.app'
+];
+
+await fastify.register(cors, {
+  origin: (origin, cb) => {
+    // Log all requests for debugging
+    fastify.log.info(`CORS request from origin: ${origin || 'No origin'}`);
+    
+    // STRICT: Only allow exact matches from allowedOrigins
+    // No origin = block (this prevents localhost/curl/postman)
+    if (!origin) {
+      fastify.log.warn('Blocked request with no origin');
+      cb(new Error('Not allowed by CORS'), false);
+      return;
+    }
+
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      cb(null, true);
+    } else {
+      fastify.log.warn(`Blocked CORS request from unauthorized origin: ${origin}`);
+      cb(new Error('Not allowed by CORS'), false);
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: true,
+  optionsSuccessStatus: 200
+});
+
+
 
 // -------------------- PostgreSQL Setup --------------------
 const pool = new Pool({
@@ -36,9 +72,6 @@ const pool = new Pool({
     : false,
     max: 12,
 });
-
-
-
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL,
@@ -68,12 +101,6 @@ const EVENT_DATES = {
 };
 
 
-
-
-
-
-// -------------------- Plugin Registration --------------------
-await fastify.register(cors, { origin: '*' });
 await fastify.register(formbody);
 await fastify.register(multipart);
 await fastify.register(staticPlugin, {
@@ -2736,7 +2763,7 @@ const start = async () => {
   try {
     await fastify.listen({
       port: PORT,
-      host: '0.0.0.0' // REQUIRED for deployment
+      host: '0.0.0.0' 
     });
 
     console.log(`🚀 Server running on port ${PORT}`);
