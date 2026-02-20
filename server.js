@@ -34,7 +34,7 @@ const allowedOrigins = [
   'https://threadscse.co.in',
   'https://threads26.netlify.app',
   'https://vimalraj45.github.io',
-  'http://localhost:5173',
+  'http://localhost:4545',
 ];
 
 await fastify.register(cors, {
