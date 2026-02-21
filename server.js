@@ -26,13 +26,28 @@ const fastify = Fastify({
   bodyLimit: 10485760
 });
 
-/* -------------------- CORS (SAFE FOR DEV + PROD) -------------------- */
+/* -------------------- CORS (PRODUCTION SAFE) -------------------- */
+const allowedOrigins = new Set([
+  'https://threadscse.co.in'
+]);
+
 await fastify.register(cors, {
-  origin: true, // reflect request origin
+  origin: (origin, cb) => {
+    // Block non-browser requests (curl/postman)
+    if (!origin) {
+      return cb(new Error('Not allowed by CORS'), false);
+    }
+
+    if (allowedOrigins.has(origin)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Not allowed by CORS'), false);
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'X-API-KEY'],
+  credentials: true
 });
-
 
 await fastify.register(helmet);
 
