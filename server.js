@@ -24,15 +24,18 @@ const fastify = Fastify({
   bodyLimit: 10485760
 });
 
+/* -------------------- CORS (SAFE FOR DEV + PROD) -------------------- */
 await fastify.register(cors, {
-  origin: true, // allow origin reflection (safe with API key)
+  origin: true, // reflect request origin
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'X-API-KEY'],
 });
 
+
+/* -------------------- API KEY SECURITY -------------------- */
 fastify.addHook('preHandler', async (request, reply) => {
 
-  // Only protect API routes
+  // Protect only /api routes
   if (!request.url.startsWith('/api')) return;
 
   // Allow preflight
@@ -42,17 +45,17 @@ fastify.addHook('preHandler', async (request, reply) => {
   const validKey = process.env.API_SECRET_KEY;
 
   if (!validKey) {
-    fastify.log.error('API_SECRET_KEY missing');
-    return reply.code(500).send({ error: 'Server misconfigured' });
+    return reply.code(500).send({
+      error: 'Server misconfigured: API_SECRET_KEY missing',
+    });
   }
 
   if (!apiKey || apiKey !== validKey) {
     return reply.code(401).send({
-      error: 'Unauthorized: Invalid API key'
+      error: 'Unauthorized: Invalid API key',
     });
   }
 });
-
 
 // -------------------- PostgreSQL Setup --------------------
 const pool = new Pool({
