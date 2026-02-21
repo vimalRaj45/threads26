@@ -230,49 +230,118 @@ fastify.post('/api/send-otp', async (request, reply) => {
         to: [{ email, name }],
         subject: '🔐 OTP Verification - ThreadCSE\'26 Registration',
         htmlContent: `<!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          </head>
-          <body style="margin:0; padding:0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f4f7fb;">
-            <div style="max-width: 480px; margin: 30px auto; background: #ffffff; border-radius: 28px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);">
-              <div style="height: 8px; background: linear-gradient(90deg, #4158D0, #C850C0, #FFCC70);"></div>
-              <div style="padding: 40px 35px;">
-                <div style="text-align: center; margin-bottom: 25px;">
-                  <span style="font-size: 40px;">🔐</span>
-                  <h1 style="color: #1a1e2b; font-size: 24px; font-weight: 700; margin: 10px 0 0;">ThreadCSE'26</h1>
-                </div>
-                <div style="margin-bottom: 30px;">
-                  <h2 style="color: #1a1e2b; font-size: 18px; font-weight: 600; margin: 0 0 5px;">Hello, ${name}!</h2>
-                  <p style="color: #4b5565; font-size: 15px; line-height: 1.6; margin: 0;">Use this verification code to complete your registration:</p>
-                </div>
-                <div style="background: linear-gradient(145deg, #f6f9fc, #ffffff); border-radius: 24px; padding: 25px; text-align: center; margin: 25px 0; border: 2px solid #eef2f6;">
-                  <span style="display: inline-block; background: #4158D0; color: white; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 30px; letter-spacing: 0.5px; margin-bottom: 20px;">VERIFICATION CODE</span>
-                  <div style="font-size: 48px; font-weight: 700; color: #4158D0; letter-spacing: 8px; font-family: monospace;">${otp}</div>
-                  <p style="color: #6b7280; font-size: 13px; margin: 20px 0 0; border-top: 2px dashed #eef2f6; padding-top: 20px;">
-                    ⏰ Expires in <strong style="color: #4158D0;">5 minutes</strong>
-                  </p>
-                </div>
-                <div style="background: #f8faff; border-radius: 18px; padding: 20px; margin: 25px 0;">
-                  <div style="display: flex; gap: 12px;">
-                    <span style="font-size: 22px;">ℹ️</span>
-                    <div>
-                      <p style="color: #1a1e2b; font-size: 14px; font-weight: 600; margin: 0 0 5px;">Didn't request this?</p>
-                      <p style="color: #4b5565; font-size: 13px; line-height: 1.5; margin: 0;">If you didn't attempt to register, please ignore this email.</p>
-                    </div>
-                  </div>
-                </div>
-                <div style="text-align: center; margin-top: 30px;">
-                  <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-                    © 2026 ThreadCSE'26 · All rights reserved<br>
-                    <span style="color: #d1d5db;">This is an automated message</span>
-                  </p>
-                </div>
-              </div>
-            </div>
-          </body>
-          </html>` 
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Secure Verification</title>
+</head>
+
+<body style="margin:0;padding:0;background:#05070d;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0;background:#05070d;">
+<tr>
+<td align="center">
+
+<!-- Container -->
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#0b0f1a;border-radius:18px;overflow:hidden;box-shadow:0 0 40px rgba(0,255,255,0.15);">
+
+<!-- Neon Top Bar -->
+<tr>
+<td style="height:4px;background:linear-gradient(90deg,#00f0ff,#8a2eff,#ff2ed9);"></td>
+</tr>
+
+<tr>
+<td style="padding:30px 24px;">
+
+<!-- Header -->
+<div style="text-align:center;margin-bottom:22px;">
+
+<!-- BI Lock Fill -->
+<svg width="42" height="42" viewBox="0 0 16 16" fill="#00f0ff" xmlns="http://www.w3.org/2000/svg">
+  <path d="M8 1a4 4 0 0 0-4 4v3H3a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1h-1V5a4 4 0 0 0-4-4zm3 7H5V5a3 3 0 0 1 6 0v3z"/>
+</svg>
+
+<div style="margin-top:10px;font-size:20px;font-weight:700;letter-spacing:1px;color:#e6f9ff;">
+THREADCSE<span style="color:#00f0ff;">_</span>26
+</div>
+
+<div style="font-size:12px;color:#7df9ff;letter-spacing:2px;margin-top:4px;">
+SECURE ACCESS NODE
+</div>
+</div>
+
+<!-- Greeting -->
+<p style="margin:0;font-size:15px;font-weight:600;color:#e6f9ff;">
+Hello, ${name}
+</p>
+<p style="margin:8px 0 0;font-size:13px;line-height:1.6;color:#9adfe6;">
+Authorize your access using the encrypted verification key below.
+</p>
+
+<!-- OTP Box -->
+<div style="margin:26px 0;padding:22px;border-radius:14px;
+background:linear-gradient(145deg,#0e1424,#060a16);
+border:1px solid rgba(0,255,255,0.25);
+text-align:center;">
+
+<div style="display:inline-block;font-size:11px;font-weight:700;
+color:#00f0ff;letter-spacing:2px;margin-bottom:14px;">
+VERIFICATION KEY
+</div>
+
+<div style="font-size:34px;font-weight:800;letter-spacing:6px;
+color:#00f0ff;font-family:'Courier New',monospace;">
+${otp}
+</div>
+
+<div style="margin-top:16px;font-size:12px;color:#8bdfe6;
+border-top:1px dashed rgba(0,255,255,0.3);padding-top:12px;">
+⏳ Session expires in <strong style="color:#ff2ed9;">5 minutes</strong>
+</div>
+
+</div>
+
+<!-- Warning Box -->
+<div style="background:#0a1222;border-radius:12px;padding:16px;margin-bottom:22px;border:1px solid rgba(255,46,217,0.25);">
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr>
+<td width="26" valign="top">
+
+<!-- BI Info Circle Fill -->
+<svg width="20" height="20" viewBox="0 0 16 16" fill="#ff2ed9" xmlns="http://www.w3.org/2000/svg">
+  <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-11.588a.5.5 0 1 1-.86-.512.5.5 0 0 1 .86.512zM8 6.002a.905.905 0 0 1 .9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 6.997A.905.905 0 0 1 8 6.002z"/>
+</svg>
+
+</td>
+<td style="padding-left:10px;">
+<div style="font-size:13px;font-weight:600;color:#ffd6f3;">
+Unauthorized request?
+</div>
+<div style="font-size:12px;color:#c6d9e6;line-height:1.5;margin-top:4px;">
+Ignore this message if you did not initiate this access request.
+</div>
+</td>
+</tr>
+</table>
+</div>
+
+<!-- Footer -->
+<p style="margin:0;text-align:center;font-size:11px;color:#6fbfd0;letter-spacing:0.5px;">
+© 2026 THREADCSE_26<br>
+<span style="color:#4fa3b3;">AUTOMATED • DO NOT REPLY</span>
+</p>
+
+</td>
+</tr>
+</table>
+
+</td>
+</tr>
+</table>
+
+</body>
+</html>` 
       },
       {
         headers: {
