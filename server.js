@@ -7,10 +7,12 @@ import pg from 'pg';
 import dotenv from 'dotenv';
 import { Redis } from '@upstash/redis';
 import QRCode from 'qrcode';
+import helmet from '@fastify/helmet';
 import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import moment from 'moment';
+import axios from 'axios';
 import rateLimit from '@fastify/rate-limit';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -24,38 +26,40 @@ const fastify = Fastify({
   bodyLimit: 10485760
 });
 
-// /* -------------------- CORS (SAFE FOR DEV + PROD) -------------------- */
-// await fastify.register(cors, {
-//   origin: true, // reflect request origin
-//   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-//   allowedHeaders: ['Content-Type', 'X-API-KEY'],
-// });
+/* -------------------- CORS (SAFE FOR DEV + PROD) -------------------- */
+await fastify.register(cors, {
+  origin: true, // reflect request origin
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'X-API-KEY'],
+});
 
 
-// /* -------------------- API KEY SECURITY -------------------- */
-// fastify.addHook('preHandler', async (request, reply) => {
+await fastify.register(helmet);
 
-//   // Protect only /api routes
-//   if (!request.url.startsWith('/api')) return;
+/* -------------------- API KEY SECURITY -------------------- */
+fastify.addHook('preHandler', async (request, reply) => {
 
-//   // Allow preflight
-//   if (request.method === 'OPTIONS') return;
+  // Protect only /api routes
+  if (!request.url.startsWith('/api')) return;
 
-//   const apiKey = request.headers['x-api-key'];
-//   const validKey = process.env.API_SECRET_KEY;
+  // Allow preflight
+  if (request.method === 'OPTIONS') return;
 
-//   if (!validKey) {
-//     return reply.code(500).send({
-//       error: 'Server misconfigured: API_SECRET_KEY missing',
-//     });
-//   }
+  const apiKey = request.headers['x-api-key'];
+  const validKey = process.env.API_SECRET_KEY;
 
-//   if (!apiKey || apiKey !== validKey) {
-//     return reply.code(401).send({
-//       error: 'Unauthorized: Invalid API key',
-//     });
-//   }
-// });
+  if (!validKey) {
+    return reply.code(500).send({
+      error: 'Server misconfigured: API_SECRET_KEY missing',
+    });
+  }
+
+  if (!apiKey || apiKey !== validKey) {
+    return reply.code(401).send({
+      error: 'Unauthorized: Invalid API key',
+    });
+  }
+});
 
 // -------------------- PostgreSQL Setup --------------------
 const pool = new Pool({
@@ -168,21 +172,247 @@ fastify.get('/api/events', async (request, reply) => {
   }
 });
 
+fastify.post('/api/send-otp', async (request, reply) => {
+  try {
+    const { email, name } = request.body;
+
+    if (!email || !name) {
+      return reply.code(400).send({
+        success: false,
+        message: 'Email and name are required'
+      });
+    }
+
+    // Check if email already registered
+    const existing = await pool.query(
+      'SELECT 1 FROM participants WHERE LOWER(email)=LOWER($1)',
+      [email]
+    );
+    
+    if (existing.rows.length > 0) {
+      return reply.code(400).send({
+        success: false,
+        error: 'EMAIL_EXISTS',
+        message: 'This email is already registered'
+      });
+    }
+
+    // Generate OTP
+    const otp = Math.floor(100000 + Math.random() * 900000);
+    
+    // Store in Redis with 5 min expiry
+    const otpKey = `otp:${email.toLowerCase()}`;
+    await redis.setex(otpKey, 300, otp.toString());
+
+    // Send email via Brevo (your existing code)
+    const emailResponse = await axios.post(
+      'https://api.brevo.com/v3/smtp/email',
+      {
+        sender: {
+          email: process.env.SENDER_EMAIL,
+          name: process.env.SENDER_NAME || 'ThreadCSE\'26'
+        },
+        to: [{ email, name }],
+        subject: '🔐 OTP Verification - ThreadCSE\'26 Registration',
+        htmlContent: `<!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          </head>
+          <body style="margin:0; padding:0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f4f7fb;">
+            <div style="max-width: 480px; margin: 30px auto; background: #ffffff; border-radius: 28px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);">
+              <div style="height: 8px; background: linear-gradient(90deg, #4158D0, #C850C0, #FFCC70);"></div>
+              <div style="padding: 40px 35px;">
+                <div style="text-align: center; margin-bottom: 25px;">
+                  <span style="font-size: 40px;">🔐</span>
+                  <h1 style="color: #1a1e2b; font-size: 24px; font-weight: 700; margin: 10px 0 0;">ThreadCSE'26</h1>
+                </div>
+                <div style="margin-bottom: 30px;">
+                  <h2 style="color: #1a1e2b; font-size: 18px; font-weight: 600; margin: 0 0 5px;">Hello, ${name}!</h2>
+                  <p style="color: #4b5565; font-size: 15px; line-height: 1.6; margin: 0;">Use this verification code to complete your registration:</p>
+                </div>
+                <div style="background: linear-gradient(145deg, #f6f9fc, #ffffff); border-radius: 24px; padding: 25px; text-align: center; margin: 25px 0; border: 2px solid #eef2f6;">
+                  <span style="display: inline-block; background: #4158D0; color: white; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 30px; letter-spacing: 0.5px; margin-bottom: 20px;">VERIFICATION CODE</span>
+                  <div style="font-size: 48px; font-weight: 700; color: #4158D0; letter-spacing: 8px; font-family: monospace;">${otp}</div>
+                  <p style="color: #6b7280; font-size: 13px; margin: 20px 0 0; border-top: 2px dashed #eef2f6; padding-top: 20px;">
+                    ⏰ Expires in <strong style="color: #4158D0;">5 minutes</strong>
+                  </p>
+                </div>
+                <div style="background: #f8faff; border-radius: 18px; padding: 20px; margin: 25px 0;">
+                  <div style="display: flex; gap: 12px;">
+                    <span style="font-size: 22px;">ℹ️</span>
+                    <div>
+                      <p style="color: #1a1e2b; font-size: 14px; font-weight: 600; margin: 0 0 5px;">Didn't request this?</p>
+                      <p style="color: #4b5565; font-size: 13px; line-height: 1.5; margin: 0;">If you didn't attempt to register, please ignore this email.</p>
+                    </div>
+                  </div>
+                </div>
+                <div style="text-align: center; margin-top: 30px;">
+                  <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+                    © 2026 ThreadCSE'26 · All rights reserved<br>
+                    <span style="color: #d1d5db;">This is an automated message</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+          </body>
+          </html>` 
+      },
+      {
+        headers: {
+          'api-key': process.env.BREVO_API_KEY,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    // FOR TESTING: Return OTP in response (REMOVE IN PRODUCTION)
+    return reply.send({
+      success: true,
+      message: 'OTP sent successfully'
+    });
+
+  } catch (error) {
+    fastify.log.error(error);
+    return reply.code(500).send({
+      success: false,
+      message: 'Failed to send OTP'
+    });
+  }
+});
+
+
+
+fastify.post('/api/verify-otp', async (request, reply) => {
+  try {
+    const { email, otp } = request.body;
+
+    console.log('Verifying OTP:', { email, otp }); // Debug log
+
+    if (!email || !otp) {
+      return reply.code(400).send({
+        success: false,
+        error: 'MISSING_FIELDS',
+        message: 'Email and OTP are required'
+      });
+    }
+
+    // Check if email already registered
+    const existing = await pool.query(
+      'SELECT 1 FROM participants WHERE LOWER(email)=LOWER($1)',
+      [email]
+    );
+    
+    if (existing.rows.length > 0) {
+      return reply.code(400).send({
+        success: false,
+        error: 'EMAIL_EXISTS',
+        message: 'This email is already registered'
+      });
+    }
+
+    // Get OTP from Redis
+    const otpKey = `otp:${email.toLowerCase()}`;
+    const storedOTP = await redis.get(otpKey);
+    
+    console.log('Stored OTP:', storedOTP, 'Type:', typeof storedOTP);
+    console.log('Received OTP:', otp, 'Type:', typeof otp);
+
+    if (!storedOTP) {
+      return reply.code(400).send({
+        success: false,
+        error: 'OTP_EXPIRED',
+        message: 'OTP has expired. Please request a new one.'
+      });
+    }
+    
+    // IMPORTANT: Convert both to strings for comparison
+    if (storedOTP.toString() !== otp.toString()) {
+      // Track failed attempts
+      const attemptsKey = `otp_attempts:${email.toLowerCase()}`;
+      const attempts = await redis.incr(attemptsKey);
+      await redis.expire(attemptsKey, 300);
+      
+      if (attempts >= 5) {
+        await redis.del(otpKey);
+        return reply.code(400).send({
+          success: false,
+          error: 'OTP_LOCKED',
+          message: 'Too many failed attempts. Please request a new OTP.'
+        });
+      }
+      
+      return reply.code(400).send({
+        success: false,
+        error: 'OTP_INVALID',
+        message: 'Invalid OTP. Please try again.',
+        attempts_left: 5 - attempts
+      });
+    }
+    
+    // OTP verified successfully
+    await redis.del(otpKey);
+    await redis.del(`otp_attempts:${email.toLowerCase()}`);
+    
+    // Generate verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    
+    // Store token in Redis with email reference
+    const tokenKey = `verify_token:${verificationToken}`;
+    await redis.setex(tokenKey, 900, email.toLowerCase()); // 15 minutes
+
+    return reply.send({
+      success: true,
+      message: 'OTP verified successfully',
+      verification_token: verificationToken,
+      expires_in: '15 minutes',
+      email: email
+    });
+
+  } catch (error) {
+    fastify.log.error(error);
+    return reply.code(500).send({
+      success: false,
+      error: 'SERVER_ERROR',
+      message: 'Failed to verify OTP'
+    });
+  }
+});
 
 fastify.post('/api/register', async (request, reply) => {
     let client = null;
 
     try {
-        // ===========================================
-        // PHASE 1: FAST VALIDATION (No DB)
-        // ===========================================
         const body = request.body;
 
-        // Quick validation with early returns
+        // ========== VALIDATION ==========
         if (!body.full_name?.trim()) throw new Error('VALIDATION_FAILED: Full name is required');
         if (!body.email?.trim()) throw new Error('VALIDATION_FAILED: Email is required');
         if (!body.email.includes('@')) throw new Error('VALIDATION_FAILED: Invalid email format');
+        
+        // VERIFICATION TOKEN CHECK (instead of OTP)
+        if (!body.verification_token) {
+            throw new Error('VERIFICATION_REQUIRED: Please verify OTP first');
+        }
+        
+        // Verify token from Redis
+        const tokenKey = `verify_token:${body.verification_token}`;
+        const verifiedEmail = await redis.get(tokenKey);
+        
+        if (!verifiedEmail) {
+            throw new Error('VERIFICATION_EXPIRED: OTP verification expired. Please verify again.');
+        }
+        
+        // Check if token email matches request email
+        if (verifiedEmail !== body.email.toLowerCase()) {
+            throw new Error('EMAIL_MISMATCH: Verified email does not match registration email');
+        }
+        
+        // Token verified - delete it (one-time use)
+        await redis.del(tokenKey);
 
+        // Phone validation
         const cleanPhone = body.phone?.replace(/\D/g, '') || '';
         if (cleanPhone.length < 10) throw new Error('VALIDATION_FAILED: Valid phone required');
 
@@ -206,23 +436,21 @@ fastify.post('/api/register', async (request, reply) => {
             throw new Error('REGISTRATION_CLOSED');
         }
 
-        // ===========================================
-        // PHASE 2: CONNECT & EXECUTE (Optimized)
-        // ===========================================
+        // ========== DATABASE OPERATIONS ==========
         client = await pool.connect();
         await client.query('BEGIN');
 
-        // Check duplicate email (single query)
+        // Final duplicate check (race condition prevention)
         const existing = await client.query(
             'SELECT 1 FROM participants WHERE LOWER(email)=LOWER($1)',
             [body.email]
         );
         if (existing.rows.length > 0) throw new Error('EMAIL_EXISTS');
 
-        // Insert participant (faster with fewer fields)
+        // Insert participant
         const participant = await client.query(
             `INSERT INTO participants (full_name, email, phone, college_name, department, year_of_study, gender, city, state, accommodation_required)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING participant_id`,
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING participant_id`,
             [
                 body.full_name.trim(),
                 body.email.toLowerCase().trim(),
@@ -239,25 +467,24 @@ fastify.post('/api/register', async (request, reply) => {
 
         const participantId = participant.rows[0].participant_id;
         const registrationIds = [];
-        let totalAmount = 0; // Initialize as number
+        let totalAmount = 0;
 
-        // FIXED PRICING FOR OTHER COLLEGES:
-        const WORKSHOP_FEE = 400;   // ₹400 per workshop
-        const EVENT_FLAT_FEE = 300; // ₹300 flat for ALL events combined (regardless of count)
+        // Pricing
+        const WORKSHOP_FEE = 400;
+        const EVENT_FLAT_FEE = 300;
 
-        // OPTIMIZED: Single query to get all event details
+        // Get all event details
         const allEventIds = [...workshopSelections, ...eventSelections].map(id => parseInt(id));
         const eventDetails = await client.query(
             `SELECT event_id, event_name, fee, day, event_type, available_seats 
-       FROM events WHERE event_id = ANY($1::int[]) AND is_active = true`,
+             FROM events WHERE event_id = ANY($1::int[]) AND is_active = true`,
             [allEventIds]
         );
 
-        // Create map for O(1) lookup
         const eventMap = new Map();
         eventDetails.rows.forEach(e => eventMap.set(e.event_id, e));
 
-        // Process workshops - ₹400 each
+        // Process workshops
         for (const eventId of workshopSelections) {
             const e = eventMap.get(parseInt(eventId));
             if (!e) throw new Error(`WORKSHOP_NOT_FOUND: ${eventId}`);
@@ -268,7 +495,7 @@ fastify.post('/api/register', async (request, reply) => {
 
             await client.query(
                 `INSERT INTO registrations (participant_id, event_id, registration_unique_id, payment_status, amount_paid, event_name, day)
-         VALUES ($1,$2,$3,'Pending',$4,$5,$6)`,
+                 VALUES ($1,$2,$3,'Pending',$4,$5,$6)`,
                 [participantId, eventId, regId, WORKSHOP_FEE, e.event_name, e.day]
             );
 
@@ -276,8 +503,7 @@ fastify.post('/api/register', async (request, reply) => {
             totalAmount += WORKSHOP_FEE;
         }
 
-        // Process events - flat ₹300 for ALL events combined
-        // First event carries the full ₹300, rest are ₹0 (package deal)
+        // Process events
         let eventFeeAssigned = false;
         for (const eventId of eventSelections) {
             const e = eventMap.get(parseInt(eventId));
@@ -285,7 +511,6 @@ fastify.post('/api/register', async (request, reply) => {
             if (e.available_seats <= 0) throw new Error(`SEATS_FULL: ${e.event_name}`);
 
             const regId = `THREADS26-EV-${Date.now()}-${eventId}`;
-            // Flat ₹300 for the package: first event holds the fee, rest are 0
             const fee = eventFeeAssigned ? 0 : EVENT_FLAT_FEE;
             if (!eventFeeAssigned) {
                 totalAmount += EVENT_FLAT_FEE;
@@ -294,7 +519,7 @@ fastify.post('/api/register', async (request, reply) => {
 
             await client.query(
                 `INSERT INTO registrations (participant_id, event_id, registration_unique_id, payment_status, amount_paid, event_name, day)
-         VALUES ($1,$2,$3,'Pending',$4,$5,$6)`,
+                 VALUES ($1,$2,$3,'Pending',$4,$5,$6)`,
                 [participantId, eventId, regId, fee, e.event_name, e.day]
             );
 
@@ -303,10 +528,8 @@ fastify.post('/api/register', async (request, reply) => {
 
         await client.query('COMMIT');
 
-        // Format amount to 2 decimal places
         const formattedAmount = parseFloat(totalAmount.toFixed(2));
 
-        // Fast response
         return reply.code(201).send({
             success: true,
             message: 'Registration successful!',
@@ -317,7 +540,6 @@ fastify.post('/api/register', async (request, reply) => {
             events_registered: eventSelections.length,
             total_amount: formattedAmount,
             payment_reference: `THREADS26-${participantId}-${Date.now().toString().slice(-6)}`,
-            seat_status: { message: 'Seats checked - pay to reserve' },
             payment_options: {
                 upi_id: process.env.UPI_ID || 'threads26@okaxis',
                 amount: formattedAmount
@@ -333,6 +555,9 @@ fastify.post('/api/register', async (request, reply) => {
         if (client) await client.query('ROLLBACK').catch(() => { });
 
         const msg = error.message;
+        if (msg.includes('VERIFICATION_REQUIRED')) return reply.code(400).send({ success: false, error: 'VERIFICATION_REQUIRED', details: msg });
+        if (msg.includes('VERIFICATION_EXPIRED')) return reply.code(400).send({ success: false, error: 'VERIFICATION_EXPIRED', details: msg });
+        if (msg.includes('EMAIL_MISMATCH')) return reply.code(400).send({ success: false, error: 'EMAIL_MISMATCH', details: msg });
         if (msg.includes('SEATS_FULL')) return reply.code(400).send({ success: false, error: 'SEATS_FULL', details: msg });
         if (msg.includes('VALIDATION_FAILED')) return reply.code(400).send({ success: false, error: 'VALIDATION_FAILED', details: msg });
         if (msg.includes('EMAIL_EXISTS')) return reply.code(400).send({ success: false, error: 'EMAIL_EXISTS' });
@@ -342,6 +567,7 @@ fastify.post('/api/register', async (request, reply) => {
         if (client) client.release();
     }
 });
+
 
 fastify.post('/api/verify-payment', async (request, reply) => {
     const client = await pool.connect();
