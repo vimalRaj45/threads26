@@ -54,7 +54,7 @@ await fastify.register(cors, {
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-KEY'],
   credentials: true,
   optionsSuccessStatus: 200
 });
