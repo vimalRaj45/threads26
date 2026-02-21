@@ -26,9 +26,9 @@ const fastify = Fastify({
   bodyLimit: 10485760
 });
 
-/* -------------------- CORS (PRODUCTION SAFE) -------------------- */
 const allowedOrigins = new Set([
-  'https://threadscse.co.in'
+  'https://threadscse.co.in',
+  'http://localhost:5173'
 ]);
 
 await fastify.register(cors, {
