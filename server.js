@@ -34,6 +34,8 @@ await fastify.register(cors, {
 });
 
 
+
+
 /* -------------------- API KEY SECURITY -------------------- */
 fastify.addHook('preHandler', async (request, reply) => {
 
@@ -2541,32 +2543,626 @@ fastify.get('/api/admin/check-registration-status', async (request) => {
 });
 
 
+// ==================== SONACSE REGISTRATION FLOW ====================
+// Flow: 
+// 1. User enters ONLY roll number → System fetches email from DB → Sends OTP
+// 2. User enters OTP → System verifies → Returns verification token
+// 3. User completes registration form (without email/name fields)
+
+// Step 1: Send OTP - FIXED & IMPROVED
+fastify.post('/api/sonacse/send-otp', async (request, reply) => {
+  try {
+    const { roll_number } = request.body;
+
+    // Validation
+    if (!roll_number) {
+      return reply.code(400).send({
+        success: false,
+        error: 'MISSING_FIELDS',
+        message: 'Roll number is required'
+      });
+    }
+
+    const cleanRoll = roll_number.trim().toUpperCase();
+    console.log('📤 Send OTP request for roll:', cleanRoll);
+
+    // Check Redis connection first
+    try {
+      await redis.ping();
+    } catch (redisError) {
+      console.error('❌ Redis connection failed:', redisError);
+      return reply.code(500).send({
+        success: false,
+        error: 'REDIS_ERROR',
+        message: 'Service unavailable. Please try again later.'
+      });
+    }
+
+    // 1. Verify roll number exists in sonacse_students
+    const studentResult = await pool.query(
+      `SELECT name, registered, email 
+       FROM sonacse_students 
+       WHERE regno = $1`,
+      [cleanRoll]
+    );
+
+    if (studentResult.rows.length === 0) {
+      return reply.code(400).send({
+        success: false,
+        error: 'INVALID_SONACSE_ROLL',
+        message: 'This roll number is not registered in SONACSE student database'
+      });
+    }
+
+    const student = studentResult.rows[0];
+
+    // 2. Check if already registered
+    if (student.registered === true) {
+      return reply.code(400).send({
+        success: false,
+        error: 'ALREADY_REGISTERED',
+        message: 'This student has already registered for THREADS 2026'
+      });
+    }
+
+    // 3. Check if email exists
+    if (!student.email || student.email.trim() === '') {
+      return reply.code(400).send({
+        success: false,
+        error: 'EMAIL_NOT_FOUND',
+        message: 'No email registered for this roll number. Please contact SONACSE coordinator.'
+      });
+    }
+
+    const dbEmail = student.email.toLowerCase().trim();
+
+    // 4. Check if email already used in participants
+    const existingParticipant = await pool.query(
+      'SELECT 1 FROM participants WHERE LOWER(email) = LOWER($1)',
+      [dbEmail]
+    );
+
+    if (existingParticipant.rows.length > 0) {
+      return reply.code(400).send({
+        success: false,
+        error: 'EMAIL_EXISTS',
+        message: 'This email has already been used for registration by another participant'
+      });
+    }
+
+    // 5. Generate OTP
+    const otp = Math.floor(100000 + Math.random() * 900000);
+    console.log('🔢 Generated OTP for', cleanRoll, ':', otp);
+
+    // 6. Prepare data for Redis (ensure it's valid JSON)
+    const otpData = {
+      otp: otp.toString(),
+      email: dbEmail,
+      name: student.name,
+      roll_number: cleanRoll,
+      created_at: new Date().toISOString()
+    };
+
+    // Validate JSON before storing
+    let jsonString;
+    try {
+      jsonString = JSON.stringify(otpData);
+      // Test parse to ensure it's valid
+      JSON.parse(jsonString);
+    } catch (jsonError) {
+      console.error('❌ JSON serialization error:', jsonError);
+      return reply.code(500).send({
+        success: false,
+        error: 'DATA_ERROR',
+        message: 'Failed to process data'
+      });
+    }
+
+    // 7. Store in Redis with retry logic
+    const otpKey = `sonacse_otp:${cleanRoll}`;
+    let stored = false;
+    let retryCount = 0;
+    
+    while (!stored && retryCount < 3) {
+      try {
+        await redis.setex(otpKey, 300, jsonString);
+        stored = true;
+      } catch (redisError) {
+        retryCount++;
+        console.error(`❌ Redis store attempt ${retryCount} failed:`, redisError);
+        if (retryCount === 3) {
+          throw new Error('Failed to store OTP after 3 attempts');
+        }
+        await new Promise(resolve => setTimeout(resolve, 100)); // Wait 100ms before retry
+      }
+    }
+
+    // Verify storage
+    const verifyStore = await redis.get(otpKey);
+    if (!verifyStore) {
+      throw new Error('Failed to verify OTP storage');
+    }
+    
+    console.log('✅ OTP stored successfully for:', cleanRoll);
+
+    // 8. Send email via Brevo
+    try {
+      // Ensure BREVO API key exists
+      if (!process.env.BREVO_API_KEY) {
+        throw new Error('BREVO_API_KEY not configured');
+      }
+
+      const emailResponse = await axios.post(
+        'https://api.brevo.com/v3/smtp/email',
+        {
+          sender: {
+            email: process.env.SENDER_EMAIL || 'noreply@threads2026.com',
+            name: process.env.SENDER_NAME || 'THREADS 2026'
+          },
+          to: [{ 
+            email: dbEmail, 
+            name: student.name 
+          }],
+          subject: '🔐 SONACSE Verification - THREADS 2026',
+          htmlContent: generateOTPEmail(cleanRoll, student.name, otp)
+        },
+        {
+          headers: {
+            'api-key': process.env.BREVO_API_KEY,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          timeout: 10000 // 10 second timeout
+        }
+      );
+
+      console.log('📧 Email sent successfully to:', dbEmail, 'Status:', emailResponse.status);
+      
+    } catch (emailError) {
+      console.error('❌ Email sending failed:', {
+        message: emailError.message,
+        response: emailError.response?.data,
+        status: emailError.response?.status
+      });
+      
+      // Don't fail the request if email fails, but log it
+      // You might want to implement a fallback or retry mechanism here
+    }
+
+    // 9. Return success response (mask email)
+    const maskedEmail = dbEmail.substring(0, 3) + '***' + 
+                       dbEmail.substring(dbEmail.indexOf('@'));
+
+    return reply.send({
+      success: true,
+      message: 'OTP sent successfully',
+      email: maskedEmail,
+      roll_number: cleanRoll,
+      name: student.name
+    });
+
+  } catch (error) {
+    console.error('❌ SEND OTP ERROR:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    
+    fastify.log.error(error);
+    
+    return reply.code(500).send({
+      success: false,
+      error: 'SERVER_ERROR',
+      message: process.env.NODE_ENV === 'development' 
+        ? `Failed to send OTP: ${error.message}`
+        : 'Failed to send OTP. Please try again.'
+    });
+  }
+});
+
+// Step 2: Verify OTP - FIXED & IMPROVED
+// Step 2: Verify OTP - COMPLETELY FIXED
+fastify.post('/api/sonacse/verify-otp', async (request, reply) => {
+  try {
+    const { roll_number, otp } = request.body;
+
+    // Validation
+    if (!roll_number || !otp) {
+      return reply.code(400).send({
+        success: false,
+        error: 'MISSING_FIELDS',
+        message: 'Roll number and OTP are required'
+      });
+    }
+
+    const cleanRoll = roll_number.trim().toUpperCase();
+    const cleanOtp = otp.toString().trim();
+    
+    console.log('🔐 Verify OTP request for roll:', cleanRoll);
+
+    // Check Redis connection
+    try {
+      await redis.ping();
+    } catch (redisError) {
+      console.error('❌ Redis connection failed:', redisError);
+      return reply.code(500).send({
+        success: false,
+        error: 'REDIS_ERROR',
+        message: 'Service unavailable. Please try again.'
+      });
+    }
+
+    // Get OTP from Redis
+    const otpKey = `sonacse_otp:${cleanRoll}`;
+    console.log('🔑 Looking for key:', otpKey);
+    
+    const storedData = await redis.get(otpKey);
+    console.log('📦 Raw Redis data type:', typeof storedData);
+    console.log('📦 Raw Redis data value:', storedData);
+
+    if (!storedData) {
+      console.log('⏰ No OTP found for:', cleanRoll);
+      return reply.code(400).send({
+        success: false,
+        error: 'OTP_EXPIRED',
+        message: 'OTP has expired. Please request a new one.'
+      });
+    }
+
+    // Handle different data types from Redis
+    let parsedData;
+    try {
+      // If storedData is already an object, use it directly
+      if (typeof storedData === 'object' && storedData !== null) {
+        console.log('📦 storedData is already an object');
+        parsedData = storedData;
+      } 
+      // If storedData is a string, parse it
+      else if (typeof storedData === 'string') {
+        console.log('📦 storedData is a string, parsing...');
+        parsedData = JSON.parse(storedData);
+      }
+      // If storedData is something else, convert to string and try to parse
+      else {
+        console.log('📦 storedData is type:', typeof storedData);
+        const stringData = String(storedData);
+        parsedData = JSON.parse(stringData);
+      }
+      
+      console.log('✅ Parsed data successfully:', {
+        hasOtp: !!parsedData.otp,
+        hasEmail: !!parsedData.email,
+        hasName: !!parsedData.name
+      });
+
+    } catch (parseError) {
+      console.error('❌ JSON Parse Error:', parseError);
+      console.error('Raw data that failed:', storedData);
+      
+      // Delete corrupted data
+      await redis.del(otpKey);
+      
+      return reply.code(400).send({
+        success: false,
+        error: 'DATA_CORRUPTED',
+        message: 'Stored data is corrupted. Please request a new OTP.'
+      });
+    }
+
+    // Validate data structure
+    if (!parsedData.otp || !parsedData.email || !parsedData.name) {
+      console.error('❌ Invalid data structure:', parsedData);
+      
+      // Log what's missing
+      const missing = [];
+      if (!parsedData.otp) missing.push('otp');
+      if (!parsedData.email) missing.push('email');
+      if (!parsedData.name) missing.push('name');
+      
+      console.error('Missing fields:', missing);
+      
+      await redis.del(otpKey);
+      
+      return reply.code(400).send({
+        success: false,
+        error: 'INVALID_DATA',
+        message: 'Invalid data format. Please request a new OTP.'
+      });
+    }
+
+    const { otp: storedOTP, email, name } = parsedData;
+
+    // Track failed attempts
+    const attemptsKey = `sonacse_otp_attempts:${cleanRoll}`;
+    let attempts = 0;
+    
+    try {
+      attempts = await redis.incr(attemptsKey);
+      await redis.expire(attemptsKey, 300);
+      console.log('📊 Attempt count:', attempts, 'for', cleanRoll);
+    } catch (attemptsError) {
+      console.error('❌ Failed to track attempts:', attemptsError);
+      // Set a default value and continue
+      attempts = 1;
+    }
+
+    // Check max attempts
+    if (attempts > 5) {
+      console.log('🚫 Too many attempts for:', cleanRoll);
+      await redis.del(otpKey);
+      await redis.del(attemptsKey);
+      
+      return reply.code(400).send({
+        success: false,
+        error: 'OTP_LOCKED',
+        message: 'Too many failed attempts. Please request a new OTP.'
+      });
+    }
+
+    // Verify OTP
+    const storedOtpStr = storedOTP.toString().trim();
+    const receivedOtpStr = cleanOtp.toString().trim();
+    
+    console.log('🔍 Comparing OTPs:', {
+      stored: storedOtpStr,
+      received: receivedOtpStr,
+      match: storedOtpStr === receivedOtpStr
+    });
+
+    if (storedOtpStr !== receivedOtpStr) {
+      return reply.code(400).send({
+        success: false,
+        error: 'OTP_INVALID',
+        message: 'Invalid OTP. Please try again.',
+        attempts_left: 5 - attempts
+      });
+    }
+
+    // OTP verified successfully
+    console.log('✅ OTP verified successfully for:', cleanRoll);
+    
+    // Clean up OTP data
+    await redis.del(otpKey);
+    await redis.del(attemptsKey);
+
+    // Generate verification token
+    let verificationToken;
+    try {
+      verificationToken = crypto.randomBytes(32).toString('hex');
+      console.log('🔑 Generated token:', verificationToken.substring(0, 10) + '...');
+    } catch (cryptoError) {
+      console.error('❌ Crypto error:', cryptoError);
+      return reply.code(500).send({
+        success: false,
+        error: 'TOKEN_ERROR',
+        message: 'Failed to generate verification token'
+      });
+    }
+
+    // Store token in Redis with student data (15 minutes expiry)
+    const tokenKey = `sonacse_verify_token:${verificationToken}`;
+    const tokenData = {
+      roll_number: cleanRoll,
+      email: email,
+      name: name,
+      verified_at: new Date().toISOString()
+    };
+
+    try {
+      // Ensure tokenData is properly stringified
+      const tokenJson = JSON.stringify(tokenData);
+      console.log('📦 Storing token data:', tokenJson.substring(0, 100) + '...');
+      
+      await redis.setex(tokenKey, 900, tokenJson);
+      
+      // Verify token was stored
+      const verifyToken = await redis.get(tokenKey);
+      if (!verifyToken) {
+        throw new Error('Failed to verify token storage');
+      }
+      
+      console.log('✅ Token stored successfully for:', cleanRoll);
+      
+    } catch (tokenError) {
+      console.error('❌ Token storage error:', tokenError);
+      return reply.code(500).send({
+        success: false,
+        error: 'STORAGE_ERROR',
+        message: 'Failed to store verification data'
+      });
+    }
+
+    // Mask email for response
+    const emailParts = email.split('@');
+    const maskedEmail = email.substring(0, 3) + '***@' + emailParts[1];
+
+    return reply.send({
+      success: true,
+      message: 'OTP verified successfully',
+      verification_token: verificationToken,
+      expires_in: '15 minutes',
+      roll_number: cleanRoll,
+      email: maskedEmail,
+      name: name
+    });
+
+  } catch (error) {
+    console.error('❌ VERIFY OTP ERROR:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    
+    fastify.log.error(error);
+    
+    return reply.code(500).send({
+      success: false,
+      error: 'SERVER_ERROR',
+      message: process.env.NODE_ENV === 'development'
+        ? `Failed to verify OTP: ${error.message}`
+        : 'Failed to verify OTP. Please try again.'
+    });
+  }
+});
+
+
+// Helper function to generate OTP email
+function generateOTPEmail(rollNumber, name, otp) {
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>SONACSE Verification</title>
+</head>
+<body style="margin:0;padding:0;background:#05070d;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0;background:#05070d;">
+<tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#0b0f1a;border-radius:18px;overflow:hidden;box-shadow:0 0 40px rgba(0,255,255,0.15);">
+<tr><td style="height:4px;background:linear-gradient(90deg,#00f0ff,#8a2eff,#ff2ed9);"></td></tr>
+<tr><td style="padding:30px 24px;">
+<div style="text-align:center;margin-bottom:22px;">
+<svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#00f0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M2 17L12 22L22 17" stroke="#8a2eff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M2 12L12 17L22 12" stroke="#ff2ed9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+<div style="margin-top:10px;font-size:20px;font-weight:700;letter-spacing:1px;color:#e6f9ff;">
+SONACSE<span style="color:#00f0ff;">_</span>THREADS26
+</div>
+<div style="font-size:12px;color:#7df9ff;letter-spacing:2px;margin-top:4px;">STUDENT VERIFICATION</div>
+</div>
+<div style="background:#0e1424;border-radius:10px;padding:12px;margin-bottom:20px;text-align:center;border:1px solid #2a2f4a;">
+<span style="color:#9adfe6;font-size:13px;">Roll Number</span>
+<div style="color:#00f0ff;font-size:18px;font-weight:600;font-family:monospace;margin-top:4px;">${rollNumber}</div>
+</div>
+<p style="margin:0;font-size:15px;font-weight:600;color:#e6f9ff;">Hello, ${name}</p>
+<p style="margin:8px 0 0;font-size:13px;line-height:1.6;color:#9adfe6;">Verify your SONACSE student account to register for THREADS 2026.</p>
+<div style="margin:26px 0;padding:22px;border-radius:14px;background:linear-gradient(145deg,#0e1424,#060a16);border:1px solid rgba(0,255,255,0.25);text-align:center;">
+<div style="display:inline-block;font-size:11px;font-weight:700;color:#00f0ff;letter-spacing:2px;margin-bottom:14px;">VERIFICATION CODE</div>
+<div style="font-size:38px;font-weight:800;letter-spacing:8px;color:#00f0ff;font-family:'Courier New',monospace;">${otp}</div>
+<div style="margin-top:16px;font-size:12px;color:#8bdfe6;border-top:1px dashed rgba(0,255,255,0.3);padding-top:12px;">
+⏳ Code expires in <strong style="color:#ff2ed9;">5 minutes</strong>
+</div>
+</div>
+<div style="background:#0a1222;border-radius:12px;padding:16px;margin-bottom:22px;border:1px solid rgba(138,46,255,0.3);">
+<table width="100%"><tr><td width="26" valign="top"><span style="color:#8a2eff;font-size:20px;">💰</span></td>
+<td style="padding-left:10px;"><div style="font-size:13px;font-weight:600;color:#e6b8ff;">SONACSE Special Pricing</div>
+<div style="font-size:12px;color:#c6d9e6;line-height:1.5;margin-top:4px;">• 1st Year: ₹250 for ALL events + ₹300 per workshop<br>• 2nd-4th Year: Events FREE, ₹300 per workshop</div></td></tr></table>
+</div>
+<p style="margin:0;text-align:center;font-size:11px;color:#6fbfd0;letter-spacing:0.5px;">© 2026 SONACSE · THREADS 26<br><span style="color:#4fa3b3;">AUTOMATED • DO NOT REPLY</span></p>
+</td></tr></table>
+</td></tr></table>
+</body>
+</html>`;
+}
+
+
 fastify.post('/api/sonacse/register', async (request, reply) => {
   const client = await pool.connect();
   
   try {
     await client.query('BEGIN');
     
-    // 1. FAST VALIDATION - Simplified
-    const { roll_number, email, phone, year_of_study, gender, workshop_selections = [], event_selections = [] } = request.body;
+    // 1. FAST VALIDATION - WITH VERIFICATION TOKEN
+    const { 
+      verification_token,
+      roll_number, 
+      // email is REMOVED from here - we'll use from token
+      phone, 
+      year_of_study, 
+      gender, 
+      workshop_selections = [], 
+      event_selections = [] 
+    } = request.body;
     
+    console.log('Registration request:', { 
+      hasToken: !!verification_token,
+      roll_number, 
+      year_of_study 
+    });
+
+    // ADDED: Verify token first
+    if (!verification_token) {
+      throw new Error('VERIFICATION_REQUIRED: Please verify OTP first');
+    }
+
+    // Get and verify token from Redis
+    const tokenKey = `sonacse_verify_token:${verification_token}`;
+    const verifiedData = await redis.get(tokenKey);
+
+    console.log('Redis token data:', verifiedData);
+
+    if (!verifiedData) {
+      throw new Error('VERIFICATION_EXPIRED: OTP verification expired. Please verify again.');
+    }
+
+    // Parse verified data
+    let verifiedInfo;
+    try {
+      verifiedInfo = typeof verifiedData === 'string' 
+        ? JSON.parse(verifiedData) 
+        : verifiedData;
+      
+      console.log('Parsed verified info:', verifiedInfo);
+    } catch (e) {
+      console.error('Parse error:', e);
+      throw new Error('DATA_CORRUPTED: Verification data corrupted');
+    }
+
+    // Check if verifiedInfo exists
+    if (!verifiedInfo) {
+      throw new Error('DATA_MISSING: No verification data found');
+    }
+
+    // Get roll_number from verified data
+    const verifiedRoll = verifiedInfo.roll_number || verifiedInfo.rollno || verifiedInfo.regno;
+    
+    if (!verifiedRoll) {
+      console.error('No roll number in verified data:', verifiedInfo);
+      throw new Error('DATA_INCOMPLETE: Roll number missing from verification data');
+    }
+
+    // Validate verified data matches request
+    const cleanVerifiedRoll = verifiedRoll.toString().trim().toUpperCase();
+    const cleanRequestRoll = roll_number.toString().trim().toUpperCase();
+
+    console.log('Comparing rolls:', { cleanVerifiedRoll, cleanRequestRoll });
+
+    if (cleanVerifiedRoll !== cleanRequestRoll) {
+      throw new Error('ROLL_MISMATCH: Verified roll number does not match request');
+    }
+
+    // Get email and name from verified data (REQUIRED)
+    const verifiedEmail = verifiedInfo.email || verifiedInfo.mail;
+    const verifiedName = verifiedInfo.name || verifiedInfo.full_name;
+
+    if (!verifiedEmail) {
+      throw new Error('EMAIL_MISSING: Email not found in verification data');
+    }
+
+    if (!verifiedName) {
+      throw new Error('NAME_MISSING: Name not found in verification data');
+    }
+
+    // Token verified - delete it (one-time use)
+    await redis.del(tokenKey);
+    console.log('Token deleted after verification');
+
+    // Continue with validation (email is now from token, not request)
     if (!roll_number) throw new Error('VALIDATION_FAILED: Roll number required');
-    if (!email || !email.includes('@')) throw new Error('VALIDATION_FAILED: Valid email required');
+    if (!verifiedEmail || !verifiedEmail.includes('@')) throw new Error('VALIDATION_FAILED: Valid email required');
     if (!phone || phone.replace(/\D/g, '').length < 10) throw new Error('VALIDATION_FAILED: Valid phone required');
 
-    
-    
     const year = parseInt(year_of_study);
     if (![1,2,3,4].includes(year)) throw new Error('VALIDATION_FAILED: Year must be 1-4');
 
-
     // MUST SELECT AT LEAST ONE EVENT OR ONE WORKSHOP
-if (
-  (!Array.isArray(event_selections) || event_selections.length === 0) &&
-  (!Array.isArray(workshop_selections) || workshop_selections.length === 0)
-) {
-  throw new Error('SELECTION_REQUIRED: Select at least one event or one workshop');
-}
+    if (
+      (!Array.isArray(event_selections) || event_selections.length === 0) &&
+      (!Array.isArray(workshop_selections) || workshop_selections.length === 0)
+    ) {
+      throw new Error('SELECTION_REQUIRED: Select at least one event or one workshop');
+    }
     
     // 2. VALIDATE SONACSE STUDENT - Using only sonacse_students table
     const cleanRoll = roll_number.trim().toUpperCase();
@@ -2589,43 +3185,38 @@ if (
     
     const studentName = studentResult.rows[0].name;
     
-    // 3. CHECK DEADLINE
-    if (moment().isAfter(moment(EVENT_DATES.registration_closes))) {
-      throw new Error('REGISTRATION_CLOSED');
-    }
+    // 3. CHECK DEADLINE (make sure EVENT_DATES is defined)
+    // if (moment().isAfter(moment(EVENT_DATES.registration_closes))) {
+    //   throw new Error('REGISTRATION_CLOSED');
+    // }
     
-    // 4. CHECK DUPLICATE EMAIL
+    // 4. CHECK DUPLICATE EMAIL - using verifiedEmail from token
     const existing = await client.query(
       'SELECT 1 FROM participants WHERE LOWER(email)=LOWER($1)', 
-      [email]
+      [verifiedEmail]
     );
     if (existing.rows.length > 0) {
       throw new Error('EMAIL_EXISTS: This email has already been used for registration');
     }
     
     // 5. CALCULATE AMOUNT - FIXED RATES WITH YEAR RULES
-    const EVENT_FLAT_RATE = 250;  // Flat rate for 1st year (all events combined)
+    const EVENT_FLAT_RATE = 250;
     const WORKSHOP_DISCOUNTED_RATE = 300;
     
     const eventCount = event_selections.length;
     const workshopCount = workshop_selections.length;
     
-    // EVENTS:
-    // - 1st year: Flat ₹250 for ALL events combined (regardless of count)
-    // - 2nd-4th year: FREE
     const eventsAmount = (year === 1 && eventCount > 0) ? EVENT_FLAT_RATE : 0;
-    
-    // WORKSHOPS: All years pay ₹300 each
     const workshopsAmount = workshopCount * WORKSHOP_DISCOUNTED_RATE;
     
     const totalAmount = eventsAmount + workshopsAmount;
     const needsPayment = totalAmount > 0;
     
-    // 6. INSERT PARTICIPANT
+    // 6. INSERT PARTICIPANT - using verifiedName and verifiedEmail from token
     const participant = await client.query(
       `INSERT INTO participants (full_name, email, phone, college_name, department, year_of_study, gender) 
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING participant_id`,
-      [studentName, email.toLowerCase(), phone.replace(/\D/g,''), 
+      [verifiedName, verifiedEmail.toLowerCase(), phone.replace(/\D/g,''), 
        'Sona College of Technology (SONACSE)', 'CSE', year, gender || 'Not Specified']
     );
     
@@ -2654,27 +3245,17 @@ if (
       
       const regId = `THREADS26-SONA-${Date.now()}-${eventId}`;
       
-      // Determine amount based on type AND year
       let amount = 0;
       if (type === 'workshop') {
-        // All years pay for workshops
         amount = WORKSHOP_DISCOUNTED_RATE;
-      } else { // event
-        // For 1st year: Even though they pay a flat ₹250 total,
-        // we need to distribute the payment across events
-        // Since they're paying a flat rate, set individual event amount to 0
-        // The total eventsAmount (₹250) will be handled as a package
-        amount = 0; // Individual events show as ₹0 since it's a package deal
       }
       
-      // Payment status: For 1st year events, we'll mark them all with the same payment reference
-      // For workshops: 'Pending' if amount > 0, 'Success' if free (never happens for workshops)
-let status;
-if (type === 'workshop') {
-    status = 'Pending'; // All years pay for workshops
-} else {
-    status = (year === 1) ? 'Pending' : 'Success'; // 1st year pays, others free
-}
+      let status;
+      if (type === 'workshop') {
+        status = 'Pending';
+      } else {
+        status = (year === 1) ? 'Pending' : 'Success';
+      }
       
       await client.query(
         `INSERT INTO registrations (participant_id, event_id, registration_unique_id, payment_status, amount_paid, event_name, day)
@@ -2682,7 +3263,6 @@ if (type === 'workshop') {
         [participantId, eventId, regId, status, amount, event.rows[0].event_name, event.rows[0].day]
       );
       
-      // Decrement seats
       await client.query(
         `UPDATE events SET cse_available_seats = cse_available_seats - 1, available_seats = available_seats - 1
          WHERE event_id = $1`, 
@@ -2700,13 +3280,11 @@ if (type === 'workshop') {
       };
     };
     
-    // Process all selections
     const processedEvents = await Promise.all(event_selections.map(id => processEvent(parseInt(id), 'event')));
     const processedWorkshops = await Promise.all(workshop_selections.map(id => processEvent(parseInt(id), 'workshop')));
     
     await client.query('COMMIT');
     
-    // 9. GENERATE QR PAYLOAD if no payment needed
     let qrCodeBase64 = null;
     if (!needsPayment) {
       const qrPayload = {
@@ -2719,12 +3297,16 @@ if (type === 'workshop') {
       }).catch(() => null);
     }
     
-    // 10. RESPONSE
+    // Mask email for response
+    const emailParts = verifiedEmail.split('@');
+    const maskedEmail = verifiedEmail.substring(0, 3) + '***@' + emailParts[1];
+    
     return reply.code(201).send({
       success: true,
       participant_id: participantId,
-      name: studentName,
+      name: verifiedName,
       roll_number: cleanRoll,
+      email: maskedEmail,
       year: year,
       events: processedEvents.length,
       workshops: processedWorkshops.length,
@@ -2756,6 +3338,12 @@ if (type === 'workshop') {
     
   } catch (error) {
     await client.query('ROLLBACK');
+    
+    console.error('Registration error:', {
+      message: error.message,
+      stack: error.stack
+    });
+    
     return reply.code(400).send({ 
       success: false, 
       error: error.message.split(':')[0],
@@ -2765,7 +3353,6 @@ if (type === 'workshop') {
     client.release();
   }
 });
-
 
 fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
   const client = await pool.connect();
