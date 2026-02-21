@@ -60,6 +60,27 @@ await fastify.register(cors, {
 });
 
 
+// -------------------- API Key Authentication --------------------
+fastify.addHook('preHandler', async (request, reply) => {
+  // Only protect /api routes
+  if (!request.url.startsWith('/api')) {
+    return;
+  }
+  // Allow OPTIONS preflight (CORS)
+  if (request.method === 'OPTIONS') {
+    return;
+  }
+  const apiKey = request.headers['x-api-key'];
+  const validApiKey = process.env.API_SECRET_KEY;
+  if (!validApiKey) {
+    fastify.log.error('API_SECRET_KEY not set in environment');
+    return reply.status(500).send({ error: 'Server configuration error' });
+  }
+  if (!apiKey || apiKey !== validApiKey) {
+    return reply.status(401).send({ error: 'Unauthorized: Invalid or missing API key' });
+  }
+});
+
 
 // -------------------- PostgreSQL Setup --------------------
 const pool = new Pool({
