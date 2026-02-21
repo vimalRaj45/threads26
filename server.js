@@ -24,38 +24,38 @@ const fastify = Fastify({
   bodyLimit: 10485760
 });
 
-/* -------------------- CORS (SAFE FOR DEV + PROD) -------------------- */
-await fastify.register(cors, {
-  origin: true, // reflect request origin
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'X-API-KEY'],
-});
+// /* -------------------- CORS (SAFE FOR DEV + PROD) -------------------- */
+// await fastify.register(cors, {
+//   origin: true, // reflect request origin
+//   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+//   allowedHeaders: ['Content-Type', 'X-API-KEY'],
+// });
 
 
-/* -------------------- API KEY SECURITY -------------------- */
-fastify.addHook('preHandler', async (request, reply) => {
+// /* -------------------- API KEY SECURITY -------------------- */
+// fastify.addHook('preHandler', async (request, reply) => {
 
-  // Protect only /api routes
-  if (!request.url.startsWith('/api')) return;
+//   // Protect only /api routes
+//   if (!request.url.startsWith('/api')) return;
 
-  // Allow preflight
-  if (request.method === 'OPTIONS') return;
+//   // Allow preflight
+//   if (request.method === 'OPTIONS') return;
 
-  const apiKey = request.headers['x-api-key'];
-  const validKey = process.env.API_SECRET_KEY;
+//   const apiKey = request.headers['x-api-key'];
+//   const validKey = process.env.API_SECRET_KEY;
 
-  if (!validKey) {
-    return reply.code(500).send({
-      error: 'Server misconfigured: API_SECRET_KEY missing',
-    });
-  }
+//   if (!validKey) {
+//     return reply.code(500).send({
+//       error: 'Server misconfigured: API_SECRET_KEY missing',
+//     });
+//   }
 
-  if (!apiKey || apiKey !== validKey) {
-    return reply.code(401).send({
-      error: 'Unauthorized: Invalid API key',
-    });
-  }
-});
+//   if (!apiKey || apiKey !== validKey) {
+//     return reply.code(401).send({
+//       error: 'Unauthorized: Invalid API key',
+//     });
+//   }
+// });
 
 // -------------------- PostgreSQL Setup --------------------
 const pool = new Pool({
