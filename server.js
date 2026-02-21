@@ -24,60 +24,32 @@ const fastify = Fastify({
   bodyLimit: 10485760
 });
 
-// -------------------- CORS Configuration (Strict) --------------------
-const allowedOrigins = [
-  'https://threadscse.co.in',
-  'https://threads26.netlify.app',
-  'https://vimalraj45.github.io',
-  process.env.LOCAL_URL,
-];
-
 await fastify.register(cors, {
-  origin: (origin, cb) => {
-    // Log all requests for debugging
-    fastify.log.info(`CORS request from origin: ${origin || 'No origin'}`);
-    
-    // STRICT: Only allow exact matches from allowedOrigins
-    // No origin = block (this prevents localhost/curl/postman)
-    if (!origin) {
-      fastify.log.warn('Blocked request with no origin');
-      cb(new Error('Not allowed by CORS'), false);
-      return;
-    }
-
-    // Check if origin is in allowed list
-    if (allowedOrigins.includes(origin)) {
-      cb(null, true);
-    } else {
-      fastify.log.warn(`Blocked CORS request from unauthorized origin: ${origin}`);
-      cb(new Error('Not allowed by CORS'), false);
-    }
-  },
+  origin: true, // allow origin reflection (safe with API key)
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-KEY'],
-  credentials: true,
-  optionsSuccessStatus: 200
+  allowedHeaders: ['Content-Type', 'X-API-KEY'],
 });
 
-
-// -------------------- API Key Authentication --------------------
 fastify.addHook('preHandler', async (request, reply) => {
-  // Only protect /api routes
-  if (!request.url.startsWith('/api')) {
-    return;
-  }
-  // Allow OPTIONS preflight (CORS)
-  if (request.method === 'OPTIONS') {
-    return;
-  }
+
+  // Only protect API routes
+  if (!request.url.startsWith('/api')) return;
+
+  // Allow preflight
+  if (request.method === 'OPTIONS') return;
+
   const apiKey = request.headers['x-api-key'];
-  const validApiKey = process.env.API_SECRET_KEY;
-  if (!validApiKey) {
-    fastify.log.error('API_SECRET_KEY not set in environment');
-    return reply.status(500).send({ error: 'Server configuration error' });
+  const validKey = process.env.API_SECRET_KEY;
+
+  if (!validKey) {
+    fastify.log.error('API_SECRET_KEY missing');
+    return reply.code(500).send({ error: 'Server misconfigured' });
   }
-  if (!apiKey || apiKey !== validApiKey) {
-    return reply.status(401).send({ error: 'Unauthorized: Invalid or missing API key' });
+
+  if (!apiKey || apiKey !== validKey) {
+    return reply.code(401).send({
+      error: 'Unauthorized: Invalid API key'
+    });
   }
 });
 
