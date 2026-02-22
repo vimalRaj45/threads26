@@ -34,6 +34,19 @@ await fastify.register(cors, {
 });
 
 
+// Add this to your server - 5 lines of code
+fastify.addHook('preHandler', async (request, reply) => {
+  if (!request.url.startsWith('/api') && request.method === 'GET') {
+    await redis.incr('visitor_count');
+    await redis.incr(`daily:${new Date().toDateString()}`);
+  }
+});
+
+// See stats at /api/stats
+fastify.get('/api/stats', async () => ({
+  total: await redis.get('visitor_count') || 0,
+  today: await redis.get(`daily:${new Date().toDateString()}`) || 0
+}));
 
 
 /* -------------------- API KEY SECURITY -------------------- */
