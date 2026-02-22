@@ -42,6 +42,27 @@ fastify.addHook('preHandler', async (request, reply) => {
   }
 });
 
+// TRACKING ENDPOINT - This must increment Redis
+fastify.post('/api/track-visit', async (request, reply) => {
+  try {
+    // Increment Redis counters
+    await redis.incr('visitor_count');
+    await redis.incr(`daily:${new Date().toDateString()}`);
+    
+    // Get updated counts
+    const total = await redis.get('visitor_count') || 0;
+    const today = await redis.get(`daily:${new Date().toDateString()}`) || 0;
+    
+    return { 
+      success: true,
+      total: parseInt(total),
+      today: parseInt(today)
+    };
+  } catch (error) {
+    return { success: false };
+  }
+});
+
 // See stats at /api/stats
 fastify.get('/api/stats', async () => ({
   total: await redis.get('visitor_count') || 0,
