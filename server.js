@@ -385,6 +385,161 @@ Ignore this message if you did not initiate this access request.
   }
 });
 
+const EVENT_COORDINATORS = [
+  {
+    eventId: 2,
+    username: "event2",
+    password: "event2@123",
+    eventName: "Quantum Leap – Understanding Qubits, Gates and Superposition",
+    eventType: "workshop"
+  },
+  {
+    eventId: 3,
+    username: "event3",
+    password: "event3@123",
+    eventName: "Decoding Large Language Models: Theory to Implementation",
+    eventType: "workshop"
+  },
+  {
+    eventId: 4,
+    username: "event4",
+    password: "event4@123",
+    eventName: "Flutter App Development with Firebase Backend",
+    eventType: "workshop"
+  },
+  {
+    eventId: 5,
+    username: "event5",
+    password: "event5@123",
+    eventName: "Introduction to Cybersecurity and Ethical Hacking",
+    eventType: "workshop"
+  },
+  {
+    eventId: 6,
+    username: "event6",
+    password: "event6@123",
+    eventName: "Unity Game Development",
+    eventType: "workshop"
+  },
+  {
+    eventId: 7,
+    username: "event7",
+    password: "event7@123",
+    eventName: "M^2 Model & Metrics",
+    eventType: "technical"
+  },
+  {
+    eventId: 8,
+    username: "event8",
+    password: "event8@123",
+    eventName: "Code Hunt",
+    eventType: "technical"
+  },
+  {
+    eventId: 9,
+    username: "event9",
+    password: "event9@123",
+    eventName: "Pixel Era",
+    eventType: "technical"
+  },
+  {
+    eventId: 10,
+    username: "event10",
+    password: "event10@123",
+    eventName: "Quiz to Quirk",
+    eventType: "technical"
+  },
+  {
+    eventId: 11,
+    username: "event11",
+    password: "event11@123",
+    eventName: "Paper Presentation",
+    eventType: "technical"
+  },
+  {
+    eventId: 12,
+    username: "event12",
+    password: "event12@123",
+    eventName: "Capture The Flag",
+    eventType: "technical"
+  },
+  {
+    eventId: 13,
+    username: "event13",
+    password: "event13@123",
+    eventName: "Treasure Hunt",
+    eventType: "non-technical"
+  },
+  {
+    eventId: 14,
+    username: "event14",
+    password: "event14@123",
+    eventName: "Connections",
+    eventType: "non-technical"
+  },
+  {
+    eventId: 15,
+    username: "event15",
+    password: "event15@123",
+    eventName: "Sherlock Holmes",
+    eventType: "non-technical"
+  },
+  {
+    eventId: 16,
+    username: "event16",
+    password: "event16@123",
+    eventName: "Karaoke",
+    eventType: "non-technical"
+  },
+  {
+    eventId: 17,
+    username: "event17",
+    password: "event17@123",
+    eventName: "Machine Learning Workshop: Foundations & Predictive Modeling",
+    eventType: "workshop"
+  },
+  {
+    eventId: 18,
+    username: "event18",
+    password: "event18@123",
+    eventName: "Trial and War",
+    eventType: "technical"
+  },
+  {
+    eventId: 19,
+    username: "event19",
+    password: "event19@123",
+    eventName: "Cricnomics – The Auction League",
+    eventType: "non-technical"
+  }
+];
+
+
+fastify.post("/event-login", async (request, reply) => {
+  const { eventId, username, password } = request.body;
+
+  // simple hardcoded check
+  if (
+    eventId === EVENT_COORDINATOR.eventId &&
+    username === EVENT_COORDINATOR.username &&
+    password === EVENT_COORDINATOR.password
+  ) {
+    return reply.send({
+      success: true,
+      message: "Login successful",
+      event: {
+        eventId: EVENT_COORDINATOR.eventId,
+        eventName: EVENT_COORDINATOR.eventName,
+        eventType: EVENT_COORDINATOR.eventType
+      }
+    });
+  }
+
+  return reply.status(401).send({
+    success: false,
+    message: "Invalid event credentials"
+  });
+});
 
 
 fastify.post('/api/verify-otp', async (request, reply) => {
