@@ -518,23 +518,34 @@ const EVENT_COORDINATORS = [
 fastify.post("/event-login", async (request, reply) => {
   const { eventId, username, password } = request.body;
 
-  // simple hardcoded check
-  if (
-    eventId === EVENT_COORDINATOR.eventId &&
-    username === EVENT_COORDINATOR.username &&
-    password === EVENT_COORDINATOR.password
-  ) {
+  // Validate input
+  if (!eventId || !username || !password) {
+    return reply.status(400).send({
+      success: false,
+      message: "Event ID, username and password are required"
+    });
+  }
+
+  // Convert eventId to number for comparison
+  const eventIdNum = parseInt(eventId);
+  
+  // Find coordinator by eventId
+  const coordinator = EVENT_COORDINATORS.find(c => c.eventId === eventIdNum);
+
+  // Check if coordinator exists and credentials match
+  if (coordinator && username === coordinator.username && password === coordinator.password) {
     return reply.send({
       success: true,
       message: "Login successful",
       event: {
-        eventId: EVENT_COORDINATOR.eventId,
-        eventName: EVENT_COORDINATOR.eventName,
-        eventType: EVENT_COORDINATOR.eventType
+        eventId: coordinator.eventId,
+        eventName: coordinator.eventName,
+        eventType: coordinator.eventType
       }
     });
   }
 
+  // Invalid credentials
   return reply.status(401).send({
     success: false,
     message: "Invalid event credentials"
