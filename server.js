@@ -2627,7 +2627,57 @@ const invalidateAnnouncementsCache = async () => {
 
 
 
+/* -------------------- SUPER ADMIN OTP LOGIN (4 MEMBERS) -------------------- */
 
+const ALLOWED_ADMINS = [
+  'vimalraj5207@gmail.com', // Replace with Actual Email 1
+  'macernest98@gmail.com', // Replace with Actual Email 2
+  'admin3@example.com', // Replace with Actual Email 3
+  'admin4@example.com'  // Replace with Actual Email 4
+];
+
+// Step 1: Send OTP to Admin
+fastify.post('/api/admin/login-otp', async (request, reply) => {
+  const { email } = request.body;
+  const cleanEmail = email?.toLowerCase().trim();
+
+  if (!ALLOWED_ADMINS.includes(cleanEmail)) {
+    return reply.code(403).send({ success: false, error: 'Access Denied: Not an authorized Super Admin' });
+  }
+
+  const otp = Math.floor(100000 + Math.random() * 900000);
+  await redis.setex(`admin_otp:${cleanEmail}`, 300, otp.toString()); // 5 min expiry
+
+  // Send Email using your existing Brevo logic
+  await axios.post('https://api.brevo.com/v3/smtp/email', {
+    sender: { email: process.env.SENDER_EMAIL, name: 'THREADS_26 Security' },
+    to: [{ email: cleanEmail }],
+    subject: '🔐 Super Admin Access Key',
+    htmlContent: `<h2>Access Key: ${otp}</h2><p>This key is valid for 5 minutes. Do not share this node access key.</p>`
+  }, {
+    headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' }
+  });
+
+  return { success: true, message: 'OTP sent to authorized email' };
+});
+
+// Step 2: Verify OTP and Create Session
+fastify.post('/api/admin/login-verify', async (request, reply) => {
+  const { email, otp } = request.body;
+  const cleanEmail = email?.toLowerCase().trim();
+  
+  const storedOtp = await redis.get(`admin_otp:${cleanEmail}`);
+
+  if (!storedOtp || storedOtp !== otp.toString()) {
+    return reply.code(401).send({ success: false, error: 'Invalid or expired access key' });
+  }
+
+  await redis.del(`admin_otp:${cleanEmail}`);
+  const token = crypto.randomBytes(32).toString('hex');
+  
+  // Return the token to be stored in sessionStorage
+  return { success: true, token };
+});
 
 
 
