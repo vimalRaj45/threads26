@@ -2775,29 +2775,39 @@ fastify.post('/api/announcements', async (request, reply) => {
 });
 
 
-// 18. Delete announcement
+  
+
+// DELETE Announcement - Simple & Robust
 fastify.delete('/api/announcements/:id', async (request, reply) => {
   const { id } = request.params;
 
   try {
-    const result = await pool.query(
-      `DELETE FROM announcements WHERE id = $1 RETURNING *`,
-      [id]
-    );
-
-    if (result.rowCount === 0) {
-      return reply.code(404).send({ error: 'Announcement not found' });
+    // 1. Force the ID to be a number (prevents SQL injection/errors)
+    const numericId = parseInt(id);
+    
+    if (isNaN(numericId)) {
+      return reply.code(400).send({ success: false, error: 'Invalid ID format' });
     }
 
-    reply.send({ message: 'Announcement deleted successfully' });
+    // 2. Perform the deletion
+    const result = await pool.query(
+      'DELETE FROM announcements WHERE id = $1 OR announcement_id = $1 RETURNING *',
+      [numericId]
+    );
+
+    // 3. Check if anything was actually deleted
+    if (result.rowCount === 0) {
+      return reply.code(404).send({ success: false, error: 'Announcement not found' });
+    }
+
+    // 4. Send clean success message
+    return { success: true, message: 'Deleted successfully' };
+
   } catch (error) {
     fastify.log.error(error);
-    reply.code(500).send({ error: 'Failed to delete announcement' });
+    return reply.code(500).send({ success: false, error: 'Database error' });
   }
 });
-
-
-
 
 
 // 9. Auto-close Registration Check (Cron job simulation)
