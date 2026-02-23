@@ -2626,68 +2626,94 @@ const invalidateAnnouncementsCache = async () => {
 };
 
 
-
 /* -------------------- SUPER ADMIN OTP LOGIN (4 MEMBERS) -------------------- */
+const crypto = require('crypto');
+const axios = require('axios');
 
+// 1. Authorized Members List
 const ALLOWED_ADMINS = [
-  'vimalraj5207@gmail.com', // Replace with Actual Email 1
-  'macernest98@gmail.com', // Replace with Actual Email 2
-  'admin3@example.com', // Replace with Actual Email 3
-  'admin4@example.com'  // Replace with Actual Email 4
+  'vimalraj5207@gmail.com', // Your email from the logs
+  'admin2@example.com', 
+  'admin3@example.com', 
+  'admin4@example.com'
 ];
 
-// Step 1: Send OTP to Admin
+// STEP 1: REQUEST ACCESS KEY
 fastify.post('/api/admin/login-otp', async (request, reply) => {
   const { email } = request.body;
-  const cleanEmail = email?.toLowerCase().trim();
+  const cleanEmail = String(email || '').toLowerCase().trim();
 
   if (!ALLOWED_ADMINS.includes(cleanEmail)) {
     return reply.code(403).send({ success: false, error: 'Access Denied: Not an authorized Super Admin' });
   }
 
-  const otp = Math.floor(100000 + Math.random() * 900000);
-  await redis.setex(`admin_otp:${cleanEmail}`, 300, otp.toString()); // 5 min expiry
+  // Generate 6-digit key
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  
+  // Store in Redis with 10-minute expiry
+  await redis.setex(`admin_otp:${cleanEmail}`, 600, otp);
 
-  // Send Email using your existing Brevo logic
-  await axios.post('https://api.brevo.com/v3/smtp/email', {
-    sender: { email: process.env.SENDER_EMAIL, name: 'THREADS_26 Security' },
-    to: [{ email: cleanEmail }],
-    subject: '🔐 Super Admin Access Key',
-    htmlContent: `<h2>Access Key: ${otp}</h2><p>This key is valid for 5 minutes. Do not share this node access key.</p>`
-  }, {
-    headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' }
-  });
+  console.log(`[AUTH] Key Generated for ${cleanEmail}: ${otp}`);
 
-  return { success: true, message: 'OTP sent to authorized email' };
+  try {
+    // Send via Brevo
+    await axios.post('https://api.brevo.com/v3/smtp/email', {
+      sender: { email: process.env.SENDER_EMAIL, name: 'THREADS_26 Security' },
+      to: [{ email: cleanEmail }],
+      subject: '🔐 Super Admin Access Key',
+      htmlContent: `
+        <div style="font-family:sans-serif; padding:20px; border:1px solid #eee; border-radius:10px;">
+          <h2 style="color:#6366f1;">THREADS'26 Access Key</h2>
+          <p>Use the following key to authorize your admin session. It expires in 10 minutes.</p>
+          <div style="font-size:32px; font-weight:bold; letter-spacing:5px; padding:15px; background:#f8fafc; text-align:center; border-radius:8px;">
+            ${otp}
+          </div>
+          <p style="color:#64748b; font-size:12px; margin-top:20px;">If you did not request this, please ignore this email.</p>
+        </div>`
+    }, {
+      headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' }
+    });
+
+    return { success: true, message: 'OTP sent successfully' };
+  } catch (err) {
+    console.error('[BREVO ERROR]', err.response?.data || err.message);
+    return reply.code(500).send({ success: false, error: 'Failed to send email' });
+  }
 });
 
-// Step 2: Verify OTP and Create Session
-// Step 2: Robust Verify OTP
+// STEP 2: VERIFY ACCESS KEY (Zero-Fail Logic)
 fastify.post('/api/admin/login-verify', async (request, reply) => {
   const { email, otp } = request.body;
-  const cleanEmail = email?.toLowerCase().trim();
-  const cleanOtp = otp?.toString().trim(); // Extra guard for trimming
   
-  const storedOtp = await redis.get(`admin_otp:${cleanEmail}`);
+  // Normalize everything
+  const cleanEmail = String(email || '').toLowerCase().trim();
+  const cleanOtp = String(otp || '').trim();
+  
+  // Get from Redis and force to String/Trim
+  let storedOtp = await redis.get(`admin_otp:${cleanEmail}`);
+  if (storedOtp) storedOtp = String(storedOtp).trim();
 
-  console.log(`[DEBUG] Verify Attempt: ${cleanEmail} | Sent: "${cleanOtp}" | Stored: "${storedOtp}"`);
+  // Logging lengths help spot hidden characters
+  console.log(`[AUTH DEBUG] Email: ${cleanEmail}`);
+  console.log(`[AUTH DEBUG] Sent: "${cleanOtp}" (len:${cleanOtp.length}) | Stored: "${storedOtp}" (len:${storedOtp ? storedOtp.length : 0})`);
 
   if (!storedOtp) {
-    return reply.code(401).send({ success: false, error: 'Access key has expired (10 min limit)' });
+    return reply.code(401).send({ success: false, error: 'Access key has expired or never requested' });
   }
 
+  // Strict String Comparison
   if (storedOtp !== cleanOtp) {
     return reply.code(401).send({ success: false, error: 'Invalid access key' });
   }
 
+  // Clear OTP and create session token
   await redis.del(`admin_otp:${cleanEmail}`);
   const token = crypto.randomBytes(32).toString('hex');
   
+  // Return the token to the frontend
+  console.log(`[AUTH SUCCESS] Admin ${cleanEmail} logged in`);
   return { success: true, token };
 });
-
-// Also update Step 1 to use 600 seconds (10 minutes)
-// await redis.setex(`admin_otp:${cleanEmail}`, 600, otp.toString());
 
 
 // 15. Create announcement (Admin)
