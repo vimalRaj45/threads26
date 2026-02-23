@@ -2662,23 +2662,32 @@ fastify.post('/api/admin/login-otp', async (request, reply) => {
 });
 
 // Step 2: Verify OTP and Create Session
+// Step 2: Robust Verify OTP
 fastify.post('/api/admin/login-verify', async (request, reply) => {
   const { email, otp } = request.body;
   const cleanEmail = email?.toLowerCase().trim();
+  const cleanOtp = otp?.toString().trim(); // Extra guard for trimming
   
   const storedOtp = await redis.get(`admin_otp:${cleanEmail}`);
 
-  if (!storedOtp || storedOtp !== otp.toString()) {
-    return reply.code(401).send({ success: false, error: 'Invalid or expired access key' });
+  console.log(`[DEBUG] Verify Attempt: ${cleanEmail} | Sent: "${cleanOtp}" | Stored: "${storedOtp}"`);
+
+  if (!storedOtp) {
+    return reply.code(401).send({ success: false, error: 'Access key has expired (10 min limit)' });
+  }
+
+  if (storedOtp !== cleanOtp) {
+    return reply.code(401).send({ success: false, error: 'Invalid access key' });
   }
 
   await redis.del(`admin_otp:${cleanEmail}`);
   const token = crypto.randomBytes(32).toString('hex');
   
-  // Return the token to be stored in sessionStorage
   return { success: true, token };
 });
 
+// Also update Step 1 to use 600 seconds (10 minutes)
+// await redis.setex(`admin_otp:${cleanEmail}`, 600, otp.toString());
 
 
 // 15. Create announcement (Admin)
