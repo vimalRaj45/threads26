@@ -2630,10 +2630,10 @@ const invalidateAnnouncementsCache = async () => {
 
 // 1. Authorized Members List
 const ALLOWED_ADMINS = [
-  'vimalraj5207@gmail.com', // Your email from the logs
-  'admin2@example.com', 
-  'admin3@example.com', 
-  'admin4@example.com'
+  'vimalraj5207@gmail.com', 
+  'kreeshab2004@gmail.com', 
+  'vedaprakashs007@gmail.com',
+  'roshankumarbhaskaran@gmail.com'
 ];
 
 // STEP 1: REQUEST ACCESS KEY
