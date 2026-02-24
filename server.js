@@ -2777,34 +2777,33 @@ fastify.post('/api/announcements', async (request, reply) => {
 
   
 
-// DELETE Announcement — body-based (SAFE)
+// DELETE Announcement — body-based (SCHEMA ALIGNED)
 fastify.delete('/api/announcements/delete', {
   schema: {
     body: {
       type: 'object',
-      required: ['id'],
+      required: ['announcement_id'],
       properties: {
-        id: { type: 'integer' }
+        announcement_id: { type: 'integer' }
       }
     }
   }
 }, async (request, reply) => {
   try {
-    const { id } = request.body;
+    const { announcement_id } = request.body;
 
-    // Extra safety (even though schema validates)
-    if (!Number.isInteger(id)) {
+    if (!Number.isInteger(announcement_id)) {
       return reply.code(400).send({
         success: false,
-        error: 'Invalid ID'
+        error: 'Invalid announcement_id'
       });
     }
 
     const result = await pool.query(
-      `DELETE FROM announcements 
-       WHERE id = $1 OR announcement_id = $1 
+      `DELETE FROM announcements
+       WHERE announcement_id = $1
        RETURNING *`,
-      [id]
+      [announcement_id]
     );
 
     if (result.rowCount === 0) {
@@ -2816,12 +2815,12 @@ fastify.delete('/api/announcements/delete', {
 
     return reply.send({
       success: true,
-      message: 'Deleted successfully',
+      message: 'Announcement deleted successfully',
       deleted: result.rows[0]
     });
 
-  } catch (err) {
-    fastify.log.error(err);
+  } catch (error) {
+    fastify.log.error(error);
     return reply.code(500).send({
       success: false,
       error: 'Database error'
