@@ -2777,35 +2777,55 @@ fastify.post('/api/announcements', async (request, reply) => {
 
   
 
-// DELETE Announcement - Simple & Robust
-fastify.delete('/api/announcements/:id', async (request, reply) => {
-  const { id } = request.params;
-
+// DELETE Announcement — body-based (SAFE)
+fastify.delete('/api/announcements/delete', {
+  schema: {
+    body: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'integer' }
+      }
+    }
+  }
+}, async (request, reply) => {
   try {
-    // 1. Force the ID to be a number (prevents SQL injection/errors)
-    const numericId = parseInt(id);
-    
-    if (isNaN(numericId)) {
-      return reply.code(400).send({ success: false, error: 'Invalid ID format' });
+    const { id } = request.body;
+
+    // Extra safety (even though schema validates)
+    if (!Number.isInteger(id)) {
+      return reply.code(400).send({
+        success: false,
+        error: 'Invalid ID'
+      });
     }
 
-    // 2. Perform the deletion
     const result = await pool.query(
-      'DELETE FROM announcements WHERE id = $1 OR announcement_id = $1 RETURNING *',
-      [numericId]
+      `DELETE FROM announcements 
+       WHERE id = $1 OR announcement_id = $1 
+       RETURNING *`,
+      [id]
     );
 
-    // 3. Check if anything was actually deleted
     if (result.rowCount === 0) {
-      return reply.code(404).send({ success: false, error: 'Announcement not found' });
+      return reply.code(404).send({
+        success: false,
+        error: 'Announcement not found'
+      });
     }
 
-    // 4. Send clean success message
-    return { success: true, message: 'Deleted successfully' };
+    return reply.send({
+      success: true,
+      message: 'Deleted successfully',
+      deleted: result.rows[0]
+    });
 
-  } catch (error) {
-    fastify.log.error(error);
-    return reply.code(500).send({ success: false, error: 'Database error' });
+  } catch (err) {
+    fastify.log.error(err);
+    return reply.code(500).send({
+      success: false,
+      error: 'Database error'
+    });
   }
 });
 
