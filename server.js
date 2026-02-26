@@ -2633,6 +2633,9 @@ const ALLOWED_ADMINS = [
   'vimalraj5207@gmail.com', 
   'kreeshab2004@gmail.com', 
   'vedaprakashs007@gmail.com',
+  'macernest98@gmail.com',
+  'karthikeyanspro@gmail.com',
+  'subashchandrabosesv@gmail.com',
   'roshankumarbhaskaran@gmail.com'
 ];
 
