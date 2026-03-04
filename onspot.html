@@ -575,14 +575,6 @@
                     <label class="form-label"><i class="bi bi-globe2 me-1"></i>State</label>
                     <input type="text" class="form-control" name="state" id="state" placeholder="Tamil Nadu">
                   </div>
-                  <div class="col-md-3 d-flex align-items-end">
-                    <div class="form-check mb-2" >
-                      <input class="form-check-input" type="checkbox" name="accommodation_required" id="accommodationCheck">
-                      <label class="form-check-label" for="accommodationCheck">
-                        <i class="bi bi-house-heart"></i> need accommodation
-                      </label>
-                    </div>
-                  </div>
                 </div>
 
                 <hr>
@@ -645,7 +637,7 @@
                 </div>
 
                 <!-- Technical Events Container -->
-                <div class="mb-4">
+                <div class="mb-4" style="display: none;">
                   <h6 class="fw-semibold mb-3">
                     <span class="badge bg-dark me-2">⚡</span>Technical Events (flat fee - ₹300/₹250)
                   </h6>
@@ -948,7 +940,6 @@
         genderSelect.value = '';
         cityInput.value = '';
         stateInput.value = '';
-        accommodationCheck.checked = false;
         sonaRollInput.value = '';
         
         // Reset selections
@@ -1446,23 +1437,23 @@
         selectedItemsList.innerHTML = itemsHtml.join(' ') || '<span class="text-muted">No events selected</span>';
       }
 
-      // Toggle SONA roll field
-      function toggleSonaRoll() {
-        if (existingParticipantData) return;
-        
-        const isSona = document.querySelector('input[name="student_type"]:checked')?.value === 'sonacse';
-        if (sonaRollGroup) {
-          sonaRollGroup.style.display = isSona ? 'block' : 'none';
-        }
-        if (sonaRollInput) {
-          sonaRollInput.disabled = !isSona;
-          sonaRollInput.required = isSona;
-          if (!isSona) sonaRollInput.value = '';
-        }
-        calculateTotal();
-        updatePaymentDisplay();
-        updateWorkshopDisabledState();
-      }
+     // Toggle SONA roll field
+function toggleSonaRoll() {
+  // Remove this line: if (existingParticipantData) return;
+  
+  const isSona = document.querySelector('input[name="student_type"]:checked')?.value === 'sonacse';
+  if (sonaRollGroup) {
+    sonaRollGroup.style.display = isSona ? 'block' : 'none';
+  }
+  if (sonaRollInput) {
+    sonaRollInput.disabled = !isSona;
+    sonaRollInput.required = isSona;
+    if (!isSona) sonaRollInput.value = '';
+  }
+  calculateTotal();
+  updatePaymentDisplay();
+  updateWorkshopDisabledState();
+}
 
       // Test connection
       async function testConnection() {
