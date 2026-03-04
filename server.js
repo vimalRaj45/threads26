@@ -126,9 +126,10 @@ await fastify.register(rateLimit, {
 
 
 const EVENT_DATES = {
-  registration_closes: moment('2026-03-04', 'YYYY-MM-DD').format('YYYY-MM-DD'),
-  workshop_day: moment('2026-03-05', 'YYYY-MM-DD').format('YYYY-MM-DD'),
-  event_day: moment('2026-03-06', 'YYYY-MM-DD').format('YYYY-MM-DD')
+  registration_closes_at: moment('2026-03-04 18:00', 'YYYY-MM-DD HH:mm')
+    .format('YYYY-MM-DD HH:mm:ss'),
+  workshop_day: moment('2026-03-05').format('YYYY-MM-DD'),
+  event_day: moment('2026-03-06').format('YYYY-MM-DD')
 };
 
 
