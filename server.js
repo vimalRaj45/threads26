@@ -125,13 +125,6 @@ await fastify.register(rateLimit, {
 
 
 
-const EVENT_DATES = {
-  registration_closes_at: moment('2026-03-04 18:00', 'YYYY-MM-DD HH:mm')
-    .format('YYYY-MM-DD HH:mm:ss'),
-  workshop_day: moment('2026-03-05').format('YYYY-MM-DD'),
-  event_day: moment('2026-03-06').format('YYYY-MM-DD')
-};
-
 
 await fastify.register(formbody);
 await fastify.register(multipart);
@@ -144,19 +137,10 @@ await fastify.register(staticPlugin, {
 
 // 1. Get Event Dates & Countdown
 fastify.get('/api/event-dates', async () => {
-  const today = moment();
-  const workshopDate = moment(EVENT_DATES.workshop_day);
-  const eventDate = moment(EVENT_DATES.event_day);
-  
   return {
-    workshop_day: EVENT_DATES.workshop_day,
-    event_day: EVENT_DATES.event_day,
-    registration_closes: EVENT_DATES.registration_closes,
-    countdown: {
-      days_to_workshop: workshopDate.diff(today, 'days'),
-      days_to_event: eventDate.diff(today, 'days'),
-      is_registration_open: today.isBefore(moment(EVENT_DATES.registration_closes))
-    }
+    workshop_day: '2026-03-05',
+    event_day: '2026-03-06',
+    registration_open: true  // Always open
   };
 });
 
@@ -710,10 +694,6 @@ fastify.post('/api/register', async (request, reply) => {
             throw new Error('NO_EVENTS_SELECTED: Select at least one event');
         }
 
-        // Check deadline
-        if (moment().isAfter(moment(EVENT_DATES.registration_closes))) {
-            throw new Error('REGISTRATION_CLOSED');
-        }
 
         // ========== DATABASE OPERATIONS ==========
         client = await pool.connect();
@@ -2840,32 +2820,6 @@ fastify.delete('/api/announcements/delete', {
       error: 'Database error'
     });
   }
-});
-
-
-// 9. Auto-close Registration Check (Cron job simulation)
-fastify.get('/api/admin/check-registration-status', async (request) => {
-  const today = moment();
-  const closeDate = moment(EVENT_DATES.registration_closes);
-  
-  if (today.isAfter(closeDate)) {
-    // Close all events
-    await pool.query(
-      `UPDATE events SET is_active = false WHERE is_active = true`
-    );
-    
-    return {
-      status: 'closed',
-      message: 'Registration automatically closed as per event date',
-      closed_at: new Date().toISOString()
-    };
-  }
-  
-  return {
-    status: 'open',
-    days_remaining: closeDate.diff(today, 'days'),
-    closes_on: EVENT_DATES.registration_closes
-  };
 });
 
 
