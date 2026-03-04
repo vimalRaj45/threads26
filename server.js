@@ -2492,86 +2492,7 @@ fastify.get('/api/track/:registration_id', async (request, reply) => {
   }
 });
 
-fastify.get('/api/admin/stats', async (request) => {
-  try {
-    const stats = await Promise.all([
-      // Total registrations
-      pool.query('SELECT COUNT(*) FROM registrations'),
-      
-      // Total participants
-      pool.query('SELECT COUNT(DISTINCT participant_id) FROM registrations'),
-      
-      // Total revenue
-      pool.query(`
-        SELECT COALESCE(SUM(amount), 0) AS total
-        FROM payments
-        WHERE payment_status = 'Success'
-      `),
-      
-      // Registrations by day
-      pool.query(`
-        SELECT e.day, COUNT(*) AS count
-        FROM registrations r
-        JOIN events e ON r.event_id = e.event_id
-        GROUP BY e.day
-      `),
-      
-      // Top events
-      pool.query(`
-        SELECT e.event_name, COUNT(*) AS registrations
-        FROM registrations r
-        JOIN events e ON r.event_id = e.event_id
-        GROUP BY e.event_name
-        ORDER BY COUNT(*) DESC
-        LIMIT 5
-      `),
-      
-      // College distribution
-      pool.query(`
-        SELECT college_name, COUNT(DISTINCT participant_id) AS participants
-        FROM participants
-        WHERE college_name IS NOT NULL
-        GROUP BY college_name
-        ORDER BY COUNT(*) DESC
-        LIMIT 10
-      `),
-      
-      // Payment status
-      pool.query(`
-        SELECT payment_status, COUNT(*) AS count
-        FROM registrations
-        GROUP BY payment_status
-      `),
-      
-      // Attendance status
-      pool.query(`
-        SELECT attendance_status, COUNT(*) AS count
-        FROM registrations
-        WHERE payment_status = 'Success'
-        GROUP BY attendance_status
-      `)
-    ]);
 
-    const result = {
-      total_registrations: parseInt(stats[0].rows[0].count),
-      total_participants: parseInt(stats[1].rows[0].count),
-      total_revenue: parseFloat(stats[2].rows[0].total),
-      registrations_by_day: stats[3].rows,
-      top_events: stats[4].rows,
-      top_colleges: stats[5].rows,
-      payment_status: stats[6].rows,
-      attendance_status: stats[7].rows,
-      updated_at: new Date().toISOString()
-    };
-
-    return result;
-  } catch (error) {
-    fastify.log.error(error);
-    throw error;
-  }
-});
-    
- 
 
 
 // Add these after Redis setup
@@ -3873,41 +3794,127 @@ fastify.post('/api/sonacse/verify-payment', async (request, reply) => {
   }
 });
 
-// FAST SIMPLE ENDPOINT for quick loading
+// define once (or move to config)
+const EVENT_DATES = {
+  registration_closes: '2026-03-10T23:59:59Z'
+};
+
 fastify.get('/api/super-admin/quick', async (request, reply) => {
   try {
     const stats = await pool.query(`
       SELECT 
-        (SELECT COUNT(*) FROM participants) as total_participants,
-        (SELECT COUNT(*) FROM registrations) as total_registrations,
-        (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE payment_status = 'Success') as total_revenue,
-        (SELECT COUNT(*) FROM events WHERE is_active = true) as active_events,
-        (SELECT COUNT(*) FROM registrations WHERE DATE(registered_at) = CURRENT_DATE) as today_registrations,
-        (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(created_at) = CURRENT_DATE AND payment_status = 'Success') as today_revenue,
-        (SELECT COUNT(*) FROM payments WHERE verified_by_admin = false AND payment_status = 'Success') as pending_verifications
+        (SELECT COUNT(*) FROM participants) AS total_participants,
+        (SELECT COUNT(*) FROM registrations) AS total_registrations,
+        (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE payment_status = 'Success') AS total_revenue,
+        (SELECT COUNT(*) FROM events WHERE is_active = true) AS active_events,
+        (SELECT COUNT(*) FROM registrations WHERE DATE(registered_at) = CURRENT_DATE) AS today_registrations,
+        (SELECT COALESCE(SUM(amount), 0) FROM payments 
+          WHERE DATE(created_at) = CURRENT_DATE AND payment_status = 'Success') AS today_revenue,
+        (SELECT COUNT(*) FROM payments 
+          WHERE verified_by_admin = false AND payment_status = 'Success') AS pending_verifications
     `);
 
     const lowSeats = await pool.query(`
-      SELECT event_name, available_seats 
-      FROM events 
+      SELECT event_name, available_seats
+      FROM events
       WHERE is_active = true AND available_seats < 10
-      ORDER BY available_seats ASC 
+      ORDER BY available_seats ASC
       LIMIT 5
     `);
 
-    return {
+    return reply.send({
       success: true,
       timestamp: new Date().toISOString(),
       overview: stats.rows[0],
       low_seat_events: lowSeats.rows,
-      registration_open: moment().isBefore(moment(EVENT_DATES.registration_closes))
-    };
+      registration_open: new Date() < new Date(EVENT_DATES.registration_closes)
+    });
 
   } catch (error) {
     fastify.log.error(error);
-    return reply.code(500).send({ 
-      error: 'Failed to load quick stats',
-      details: error.message 
+    return reply.code(500).send({
+      success: false,
+      error: 'Failed to load quick stats'
+    });
+  }
+});
+
+
+fastify.get('/api/admin/stats', async (request, reply) => {
+  const cacheKey = 'admin_stats';
+
+  const cached = await redis.get(cacheKey);
+  if (cached) {
+    return reply.send(
+      typeof cached === 'string' ? JSON.parse(cached) : cached
+    );
+  }
+
+  try {
+    const stats = await Promise.all([
+      pool.query('SELECT COUNT(*) FROM registrations'),
+      pool.query('SELECT COUNT(DISTINCT participant_id) FROM registrations'),
+      pool.query(`
+        SELECT COALESCE(SUM(amount), 0) AS total
+        FROM payments
+        WHERE payment_status = 'Success'
+      `),
+      pool.query(`
+        SELECT e.day, COUNT(*) AS count
+        FROM registrations r
+        JOIN events e ON r.event_id = e.event_id
+        GROUP BY e.day
+      `),
+      pool.query(`
+        SELECT e.event_name, COUNT(*) AS registrations
+        FROM registrations r
+        JOIN events e ON r.event_id = e.event_id
+        GROUP BY e.event_name
+        ORDER BY COUNT(*) DESC
+        LIMIT 5
+      `),
+      pool.query(`
+        SELECT college_name, COUNT(DISTINCT participant_id) AS participants
+        FROM participants
+        WHERE college_name IS NOT NULL
+        GROUP BY college_name
+        ORDER BY COUNT(*) DESC
+        LIMIT 10
+      `),
+      pool.query(`
+        SELECT payment_status, COUNT(*) AS count
+        FROM registrations
+        GROUP BY payment_status
+      `),
+      pool.query(`
+        SELECT attendance_status, COUNT(*) AS count
+        FROM registrations
+        WHERE payment_status = 'Success'
+        GROUP BY attendance_status
+      `)
+    ]);
+
+    const result = {
+      total_registrations: Number(stats[0].rows[0].count),
+      total_participants: Number(stats[1].rows[0].count),
+      total_revenue: Number(stats[2].rows[0].total),
+      registrations_by_day: stats[3].rows,
+      top_events: stats[4].rows,
+      top_colleges: stats[5].rows,
+      payment_status: stats[6].rows,
+      attendance_status: stats[7].rows,
+      updated_at: new Date().toISOString()
+    };
+
+    await redis.setex(cacheKey, 60, JSON.stringify(result));
+
+    return reply.send(result);
+
+  } catch (error) {
+    fastify.log.error(error);
+    return reply.code(500).send({
+      success: false,
+      error: 'Failed to load admin stats'
     });
   }
 });
