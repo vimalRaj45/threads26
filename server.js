@@ -3921,6 +3921,1215 @@ fastify.get('/api/admin/stats', async (request, reply) => {
 
 
 
+// Cache keys
+const CACHE_KEYS = {
+  EVENT: (id) => `event:${id}`,
+  EVENT_SEATS: (id) => `event:${id}:seats`,
+  SONACSE_STUDENT: (regno) => `sonacse:${regno}`,
+  PRICING: 'pricing:config'
+};
+
+// Cache TTL
+const CACHE_TTL = {
+  EVENT: 3600,
+  SONACSE: 7200,
+  PRICING: 86400
+};
+
+// Safe JSON parse
+function safeJsonParse(data, defaultValue = null) {
+  if (!data) return defaultValue;
+  if (typeof data === 'object') return data;
+  try {
+    return JSON.parse(data);
+  } catch {
+    return defaultValue;
+  }
+}
+
+// Preload events at startup
+async function preloadEventsToRedis() {
+  try {
+    const client = await pool.connect();
+    try {
+      const events = await client.query(
+        `SELECT event_id, event_name, event_type, day, fee, 
+                available_seats, cse_available_seats
+         FROM events WHERE is_active = true`
+      );
+      
+      const pipeline = redis.pipeline();
+      
+      events.rows.forEach(event => {
+        pipeline.set(
+          CACHE_KEYS.EVENT(event.event_id),
+          JSON.stringify({
+            event_id: event.event_id,
+            event_name: event.event_name,
+            event_type: event.event_type,
+            day: event.day,
+            fee: Number(event.fee)
+          }),
+          'EX', CACHE_TTL.EVENT
+        );
+        
+        pipeline.set(
+          CACHE_KEYS.EVENT_SEATS(event.event_id),
+          JSON.stringify({
+            available_seats: Number(event.available_seats),
+            cse_available_seats: Number(event.cse_available_seats)
+          }),
+          'EX', CACHE_TTL.EVENT
+        );
+      });
+      
+      pipeline.set(
+        CACHE_KEYS.PRICING,
+        JSON.stringify({
+          WORKSHOP_FEE: 400,
+          SONACSE_WORKSHOP_FEE: 300,
+          EVENT_FLAT_FEE: 300,
+          SONACSE_EVENT_FEE_YEAR1: 250
+        }),
+        'EX', CACHE_TTL.PRICING
+      );
+      
+      await pipeline.exec();
+      console.log(`✅ Preloaded ${events.rows.length} events to Redis`);
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('❌ Failed to preload events:', error);
+  }
+}
+
+// Call at startup (don't await)
+preloadEventsToRedis();
+
+// ========== ASYNC EMAIL FUNCTIONS ==========
+
+// Async email function for new registrations
+async function sendEmailAsync(body, participantId, qrCodeDataURL) {
+  try {
+    // Extract base64 data from data URL
+    const base64Data = qrCodeDataURL.split(',')[1];
+    
+    const emailData = {
+      sender: {
+        email: process.env.SENDER_EMAIL,
+        name: 'ThreadCSE \'26'
+      },
+      to: [{ email: body.email, name: body.full_name }],
+      subject: `🎟️ THREADS'26 PASS - ${body.full_name}`,
+      htmlContent: `
+        <div style="font-family: Arial, sans-serif; padding: 20px;">
+          <h2 style="color: #2563eb;">Welcome to THREADS'26!</h2>
+          <p>Hello ${body.full_name},</p>
+          <p>Your registration is confirmed. Please find your pass attached below.</p>
+          <p><strong>Registration ID:</strong> ${participantId}</p>
+          <p>Show this pass at the venue entrance.</p>
+          <hr style="border: 1px solid #e5e7eb; margin: 20px 0;">
+          <p style="color: #6b7280; font-size: 14px;">Thank you for registering for THREADS'26!</p>
+        </div>
+      `,
+      attachment: [{
+        name: `THREADS26_PASS_${participantId}.png`,
+        content: base64Data,
+        type: 'image/png'
+      }]
+    };
+
+    const response = await axios.post(
+      'https://api.brevo.com/v3/smtp/email',
+      emailData,
+      {
+        headers: {
+          'api-key': process.env.BREVO_API_KEY,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        timeout: 10000
+      }
+    );
+    
+    console.log(`✅ Pass email sent to ${body.email}`, response.data);
+    return true;
+  } catch (error) {
+    console.error('❌ Email send failed:', error.response?.data || error.message);
+    return false;
+  }
+}
+
+// Async email function for updated registrations
+async function sendUpdatedEmailAsync(participant, participantId, qrCodeDataURL, newEvents, additionalAmount, isNewRegistration = false) {
+  try {
+    const base64Data = qrCodeDataURL.split(',')[1];
+    
+    if (isNewRegistration) {
+      // Send new registration email with pass
+      const emailData = {
+        sender: {
+          email: process.env.SENDER_EMAIL,
+          name: 'ThreadCSE \'26'
+        },
+        to: [{ email: participant.email, name: participant.full_name }],
+        subject: `🎟️ THREADS'26 PASS - ${participant.full_name}`,
+        htmlContent: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px;">
+            <h2 style="color: #2563eb;">Welcome to THREADS'26!</h2>
+            <p>Hello ${participant.full_name},</p>
+            <p>Your registration is confirmed. Please find your pass attached below.</p>
+            <p><strong>Registration ID:</strong> ${participantId}</p>
+            <p><strong>Events registered:</strong></p>
+            <ul style="background: #f3f4f6; padding: 15px; border-radius: 8px;">
+              ${newEvents.map(e => `<li>${e.name} (Day ${e.day})</li>`).join('')}
+            </ul>
+            <p><strong>Total amount paid:</strong> ₹${additionalAmount}</p>
+            <p>Show this pass at the venue entrance.</p>
+            <hr style="border: 1px solid #e5e7eb; margin: 20px 0;">
+            <p style="color: #6b7280; font-size: 14px;">Thank you for being part of THREADS'26!</p>
+          </div>
+        `,
+        attachment: [{
+          name: `THREADS26_PASS_${participantId}.png`,
+          content: base64Data,
+          type: 'image/png'
+        }]
+      };
+
+      const response = await axios.post(
+        'https://api.brevo.com/v3/smtp/email',
+        emailData,
+        {
+          headers: {
+            'api-key': process.env.BREVO_API_KEY,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          timeout: 10000
+        }
+      );
+      
+      console.log(`✅ Pass email sent to ${participant.email}`, response.data);
+    } else {
+      // Send updated registration email
+      const eventList = newEvents.map(e => `${e.name} (Day ${e.day})`).join(', ');
+      
+      const emailData = {
+        sender: {
+          email: process.env.SENDER_EMAIL,
+          name: 'ThreadCSE \'26'
+        },
+        to: [{ email: participant.email, name: participant.full_name }],
+        subject: `🔄 UPDATED PASS - THREADS'26 - ${participant.full_name}`,
+        htmlContent: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px;">
+            <h2 style="color: #2563eb;">Your THREADS'26 Pass Has Been Updated!</h2>
+            <p>Hello ${participant.full_name},</p>
+            <p>You've successfully added <strong>${newEvents.length}</strong> new event(s):</p>
+            <ul style="background: #f3f4f6; padding: 15px; border-radius: 8px;">
+              <li>${eventList}</li>
+            </ul>
+            <p><strong>Additional amount paid:</strong> ₹${additionalAmount}</p>
+            <p>Your updated pass is attached below. It now includes ALL your registered events.</p>
+            <p><strong>Registration ID:</strong> ${participantId}</p>
+            <p>Please use this new pass for entry.</p>
+            <hr style="border: 1px solid #e5e7eb; margin: 20px 0;">
+            <p style="color: #6b7280; font-size: 14px;">Thank you for being part of THREADS'26!</p>
+          </div>
+        `,
+        attachment: [{
+          name: `THREADS26_UPDATED_PASS_${participantId}.png`,
+          content: base64Data,
+          type: 'image/png'
+        }]
+      };
+
+      const response = await axios.post(
+        'https://api.brevo.com/v3/smtp/email',
+        emailData,
+        {
+          headers: {
+            'api-key': process.env.BREVO_API_KEY,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          timeout: 10000
+        }
+      );
+      
+      console.log(`✅ Updated pass email sent to ${participant.email}`, response.data);
+    }
+    return true;
+  } catch (error) {
+    console.error('❌ Email send failed:', error.response?.data || error.message);
+    return false;
+  }
+}
+
+// ========== SMART REGISTRATION ENDPOINT (Handles both New & Additional) ==========
+fastify.post('/api/spot-register', async (request, reply) => {
+  const startTime = Date.now();
+  const client = await pool.connect();
+  
+  try {
+    const body = request.body;
+    
+    // ========== 1. PARSE INPUT ==========
+    const workshopIds = (body.workshop_selections || []).map(id => parseInt(id));
+    const eventIds = (body.event_selections || []).map(id => parseInt(id));
+    const allEventIds = [...workshopIds, ...eventIds];
+    
+    if (allEventIds.length === 0) {
+      return reply.code(400).send({
+        success: false,
+        error: 'NO_EVENTS_SELECTED',
+        message: 'Please select at least one event or workshop'
+      });
+    }
+    
+    // ========== 2. CHECK IF PARTICIPANT EXISTS (FETCH ALL FIELDS) ==========
+    const emailCheck = await client.query(
+      `SELECT participant_id, full_name, year_of_study, email, phone, 
+              college_name, department, gender, city, state, accommodation_required 
+       FROM participants WHERE LOWER(email) = LOWER($1)`,
+      [body.email]
+    );
+    
+    const isExistingParticipant = emailCheck.rows.length > 0;
+    let participantId, participant, isNewRegistration = !isExistingParticipant;
+    
+    if (isExistingParticipant) {
+      // ========== EXISTING PARTICIPANT - ADDING MORE EVENTS ==========
+      participant = emailCheck.rows[0];
+      participantId = participant.participant_id;
+      
+      // Get already registered events
+      const existingRegistrations = await client.query(
+        `SELECT event_id, event_name, payment_status, registration_unique_id
+         FROM registrations 
+         WHERE participant_id = $1 AND payment_status = 'Success'`,
+        [participantId]
+      );
+      
+      const existingEventIds = new Set(
+        existingRegistrations.rows.map(r => r.event_id)
+      );
+      
+      // Filter out already registered events
+      const newWorkshopIds = workshopIds.filter(id => !existingEventIds.has(id));
+      const newEventIds = eventIds.filter(id => !existingEventIds.has(id));
+      const newAllEventIds = [...newWorkshopIds, ...newEventIds];
+      
+      if (newAllEventIds.length === 0) {
+        return reply.code(400).send({
+          success: false,
+          error: 'ALREADY_REGISTERED',
+          message: 'You are already registered for all selected events',
+          existing_events: Array.from(existingEventIds),
+          participant_id: participantId,
+          is_existing: true
+        });
+      }
+      
+      // Continue with ADDITIONAL registration flow (skip basic validation)
+      return await handleAdditionalRegistration(
+        client, body, participant, participantId,
+        newWorkshopIds, newEventIds, newAllEventIds,
+        existingEventIds, existingRegistrations, startTime, reply
+      );
+      
+    } else {
+      // ========== NEW PARTICIPANT - FULL VALIDATION ==========
+      if (!body.full_name?.trim()) {
+        return reply.code(400).send({
+          success: false,
+          error: 'VALIDATION_FAILED',
+          details: 'Full name required'
+        });
+      }
+      
+      if (!body.phone?.replace(/\D/g, '')?.length >= 10) {
+        return reply.code(400).send({
+          success: false,
+          error: 'VALIDATION_FAILED',
+          details: 'Valid phone number required'
+        });
+      }
+      
+      if (!body.college_name?.trim()) {
+        return reply.code(400).send({
+          success: false,
+          error: 'VALIDATION_FAILED',
+          details: 'College name required'
+        });
+      }
+      
+      if (!body.department?.trim()) {
+        return reply.code(400).send({
+          success: false,
+          error: 'VALIDATION_FAILED',
+          details: 'Department required'
+        });
+      }
+      
+      if (![1, 2, 3, 4].includes(parseInt(body.year_of_study))) {
+        return reply.code(400).send({
+          success: false,
+          error: 'VALIDATION_FAILED',
+          details: 'Year must be 1-4'
+        });
+      }
+      
+      return await handleNewRegistration(
+        client, body, allEventIds, workshopIds, eventIds, startTime, reply
+      );
+    }
+    
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Registration error:', error);
+    
+    // Handle specific errors
+    if (error.message.includes('VALIDATION_FAILED')) {
+      return reply.code(400).send({ 
+        success: false, 
+        error: 'VALIDATION_FAILED',
+        details: error.message.split(':')[1]?.trim()
+      });
+    }
+    
+    if (error.message.includes('EVENT_NOT_FOUND')) {
+      return reply.code(400).send({ 
+        success: false, 
+        error: 'EVENT_NOT_FOUND',
+        details: `Event ${error.message.split(':')[1]} not found`
+      });
+    }
+    
+    if (error.message.includes('SEATS_FULL')) {
+      return reply.code(400).send({ 
+        success: false, 
+        error: 'SEATS_FULL',
+        details: error.message.split(':')[1]
+      });
+    }
+    
+    if (error.message.includes('INVALID_SONACSE_STUDENT')) {
+      return reply.code(400).send({ 
+        success: false, 
+        error: 'INVALID_SONACSE_STUDENT'
+      });
+    }
+    
+    if (error.message.includes('SONACSE_ALREADY_REGISTERED')) {
+      return reply.code(409).send({ 
+        success: false, 
+        error: 'SONACSE_ALREADY_REGISTERED',
+        message: 'This SONACSE student is already registered'
+      });
+    }
+    
+    return reply.code(500).send({ 
+      success: false, 
+      error: 'REGISTRATION_ERROR',
+      details: error.message 
+    });
+    
+  } finally {
+    client.release();
+  }
+});
+
+// Add this to your backend - dedicated email check endpoint
+fastify.post('/api/check-email', async (request, reply) => {
+  try {
+    const { email } = request.body;
+    
+    if (!email) {
+      return reply.code(400).send({ error: 'Email required' });
+    }
+
+    const result = await pool.query(
+      `SELECT participant_id, full_name, year_of_study, email, phone, 
+              college_name, department, gender, city, state, accommodation_required 
+       FROM participants WHERE LOWER(email) = LOWER($1)`,
+      [email]
+    );
+
+    if (result.rows.length > 0) {
+      return reply.send({
+        exists: true,
+        participant: result.rows[0]
+      });
+    } else {
+      return reply.send({
+        exists: false
+      });
+    }
+  } catch (error) {
+    fastify.log.error(error);
+    return reply.code(500).send({ error: 'Failed to check email' });
+  }
+});
+
+// Handle New Registration
+async function handleNewRegistration(client, body, allEventIds, workshopIds, eventIds, startTime, reply) {
+  try {
+    // ========== 3. BATCH FETCH ALL EVENTS FROM REDIS ==========
+    const eventKeys = allEventIds.map(id => CACHE_KEYS.EVENT(id));
+    const seatKeys = allEventIds.map(id => CACHE_KEYS.EVENT_SEATS(id));
+    
+    const [eventResults, seatResults] = await Promise.all([
+      redis.mget(...eventKeys),
+      redis.mget(...seatKeys)
+    ]);
+    
+    const eventMap = new Map();
+    const registeredEvents = [];
+    
+    for (let i = 0; i < allEventIds.length; i++) {
+      const eventId = allEventIds[i];
+      const eventData = safeJsonParse(eventResults[i]);
+      const seatData = safeJsonParse(seatResults[i]);
+      
+      if (!eventData || !seatData) {
+        // Fallback to DB if not in cache
+        const dbEvent = await client.query(
+          `SELECT event_id, event_name, event_type, day, fee, 
+                  available_seats, cse_available_seats 
+           FROM events WHERE event_id = $1 AND is_active = true`,
+          [eventId]
+        );
+        
+        if (dbEvent.rows.length === 0) {
+          throw new Error(`EVENT_NOT_FOUND:${eventId}`);
+        }
+        
+        const e = dbEvent.rows[0];
+        eventMap.set(eventId, {
+          event_id: e.event_id,
+          event_name: e.event_name,
+          event_type: e.event_type,
+          day: e.day,
+          fee: Number(e.fee),
+          available_seats: Number(e.available_seats),
+          cse_available_seats: Number(e.cse_available_seats)
+        });
+        
+        registeredEvents.push({
+          name: e.event_name,
+          day: e.day
+        });
+        
+        // Update cache asynchronously
+        redis.set(CACHE_KEYS.EVENT(eventId), JSON.stringify({
+          event_id: e.event_id,
+          event_name: e.event_name,
+          event_type: e.event_type,
+          day: e.day,
+          fee: Number(e.fee)
+        }), 'EX', CACHE_TTL.EVENT).catch(() => {});
+        
+        redis.set(CACHE_KEYS.EVENT_SEATS(eventId), JSON.stringify({
+          available_seats: Number(e.available_seats),
+          cse_available_seats: Number(e.cse_available_seats)
+        }), 'EX', CACHE_TTL.EVENT).catch(() => {});
+        
+      } else {
+        eventMap.set(eventId, {
+          ...eventData,
+          ...seatData
+        });
+        
+        registeredEvents.push({
+          name: eventData.event_name,
+          day: eventData.day
+        });
+      }
+    }
+    
+    // ========== 4. CHECK SEATS ==========
+    for (const eventId of allEventIds) {
+      const event = eventMap.get(eventId);
+      const seats = body.student_type === 'sonacse' 
+        ? event.cse_available_seats 
+        : event.available_seats;
+      
+      if (seats <= 0) {
+        throw new Error(`SEATS_FULL:${event.event_name}`);
+      }
+    }
+
+    // ========== 5. SONACSE VALIDATION ==========
+    if (body.student_type === 'sonacse') {
+      if (!body.roll_number?.trim()) {
+        return reply.code(400).send({
+          success: false,
+          error: 'ROLL_NUMBER_REQUIRED'
+        });
+      }
+
+      const cleanRoll = body.roll_number.trim().toUpperCase();
+      const email = body.email.toLowerCase().trim();
+
+      const check = await client.query(
+        `SELECT registered, regno 
+         FROM sonacse_students 
+         WHERE regno = $1 OR LOWER(email) = LOWER($2)`,
+        [cleanRoll, email]
+      );
+
+      if (check.rows.length === 0) {
+        return reply.code(400).send({
+          success: false,
+          error: 'INVALID_SONACSE_STUDENT'
+        });
+      }
+
+      if (check.rows[0].registered === true) {
+        return reply.code(409).send({
+          success: false,
+          error: 'SONACSE_ALREADY_REGISTERED',
+          message: 'This SONACSE student is already registered'
+        });
+      }
+    }
+    
+    // ========== 6. GET PRICING ==========
+    const pricingData = await redis.get(CACHE_KEYS.PRICING);
+    const pricing = safeJsonParse(pricingData, {
+      WORKSHOP_FEE: 400,
+      SONACSE_WORKSHOP_FEE: 300,
+      EVENT_FLAT_FEE: 300,
+      SONACSE_EVENT_FEE_YEAR1: 250
+    });
+    
+    // ========== 7. CALCULATE FEES ==========
+    const workshopFee = body.student_type === 'sonacse' 
+      ? pricing.SONACSE_WORKSHOP_FEE 
+      : pricing.WORKSHOP_FEE;
+    
+    let totalAmount = workshopIds.length * workshopFee;
+    
+    if (eventIds.length > 0) {
+      if (body.student_type === 'sonacse' && parseInt(body.year_of_study) === 1) {
+        totalAmount += pricing.SONACSE_EVENT_FEE_YEAR1;
+      } else if (body.student_type === 'other') {
+        totalAmount += pricing.EVENT_FLAT_FEE;
+      }
+    }
+    
+    // ========== 8. START TRANSACTION ==========
+    await client.query('BEGIN');
+    
+    // ========== 9. INSERT PARTICIPANT ==========
+    const participant = await client.query(
+      `INSERT INTO participants (
+        full_name, email, phone, college_name, department, year_of_study, 
+        gender, city, state, accommodation_required
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING participant_id, full_name, email`,
+      [
+        body.full_name.trim(),
+        body.email.toLowerCase().trim(),
+        body.phone.replace(/\D/g, ''),
+        body.college_name.trim(),
+        body.department.trim(),
+        parseInt(body.year_of_study),
+        body.gender || 'Prefer not to say',
+        body.city?.trim() || '',
+        body.state?.trim() || '',
+        Boolean(body.accommodation_required)
+      ]
+    );
+    
+    const participantId = participant.rows[0].participant_id;
+    const participantInfo = participant.rows[0];
+    const timestamp = Date.now();
+    const registrationIds = [];
+    
+    // ========== 10. BATCH UPDATE SEATS ==========
+    if (body.student_type === 'sonacse') {
+      await client.query(
+        `UPDATE events SET 
+           cse_available_seats = cse_available_seats - 1,
+           available_seats = available_seats - 1
+         WHERE event_id = ANY($1::int[])`,
+        [allEventIds]
+      );
+    } else {
+      await client.query(
+        `UPDATE events SET available_seats = available_seats - 1
+         WHERE event_id = ANY($1::int[])`,
+        [allEventIds]
+      );
+    }
+    
+    // ========== 11. BATCH INSERT REGISTRATIONS ==========
+    const registrationValues = [];
+    const registrationParams = [];
+    let paramIndex = 1;
+    
+    // Add workshops
+    for (const eventId of workshopIds) {
+      const event = eventMap.get(eventId);
+      const regId = `THREADS26-WS-${timestamp}-${eventId}`;
+      registrationIds.push(regId);
+      
+      registrationValues.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, 'Success', $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, NOW())`);
+      registrationParams.push(
+        participantId,
+        eventId,
+        regId,
+        workshopFee,
+        event.event_name,
+        event.day
+      );
+    }
+    
+    // Add events
+    let eventPaid = false;
+    for (const eventId of eventIds) {
+      const event = eventMap.get(eventId);
+      const regId = `THREADS26-EV-${timestamp}-${eventId}`;
+      registrationIds.push(regId);
+      
+      let fee = 0;
+      if (!eventPaid) {
+        if (body.student_type === 'sonacse' && parseInt(body.year_of_study) === 1) {
+          fee = pricing.SONACSE_EVENT_FEE_YEAR1;
+          eventPaid = true;
+        } else if (body.student_type === 'other') {
+          fee = pricing.EVENT_FLAT_FEE;
+          eventPaid = true;
+        }
+      }
+      
+      registrationValues.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, 'Success', $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, NOW())`);
+      registrationParams.push(
+        participantId,
+        eventId,
+        regId,
+        fee,
+        event.event_name,
+        event.day
+      );
+    }
+    
+    await client.query(
+      `INSERT INTO registrations (
+        participant_id, event_id, registration_unique_id, 
+        payment_status, amount_paid, event_name, day, registered_at
+      ) VALUES ${registrationValues.join(', ')}`,
+      registrationParams
+    );
+    
+    // ========== 12. UPDATE SONACSE STATUS ==========
+    if (body.student_type === 'sonacse' && body.roll_number) {
+      const cleanRoll = body.roll_number.trim().toUpperCase();
+      await client.query(
+        `UPDATE sonacse_students SET registered = true WHERE regno = $1`,
+        [cleanRoll]
+      );
+      // Invalidate Redis cache
+      redis.del(CACHE_KEYS.SONACSE_STUDENT(cleanRoll)).catch(() => {});
+    }
+    
+    // ========== 13. CREATE PAYMENT ==========
+    const transactionId = `SPOT-${timestamp}-${Math.random().toString(36).substring(2, 6)}`;
+    
+    const payment = await client.query(
+      `INSERT INTO payments (
+        participant_id, transaction_id, amount, payment_method,
+        payment_status, verified_by_admin, verified_at, notes, created_at
+      ) VALUES ($1, $2, $3, $4, 'Success', true, NOW(), $5, NOW())
+      RETURNING payment_id`,
+      [
+        participantId,
+        transactionId,
+        totalAmount,
+        body.payment_method || 'cash',
+        `On-spot registration`
+      ]
+    );
+    
+    // ========== 14. COMMIT ==========
+    await client.query('COMMIT');
+    
+    // ========== 15. UPDATE REDIS SEAT CACHE (ASYNC) ==========
+    const seatUpdates = [];
+    for (const eventId of allEventIds) {
+      const event = eventMap.get(eventId);
+      const newSeats = {
+        available_seats: event.available_seats - 1,
+        cse_available_seats: body.student_type === 'sonacse'
+          ? event.cse_available_seats - 1
+          : event.cse_available_seats
+      };
+      seatUpdates.push(
+        redis.set(
+          CACHE_KEYS.EVENT_SEATS(eventId),
+          JSON.stringify(newSeats),
+          'EX', CACHE_TTL.EVENT
+        ).catch(() => {})
+      );
+    }
+    Promise.all(seatUpdates).catch(() => {});
+    
+    // ========== 16. GENERATE QR CODE ==========
+    const qrPayload = { 
+      pid: participantId, 
+      ids: registrationIds.join('|')
+    };
+
+    const qrCodeDataURL = await QRCode.toDataURL(
+      JSON.stringify(qrPayload),
+      {
+        errorCorrectionLevel: 'L',
+        margin: 4,
+        width: 300,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      }
+    ).catch((err) => {
+      console.error('QR generation failed:', err);
+      return null;
+    });
+    
+    // ========== 17. SEND EMAIL (ASYNC - DON'T AWAIT) ==========
+    if (qrCodeDataURL) {
+      // Send email in background - don't await
+      sendUpdatedEmailAsync(
+        participantInfo, 
+        participantId, 
+        qrCodeDataURL,
+        registeredEvents,
+        totalAmount,
+        true // isNewRegistration
+      ).catch(err => console.error('Background email failed:', err));
+    } else {
+      console.warn('QR code generation failed - email not sent');
+    }
+    
+    const endTime = Date.now();
+    console.log(`✅ New registration completed in ${endTime - startTime}ms`);
+    
+    // ========== 18. RESPONSE ==========
+    return reply.code(201).send({
+      success: true,
+      participant_id: participantId,
+      name: body.full_name,
+      amount_paid: totalAmount,
+      payment_id: payment.rows[0].payment_id,
+      processing_time_ms: endTime - startTime,
+      summary: {
+        workshops: workshopIds.length,
+        events: eventIds.length,
+        registration_ids: registrationIds
+      },
+      qr_code: qrCodeDataURL,
+      admin_verified: true,
+      is_new_registration: true,
+      message: `Registration successful! Check your email for the pass.`
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  }
+}
+
+// Handle Additional Registration (SKIPS basic validation)
+async function handleAdditionalRegistration(
+  client, body, participant, participantId,
+  newWorkshopIds, newEventIds, newAllEventIds,
+  existingEventIds, existingRegistrations, startTime, reply
+) {
+  try {
+    // ========== FOR EXISTING PARTICIPANTS - ONLY VALIDATE EVENTS ==========
+    if (newAllEventIds.length === 0) {
+      throw new Error('NO_EVENTS_SELECTED');
+    }
+    
+    // Use existing participant data (no need to revalidate basic info)
+    const year = parseInt(participant.year_of_study);
+    
+    // ========== 3. BATCH FETCH EVENT DETAILS FROM REDIS ==========
+    const eventKeys = newAllEventIds.map(id => CACHE_KEYS.EVENT(id));
+    const seatKeys = newAllEventIds.map(id => CACHE_KEYS.EVENT_SEATS(id));
+    
+    const [eventResults, seatResults] = await Promise.all([
+      redis.mget(...eventKeys),
+      redis.mget(...seatKeys)
+    ]);
+    
+    const eventMap = new Map();
+    const newEvents = [];
+    
+    for (let i = 0; i < newAllEventIds.length; i++) {
+      const eventId = newAllEventIds[i];
+      const eventData = safeJsonParse(eventResults[i]);
+      const seatData = safeJsonParse(seatResults[i]);
+      
+      if (!eventData || !seatData) {
+        // Fallback to DB if not in cache
+        const dbEvent = await client.query(
+          `SELECT event_id, event_name, event_type, day, fee, 
+                  available_seats, cse_available_seats 
+           FROM events WHERE event_id = $1 AND is_active = true`,
+          [eventId]
+        );
+        
+        if (dbEvent.rows.length === 0) {
+          throw new Error(`EVENT_NOT_FOUND:${eventId}`);
+        }
+        
+        const e = dbEvent.rows[0];
+        eventMap.set(eventId, {
+          event_id: e.event_id,
+          event_name: e.event_name,
+          event_type: e.event_type,
+          day: e.day,
+          fee: Number(e.fee),
+          available_seats: Number(e.available_seats),
+          cse_available_seats: Number(e.cse_available_seats)
+        });
+        
+        newEvents.push({
+          name: e.event_name,
+          day: e.day
+        });
+        
+        // Update cache asynchronously
+        redis.set(CACHE_KEYS.EVENT(eventId), JSON.stringify({
+          event_id: e.event_id,
+          event_name: e.event_name,
+          event_type: e.event_type,
+          day: e.day,
+          fee: Number(e.fee)
+        }), 'EX', CACHE_TTL.EVENT).catch(() => {});
+        
+        redis.set(CACHE_KEYS.EVENT_SEATS(eventId), JSON.stringify({
+          available_seats: Number(e.available_seats),
+          cse_available_seats: Number(e.cse_available_seats)
+        }), 'EX', CACHE_TTL.EVENT).catch(() => {});
+        
+      } else {
+        eventMap.set(eventId, {
+          ...eventData,
+          ...seatData
+        });
+        
+        newEvents.push({
+          name: eventData.event_name,
+          day: eventData.day
+        });
+      }
+    }
+    
+    // ========== 4. CHECK SEATS AVAILABILITY ==========
+    for (const eventId of newAllEventIds) {
+      const event = eventMap.get(eventId);
+      const seats = body.student_type === 'sonacse' 
+        ? event.cse_available_seats 
+        : event.available_seats;
+      
+      if (seats <= 0) {
+        throw new Error(`SEATS_FULL:${event.event_name}`);
+      }
+    }
+    
+    // ========== 5. SONACSE VALIDATION IF NEEDED ==========
+    if (body.student_type === 'sonacse') {
+      if (!body.roll_number?.trim()) {
+        return reply.code(400).send({
+          success: false,
+          error: 'ROLL_NUMBER_REQUIRED'
+        });
+      }
+
+      const cleanRoll = body.roll_number.trim().toUpperCase();
+      const email = body.email?.toLowerCase().trim() || participant.email;
+
+      // Check if this SONACSE student exists
+      const check = await client.query(
+        `SELECT registered, regno 
+         FROM sonacse_students 
+         WHERE regno = $1 OR LOWER(email) = LOWER($2)`,
+        [cleanRoll, email]
+      );
+
+      if (check.rows.length === 0) {
+        return reply.code(400).send({
+          success: false,
+          error: 'INVALID_SONACSE_STUDENT'
+        });
+      }
+    }
+    
+    // ========== 6. GET PRICING FROM REDIS ==========
+    const pricingData = await redis.get(CACHE_KEYS.PRICING);
+    const pricing = safeJsonParse(pricingData, {
+      WORKSHOP_FEE: 400,
+      SONACSE_WORKSHOP_FEE: 300,
+      EVENT_FLAT_FEE: 300,
+      SONACSE_EVENT_FEE_YEAR1: 250
+    });
+    
+    // ========== 7. CALCULATE ADDITIONAL FEES ==========
+    const workshopFee = body.student_type === 'sonacse' 
+      ? pricing.SONACSE_WORKSHOP_FEE 
+      : pricing.WORKSHOP_FEE;
+    
+    let additionalAmount = newWorkshopIds.length * workshopFee;
+    
+    // Check if they've already paid for any events (not workshops)
+    const hasExistingEvents = existingRegistrations.rows.some(r => {
+      return r.registration_unique_id?.includes('EV');
+    });
+    
+    // Only charge event fee if they haven't paid event fee before AND they're adding events
+    if (newEventIds.length > 0 && !hasExistingEvents) {
+      if (body.student_type === 'sonacse' && year === 1) {
+        additionalAmount += pricing.SONACSE_EVENT_FEE_YEAR1;
+      } else if (body.student_type === 'other') {
+        additionalAmount += pricing.EVENT_FLAT_FEE;
+      }
+    }
+    
+    // ========== 8. START TRANSACTION ==========
+    await client.query('BEGIN');
+    
+    const timestamp = Date.now();
+    const newRegistrationIds = [];
+    
+    // ========== 9. UPDATE SEATS ==========
+    if (body.student_type === 'sonacse') {
+      await client.query(
+        `UPDATE events SET 
+           cse_available_seats = cse_available_seats - 1,
+           available_seats = available_seats - 1
+         WHERE event_id = ANY($1::int[])`,
+        [newAllEventIds]
+      );
+    } else {
+      await client.query(
+        `UPDATE events SET available_seats = available_seats - 1
+         WHERE event_id = ANY($1::int[])`,
+        [newAllEventIds]
+      );
+    }
+    
+    // ========== 10. INSERT NEW REGISTRATIONS ==========
+    const registrationValues = [];
+    const registrationParams = [];
+    let paramIndex = 1;
+    
+    // Add workshops
+    for (const eventId of newWorkshopIds) {
+      const event = eventMap.get(eventId);
+      const regId = `THREADS26-WS-${timestamp}-${eventId}`;
+      newRegistrationIds.push(regId);
+      
+      registrationValues.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, 'Success', $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, NOW())`);
+      registrationParams.push(
+        participantId,
+        eventId,
+        regId,
+        workshopFee,
+        event.event_name,
+        event.day
+      );
+    }
+    
+    // Add events
+    let eventFeeCharged = false;
+    for (const eventId of newEventIds) {
+      const event = eventMap.get(eventId);
+      const regId = `THREADS26-EV-${timestamp}-${eventId}`;
+      newRegistrationIds.push(regId);
+      
+      let fee = 0;
+      // Only charge event fee once total and if they haven't paid before
+      if (!eventFeeCharged && !hasExistingEvents) {
+        if (body.student_type === 'sonacse' && year === 1) {
+          fee = pricing.SONACSE_EVENT_FEE_YEAR1;
+          eventFeeCharged = true;
+        } else if (body.student_type === 'other') {
+          fee = pricing.EVENT_FLAT_FEE;
+          eventFeeCharged = true;
+        }
+      }
+      
+      registrationValues.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, 'Success', $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, NOW())`);
+      registrationParams.push(
+        participantId,
+        eventId,
+        regId,
+        fee,
+        event.event_name,
+        event.day
+      );
+    }
+    
+    if (registrationValues.length > 0) {
+      await client.query(
+        `INSERT INTO registrations (
+          participant_id, event_id, registration_unique_id, 
+          payment_status, amount_paid, event_name, day, registered_at
+        ) VALUES ${registrationValues.join(', ')}`,
+        registrationParams
+      );
+    }
+    
+    // ========== 11. UPDATE SONACSE STATUS (if first time and not already registered) ==========
+    if (body.student_type === 'sonacse' && body.roll_number) {
+      // Check if they're already marked as registered
+      const sonacseCheck = await client.query(
+        'SELECT registered FROM sonacse_students WHERE regno = $1',
+        [body.roll_number.trim().toUpperCase()]
+      );
+      
+      if (sonacseCheck.rows.length > 0 && !sonacseCheck.rows[0].registered) {
+        const cleanRoll = body.roll_number.trim().toUpperCase();
+        await client.query(
+          `UPDATE sonacse_students SET registered = true WHERE regno = $1`,
+          [cleanRoll]
+        );
+        // Invalidate Redis cache
+        redis.del(CACHE_KEYS.SONACSE_STUDENT(cleanRoll)).catch(() => {});
+      }
+    }
+    
+    // ========== 12. CREATE PAYMENT FOR ADDITIONAL AMOUNT ==========
+    let payment = null;
+    if (additionalAmount > 0) {
+      const transactionId = `SPOT-ADD-${timestamp}-${Math.random().toString(36).substring(2, 6)}`;
+      
+      payment = await client.query(
+        `INSERT INTO payments (
+          participant_id, transaction_id, amount, payment_method,
+          payment_status, verified_by_admin, verified_at, notes, created_at
+        ) VALUES ($1, $2, $3, $4, 'Success', true, NOW(), $5, NOW())
+        RETURNING payment_id`,
+        [
+          participantId,
+          transactionId,
+          additionalAmount,
+          body.payment_method || 'cash',
+          `Additional on-spot registration for events: ${newEvents.map(e => e.name).join(', ')}`
+        ]
+      );
+    }
+    
+    // ========== 13. GET ALL REGISTRATIONS FOR QR CODE ==========
+    const allRegistrations = await client.query(
+      `SELECT registration_unique_id, event_name 
+       FROM registrations 
+       WHERE participant_id = $1 AND payment_status = 'Success'
+       ORDER BY registered_at`,
+      [participantId]
+    );
+    
+    const allRegistrationIds = allRegistrations.rows.map(r => r.registration_unique_id);
+    const allEventNames = allRegistrations.rows.map(r => r.event_name);
+    
+    // ========== 14. COMMIT TRANSACTION ==========
+    await client.query('COMMIT');
+    
+    // ========== 15. UPDATE REDIS SEAT CACHE (ASYNC) ==========
+    const seatUpdates = [];
+    for (const eventId of newAllEventIds) {
+      const event = eventMap.get(eventId);
+      const newSeats = {
+        available_seats: event.available_seats - 1,
+        cse_available_seats: body.student_type === 'sonacse'
+          ? event.cse_available_seats - 1
+          : event.cse_available_seats
+      };
+      seatUpdates.push(
+        redis.set(
+          CACHE_KEYS.EVENT_SEATS(eventId),
+          JSON.stringify(newSeats),
+          'EX', CACHE_TTL.EVENT
+        ).catch(() => {})
+      );
+    }
+    Promise.all(seatUpdates).catch(() => {});
+
+    // ========== 16. GENERATE UPDATED QR CODE ==========
+    const qrPayload = { 
+      pid: participantId, 
+      ids: allRegistrationIds.join('|')
+    };
+
+    const qrCodeDataURL = await QRCode.toDataURL(
+      JSON.stringify(qrPayload),
+      {
+        errorCorrectionLevel: 'L',
+        margin: 4,
+        width: 300,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      }
+    ).catch((err) => {
+      console.error('QR generation failed:', err);
+      return null;
+    });
+    
+    // ========== 17. SEND UPDATED EMAIL (ASYNC - DON'T AWAIT) ==========
+    if (qrCodeDataURL) {
+      // Send email in background - don't await
+      sendUpdatedEmailAsync(
+        participant, 
+        participantId, 
+        qrCodeDataURL,
+        newEvents,
+        additionalAmount,
+        false // isNewRegistration
+      ).catch(err => console.error('Background email failed:', err));
+    } else {
+      console.warn('QR code generation failed - email not sent');
+    }
+    
+    const endTime = Date.now();
+    console.log(`✅ Additional registration completed in ${endTime - startTime}ms`);
+    
+    // ========== 18. RESPONSE ==========
+    return reply.code(200).send({
+      success: true,
+      participant_id: participantId,
+      name: participant.full_name,
+      additional_amount_paid: additionalAmount,
+      payment_id: payment?.rows[0]?.payment_id || null,
+      processing_time_ms: endTime - startTime,
+      summary: {
+        new_workshops: newWorkshopIds.length,
+        new_events: newEventIds.length,
+        total_events_registered: allRegistrationIds.length,
+        new_registration_ids: newRegistrationIds,
+        all_events: allEventNames
+      },
+      qr_code: qrCodeDataURL,
+      admin_verified: true,
+      is_new_registration: false,
+      message: `Additional events added successfully! Check your email for the updated pass.`
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  }
+}
+
+
+
+
+
 
 const PORT = process.env.PORT || 3000;
 
