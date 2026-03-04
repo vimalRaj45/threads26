@@ -3921,6 +3921,9 @@ fastify.get('/api/admin/stats', async (request, reply) => {
 
 
 
+
+
+
 // Cache keys
 const CACHE_KEYS = {
   EVENT: (id) => `event:${id}`,
@@ -3947,7 +3950,7 @@ function safeJsonParse(data, defaultValue = null) {
   }
 }
 
-// Preload events at startup
+// Preload events at startup - FIXED VERSION
 async function preloadEventsToRedis() {
   try {
     const client = await pool.connect();
@@ -3958,10 +3961,17 @@ async function preloadEventsToRedis() {
          FROM events WHERE is_active = true`
       );
       
-      const pipeline = redis.pipeline();
+      // Don't use pipeline if no events
+      if (events.rows.length === 0) {
+        console.log('⚠️ No events to preload');
+        return;
+      }
+      
+      // Use multi instead of pipeline for better compatibility
+      const multi = redis.multi();
       
       events.rows.forEach(event => {
-        pipeline.set(
+        multi.set(
           CACHE_KEYS.EVENT(event.event_id),
           JSON.stringify({
             event_id: event.event_id,
@@ -3969,32 +3979,34 @@ async function preloadEventsToRedis() {
             event_type: event.event_type,
             day: event.day,
             fee: Number(event.fee)
-          }),
-          'EX', CACHE_TTL.EVENT
+          })
         );
+        multi.expire(CACHE_KEYS.EVENT(event.event_id), CACHE_TTL.EVENT);
         
-        pipeline.set(
+        multi.set(
           CACHE_KEYS.EVENT_SEATS(event.event_id),
           JSON.stringify({
             available_seats: Number(event.available_seats),
             cse_available_seats: Number(event.cse_available_seats)
-          }),
-          'EX', CACHE_TTL.EVENT
+          })
         );
+        multi.expire(CACHE_KEYS.EVENT_SEATS(event.event_id), CACHE_TTL.EVENT);
       });
       
-      pipeline.set(
+      // Add pricing config
+      multi.set(
         CACHE_KEYS.PRICING,
         JSON.stringify({
           WORKSHOP_FEE: 400,
           SONACSE_WORKSHOP_FEE: 300,
           EVENT_FLAT_FEE: 300,
           SONACSE_EVENT_FEE_YEAR1: 250
-        }),
-        'EX', CACHE_TTL.PRICING
+        })
       );
+      multi.expire(CACHE_KEYS.PRICING, CACHE_TTL.PRICING);
       
-      await pipeline.exec();
+      // Execute the multi command
+      await multi.exec();
       console.log(`✅ Preloaded ${events.rows.length} events to Redis`);
     } finally {
       client.release();
@@ -4053,7 +4065,7 @@ async function sendEmailAsync(body, participantId, qrCodeDataURL) {
       }
     );
     
-    console.log(`✅ Pass email sent to ${body.email}`, response.data);
+    console.log(`✅ Pass email sent to ${body.email}`);
     return true;
   } catch (error) {
     console.error('❌ Email send failed:', error.response?.data || error.message);
@@ -4098,7 +4110,7 @@ async function sendUpdatedEmailAsync(participant, participantId, qrCodeDataURL, 
         }]
       };
 
-      const response = await axios.post(
+      await axios.post(
         'https://api.brevo.com/v3/smtp/email',
         emailData,
         {
@@ -4111,7 +4123,7 @@ async function sendUpdatedEmailAsync(participant, participantId, qrCodeDataURL, 
         }
       );
       
-      console.log(`✅ Pass email sent to ${participant.email}`, response.data);
+      console.log(`✅ Pass email sent to ${participant.email}`);
     } else {
       // Send updated registration email
       const eventList = newEvents.map(e => `${e.name} (Day ${e.day})`).join(', ');
@@ -4129,7 +4141,7 @@ async function sendUpdatedEmailAsync(participant, participantId, qrCodeDataURL, 
             <p>Hello ${participant.full_name},</p>
             <p>You've successfully added <strong>${newEvents.length}</strong> new event(s):</p>
             <ul style="background: #f3f4f6; padding: 15px; border-radius: 8px;">
-              <li>${eventList}</li>
+              ${newEvents.map(e => `<li>${e.name} (Day ${e.day})</li>`).join('')}
             </ul>
             <p><strong>Additional amount paid:</strong> ₹${additionalAmount}</p>
             <p>Your updated pass is attached below. It now includes ALL your registered events.</p>
@@ -4146,7 +4158,7 @@ async function sendUpdatedEmailAsync(participant, participantId, qrCodeDataURL, 
         }]
       };
 
-      const response = await axios.post(
+      await axios.post(
         'https://api.brevo.com/v3/smtp/email',
         emailData,
         {
@@ -4159,7 +4171,7 @@ async function sendUpdatedEmailAsync(participant, participantId, qrCodeDataURL, 
         }
       );
       
-      console.log(`✅ Updated pass email sent to ${participant.email}`, response.data);
+      console.log(`✅ Updated pass email sent to ${participant.email}`);
     }
     return true;
   } catch (error) {
@@ -4198,7 +4210,7 @@ fastify.post('/api/spot-register', async (request, reply) => {
     );
     
     const isExistingParticipant = emailCheck.rows.length > 0;
-    let participantId, participant, isNewRegistration = !isExistingParticipant;
+    let participantId, participant;
     
     if (isExistingParticipant) {
       // ========== EXISTING PARTICIPANT - ADDING MORE EVENTS ==========
@@ -4292,7 +4304,7 @@ fastify.post('/api/spot-register', async (request, reply) => {
     console.error('Registration error:', error);
     
     // Handle specific errors
-    if (error.message.includes('VALIDATION_FAILED')) {
+    if (error.message?.includes('VALIDATION_FAILED')) {
       return reply.code(400).send({ 
         success: false, 
         error: 'VALIDATION_FAILED',
@@ -4300,7 +4312,7 @@ fastify.post('/api/spot-register', async (request, reply) => {
       });
     }
     
-    if (error.message.includes('EVENT_NOT_FOUND')) {
+    if (error.message?.includes('EVENT_NOT_FOUND')) {
       return reply.code(400).send({ 
         success: false, 
         error: 'EVENT_NOT_FOUND',
@@ -4308,7 +4320,7 @@ fastify.post('/api/spot-register', async (request, reply) => {
       });
     }
     
-    if (error.message.includes('SEATS_FULL')) {
+    if (error.message?.includes('SEATS_FULL')) {
       return reply.code(400).send({ 
         success: false, 
         error: 'SEATS_FULL',
@@ -4316,14 +4328,14 @@ fastify.post('/api/spot-register', async (request, reply) => {
       });
     }
     
-    if (error.message.includes('INVALID_SONACSE_STUDENT')) {
+    if (error.message?.includes('INVALID_SONACSE_STUDENT')) {
       return reply.code(400).send({ 
         success: false, 
         error: 'INVALID_SONACSE_STUDENT'
       });
     }
     
-    if (error.message.includes('SONACSE_ALREADY_REGISTERED')) {
+    if (error.message?.includes('SONACSE_ALREADY_REGISTERED')) {
       return reply.code(409).send({ 
         success: false, 
         error: 'SONACSE_ALREADY_REGISTERED',
@@ -4334,7 +4346,7 @@ fastify.post('/api/spot-register', async (request, reply) => {
     return reply.code(500).send({ 
       success: false, 
       error: 'REGISTRATION_ERROR',
-      details: error.message 
+      details: error.message || 'Internal server error'
     });
     
   } finally {
@@ -4381,18 +4393,25 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
     const eventKeys = allEventIds.map(id => CACHE_KEYS.EVENT(id));
     const seatKeys = allEventIds.map(id => CACHE_KEYS.EVENT_SEATS(id));
     
-    const [eventResults, seatResults] = await Promise.all([
-      redis.mget(...eventKeys),
-      redis.mget(...seatKeys)
-    ]);
+    let eventResults, seatResults;
+    try {
+      [eventResults, seatResults] = await Promise.all([
+        redis.mget(...eventKeys),
+        redis.mget(...seatKeys)
+      ]);
+    } catch (redisError) {
+      console.error('Redis fetch error:', redisError);
+      eventResults = [];
+      seatResults = [];
+    }
     
     const eventMap = new Map();
     const registeredEvents = [];
     
     for (let i = 0; i < allEventIds.length; i++) {
       const eventId = allEventIds[i];
-      const eventData = safeJsonParse(eventResults[i]);
-      const seatData = safeJsonParse(seatResults[i]);
+      const eventData = eventResults[i] ? safeJsonParse(eventResults[i]) : null;
+      const seatData = seatResults[i] ? safeJsonParse(seatResults[i]) : null;
       
       if (!eventData || !seatData) {
         // Fallback to DB if not in cache
@@ -4423,19 +4442,23 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
           day: e.day
         });
         
-        // Update cache asynchronously
+        // Update cache asynchronously (don't await)
         redis.set(CACHE_KEYS.EVENT(eventId), JSON.stringify({
           event_id: e.event_id,
           event_name: e.event_name,
           event_type: e.event_type,
           day: e.day,
           fee: Number(e.fee)
-        }), 'EX', CACHE_TTL.EVENT).catch(() => {});
+        })).then(() => {
+          redis.expire(CACHE_KEYS.EVENT(eventId), CACHE_TTL.EVENT);
+        }).catch(() => {});
         
         redis.set(CACHE_KEYS.EVENT_SEATS(eventId), JSON.stringify({
           available_seats: Number(e.available_seats),
           cse_available_seats: Number(e.cse_available_seats)
-        }), 'EX', CACHE_TTL.EVENT).catch(() => {});
+        })).then(() => {
+          redis.expire(CACHE_KEYS.EVENT_SEATS(eventId), CACHE_TTL.EVENT);
+        }).catch(() => {});
         
       } else {
         eventMap.set(eventId, {
@@ -4498,13 +4521,23 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
     }
     
     // ========== 6. GET PRICING ==========
-    const pricingData = await redis.get(CACHE_KEYS.PRICING);
-    const pricing = safeJsonParse(pricingData, {
-      WORKSHOP_FEE: 400,
-      SONACSE_WORKSHOP_FEE: 300,
-      EVENT_FLAT_FEE: 300,
-      SONACSE_EVENT_FEE_YEAR1: 250
-    });
+    let pricing;
+    try {
+      const pricingData = await redis.get(CACHE_KEYS.PRICING);
+      pricing = safeJsonParse(pricingData, {
+        WORKSHOP_FEE: 400,
+        SONACSE_WORKSHOP_FEE: 300,
+        EVENT_FLAT_FEE: 300,
+        SONACSE_EVENT_FEE_YEAR1: 250
+      });
+    } catch (error) {
+      pricing = {
+        WORKSHOP_FEE: 400,
+        SONACSE_WORKSHOP_FEE: 300,
+        EVENT_FLAT_FEE: 300,
+        SONACSE_EVENT_FEE_YEAR1: 250
+      };
+    }
     
     // ========== 7. CALCULATE FEES ==========
     const workshopFee = body.student_type === 'sonacse' 
@@ -4633,7 +4666,7 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
         `UPDATE sonacse_students SET registered = true WHERE regno = $1`,
         [cleanRoll]
       );
-      // Invalidate Redis cache
+      // Invalidate Redis cache (don't await)
       redis.del(CACHE_KEYS.SONACSE_STUDENT(cleanRoll)).catch(() => {});
     }
     
@@ -4669,11 +4702,9 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
           : event.cse_available_seats
       };
       seatUpdates.push(
-        redis.set(
-          CACHE_KEYS.EVENT_SEATS(eventId),
-          JSON.stringify(newSeats),
-          'EX', CACHE_TTL.EVENT
-        ).catch(() => {})
+        redis.set(CACHE_KEYS.EVENT_SEATS(eventId), JSON.stringify(newSeats))
+          .then(() => redis.expire(CACHE_KEYS.EVENT_SEATS(eventId), CACHE_TTL.EVENT))
+          .catch(() => {})
       );
     }
     Promise.all(seatUpdates).catch(() => {});
@@ -4684,21 +4715,23 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
       ids: registrationIds.join('|')
     };
 
-    const qrCodeDataURL = await QRCode.toDataURL(
-      JSON.stringify(qrPayload),
-      {
-        errorCorrectionLevel: 'L',
-        margin: 4,
-        width: 300,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
+    let qrCodeDataURL = null;
+    try {
+      qrCodeDataURL = await QRCode.toDataURL(
+        JSON.stringify(qrPayload),
+        {
+          errorCorrectionLevel: 'L',
+          margin: 4,
+          width: 300,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
         }
-      }
-    ).catch((err) => {
+      );
+    } catch (err) {
       console.error('QR generation failed:', err);
-      return null;
-    });
+    }
     
     // ========== 17. SEND EMAIL (ASYNC - DON'T AWAIT) ==========
     if (qrCodeDataURL) {
@@ -4761,18 +4794,25 @@ async function handleAdditionalRegistration(
     const eventKeys = newAllEventIds.map(id => CACHE_KEYS.EVENT(id));
     const seatKeys = newAllEventIds.map(id => CACHE_KEYS.EVENT_SEATS(id));
     
-    const [eventResults, seatResults] = await Promise.all([
-      redis.mget(...eventKeys),
-      redis.mget(...seatKeys)
-    ]);
+    let eventResults, seatResults;
+    try {
+      [eventResults, seatResults] = await Promise.all([
+        redis.mget(...eventKeys),
+        redis.mget(...seatKeys)
+      ]);
+    } catch (redisError) {
+      console.error('Redis fetch error:', redisError);
+      eventResults = [];
+      seatResults = [];
+    }
     
     const eventMap = new Map();
     const newEvents = [];
     
     for (let i = 0; i < newAllEventIds.length; i++) {
       const eventId = newAllEventIds[i];
-      const eventData = safeJsonParse(eventResults[i]);
-      const seatData = safeJsonParse(seatResults[i]);
+      const eventData = eventResults[i] ? safeJsonParse(eventResults[i]) : null;
+      const seatData = seatResults[i] ? safeJsonParse(seatResults[i]) : null;
       
       if (!eventData || !seatData) {
         // Fallback to DB if not in cache
@@ -4810,12 +4850,16 @@ async function handleAdditionalRegistration(
           event_type: e.event_type,
           day: e.day,
           fee: Number(e.fee)
-        }), 'EX', CACHE_TTL.EVENT).catch(() => {});
+        })).then(() => {
+          redis.expire(CACHE_KEYS.EVENT(eventId), CACHE_TTL.EVENT);
+        }).catch(() => {});
         
         redis.set(CACHE_KEYS.EVENT_SEATS(eventId), JSON.stringify({
           available_seats: Number(e.available_seats),
           cse_available_seats: Number(e.cse_available_seats)
-        }), 'EX', CACHE_TTL.EVENT).catch(() => {});
+        })).then(() => {
+          redis.expire(CACHE_KEYS.EVENT_SEATS(eventId), CACHE_TTL.EVENT);
+        }).catch(() => {});
         
       } else {
         eventMap.set(eventId, {
@@ -4871,13 +4915,23 @@ async function handleAdditionalRegistration(
     }
     
     // ========== 6. GET PRICING FROM REDIS ==========
-    const pricingData = await redis.get(CACHE_KEYS.PRICING);
-    const pricing = safeJsonParse(pricingData, {
-      WORKSHOP_FEE: 400,
-      SONACSE_WORKSHOP_FEE: 300,
-      EVENT_FLAT_FEE: 300,
-      SONACSE_EVENT_FEE_YEAR1: 250
-    });
+    let pricing;
+    try {
+      const pricingData = await redis.get(CACHE_KEYS.PRICING);
+      pricing = safeJsonParse(pricingData, {
+        WORKSHOP_FEE: 400,
+        SONACSE_WORKSHOP_FEE: 300,
+        EVENT_FLAT_FEE: 300,
+        SONACSE_EVENT_FEE_YEAR1: 250
+      });
+    } catch (error) {
+      pricing = {
+        WORKSHOP_FEE: 400,
+        SONACSE_WORKSHOP_FEE: 300,
+        EVENT_FLAT_FEE: 300,
+        SONACSE_EVENT_FEE_YEAR1: 250
+      };
+    }
     
     // ========== 7. CALCULATE ADDITIONAL FEES ==========
     const workshopFee = body.student_type === 'sonacse' 
@@ -5051,11 +5105,9 @@ async function handleAdditionalRegistration(
           : event.cse_available_seats
       };
       seatUpdates.push(
-        redis.set(
-          CACHE_KEYS.EVENT_SEATS(eventId),
-          JSON.stringify(newSeats),
-          'EX', CACHE_TTL.EVENT
-        ).catch(() => {})
+        redis.set(CACHE_KEYS.EVENT_SEATS(eventId), JSON.stringify(newSeats))
+          .then(() => redis.expire(CACHE_KEYS.EVENT_SEATS(eventId), CACHE_TTL.EVENT))
+          .catch(() => {})
       );
     }
     Promise.all(seatUpdates).catch(() => {});
@@ -5066,21 +5118,23 @@ async function handleAdditionalRegistration(
       ids: allRegistrationIds.join('|')
     };
 
-    const qrCodeDataURL = await QRCode.toDataURL(
-      JSON.stringify(qrPayload),
-      {
-        errorCorrectionLevel: 'L',
-        margin: 4,
-        width: 300,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
+    let qrCodeDataURL = null;
+    try {
+      qrCodeDataURL = await QRCode.toDataURL(
+        JSON.stringify(qrPayload),
+        {
+          errorCorrectionLevel: 'L',
+          margin: 4,
+          width: 300,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
         }
-      }
-    ).catch((err) => {
+      );
+    } catch (err) {
       console.error('QR generation failed:', err);
-      return null;
-    });
+    }
     
     // ========== 17. SEND UPDATED EMAIL (ASYNC - DON'T AWAIT) ==========
     if (qrCodeDataURL) {
@@ -5125,9 +5179,6 @@ async function handleAdditionalRegistration(
     throw error;
   }
 }
-
-
-
 
 
 
