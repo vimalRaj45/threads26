@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -281,7 +282,7 @@ function switchTab(tabName) {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.remove('active');
   });
-  document.querySelector(`.tab-btn[onclick="switchTab('${tabName}')"]`).classList.add('active');
+  event.target.classList.add('active');
   
   // Update tab content
   document.querySelectorAll('.tab-content').forEach(content => {
@@ -340,7 +341,9 @@ async function processFile() {
     // Send to backend for verification
     const res = await fetch("https://threads26-2-fdem.onrender.com/api/admin/verify-payments", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json",
+        "x-api-key": "7f8e3a1b9c4d2e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f"
+       },
       body: JSON.stringify({ payments })
     });
     
@@ -450,60 +453,79 @@ async function parseBankStatement(file) {
             .map(line => line.split(",").map(cell => cell.replace(/"/g, "").trim()));
         }
         
-        // Find header indices (Date, Narration, Credit)
-        let dateIdx = -1, narrationIdx = -1, creditIdx = -1;
+        // Find column indices based on Canara Bank format
+        let dateIdx = -1, transIdIdx = -1, depositIdx = -1, remarksIdx = -1;
         
-        // Look for the row containing headers
+        // Look for the header row
         for (let i = 0; i < Math.min(10, rows.length); i++) {
           const row = rows[i];
           const rowStr = row.join(" ").toLowerCase();
           
-          if (rowStr.includes("narration") || rowStr.includes("description")) {
-            // Found likely header row
-            dateIdx = row.findIndex(cell => 
-              cell.toLowerCase().includes("date") && !cell.toLowerCase().includes("value"));
-            narrationIdx = row.findIndex(cell => 
-              cell.toLowerCase().includes("narration") || cell.toLowerCase().includes("description"));
-            creditIdx = row.findIndex(cell => 
-              cell.toLowerCase().includes("credit") || cell.toLowerCase().includes("deposit"));
+          // Check for Canara Bank header pattern
+          if (rowStr.includes("date") && rowStr.includes("trasnaction") && rowStr.includes("remarks")) {
+            dateIdx = row.findIndex(cell => cell.toLowerCase().includes("date"));
+            transIdIdx = row.findIndex(cell => cell.toLowerCase().includes("trasnaction") || cell.toLowerCase().includes("transaction"));
+            depositIdx = row.findIndex(cell => cell.toLowerCase().includes("deposits") || cell.toLowerCase().includes("deposit"));
+            remarksIdx = row.findIndex(cell => cell.toLowerCase().includes("remarks"));
             
-            // If we found at least narration and credit, use this row
-            if (narrationIdx !== -1 && creditIdx !== -1) {
-              // Process from next row
+            if (dateIdx !== -1 && remarksIdx !== -1 && depositIdx !== -1) {
+              // Found the header, start processing from next row
               rows = rows.slice(i + 1);
               break;
             }
           }
         }
         
-        if (narrationIdx === -1 || creditIdx === -1) {
-          reject(new Error("Could not find required columns (Narration and Credit)"));
+        if (remarksIdx === -1 || depositIdx === -1) {
+          reject(new Error("Could not find required columns (Deposits and Remarks)"));
           return;
         }
         
         // Process each transaction row
         for (const row of rows) {
-          if (row.length <= Math.max(narrationIdx, creditIdx)) continue;
+          // Skip if row doesn't have enough columns or is empty
+          if (!row || row.length <= Math.max(remarksIdx, depositIdx)) continue;
           
-          const narration = row[narrationIdx]?.toString() || "";
-          const creditStr = row[creditIdx]?.toString().replace(/,/g, "").trim();
-          const credit = parseFloat(creditStr);
+          const depositStr = row[depositIdx]?.toString().replace(/,/g, "").trim();
+          const remarks = row[remarksIdx]?.toString() || "";
           
-          // Skip if no credit amount or zero
-          if (!credit || credit <= 0) continue;
+          // Skip if no deposit amount or zero
+          if (!depositStr || depositStr === "" || parseFloat(depositStr) <= 0) continue;
           
-          // Extract UPI transaction ID from narration
-          // Format: UPI/xxxxxxxxxxxx/CR/... or UPI/xxxxxxxxxxxx/DR/...
-          const upiMatch = narration.match(/UPI\/(\d+)\/(?:CR|DR)\//);
-          if (!upiMatch) continue;
+          const amount = parseFloat(depositStr);
           
-          const transactionId = upiMatch[1];
+          // Extract transaction ID from remarks
+          let transactionId = null;
           
-          // Only include credit transactions
-          if (narration.includes("/CR/")) {
+          // Look for UPI transaction ID patterns
+          // Pattern 1: UPI/CR/xxxxxxxxxxxx/...
+          const upiCrMatch = remarks.match(/UPI\/CR\/(\d+)\//);
+          if (upiCrMatch) {
+            transactionId = upiCrMatch[1];
+          }
+          
+          // Pattern 2: Look for transaction ID in Remarks (for other types like NEFT/IMPS)
+          // For NEFT/IMPS, we might need to use the actual bank transaction ID
+          if (!transactionId) {
+            // Check if it's a Google payment with a reference number
+            const googleMatch = remarks.match(/GOOGLE.*?(\d{12,})/);
+            if (googleMatch) {
+              transactionId = googleMatch[1];
+            } else {
+              // Generate a unique ID from date + amount + remarks hash
+              // This ensures we don't miss any credits
+              const dateStr = row[dateIdx] || "";
+              const hash = btoa(dateStr + amount + remarks.substring(0, 20)).replace(/[^a-zA-Z0-9]/g, '').substring(0, 12);
+              transactionId = `TXN${hash}`;
+            }
+          }
+          
+          // Only include if we have a transaction ID and it's a credit
+          if (transactionId && !remarks.includes("/DR/")) {
             payments.push({
               transaction_id: transactionId,
-              amount: credit
+              amount: amount,
+              remarks: remarks.substring(0, 50) // Include first 50 chars for reference
             });
           }
         }
