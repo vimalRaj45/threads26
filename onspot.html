@@ -816,7 +816,6 @@
       const genderSelect = document.getElementById('gender');
       const cityInput = document.getElementById('city');
       const stateInput = document.getElementById('state');
-      const accommodationCheck = document.getElementById('accommodationCheck');
       const studentTypeRadios = document.querySelectorAll('input[name="student_type"]');
       const sonaRollGroup = document.getElementById('sonaRollGroup');
       const sonaRollInput = document.getElementById('rollNumber');
@@ -961,7 +960,7 @@
           field.disabled = false;
         });
         
-        accommodationCheck.disabled = false;
+        
         studentTypeRadios.forEach(r => r.disabled = false);
       }
 
@@ -1038,8 +1037,6 @@
             stateInput.classList.add('prefilled-field');
             stateInput.readOnly = true;
             
-            accommodationCheck.checked = participant.accommodation_required || false;
-            accommodationCheck.disabled = true;
             
             // Set email field
             emailInput.value = email;
@@ -1608,7 +1605,6 @@ function toggleSonaRoll() {
               payload.gender = formData.get('gender') || 'Prefer not to say';
               payload.city = formData.get('city') || '';
               payload.state = formData.get('state') || '';
-              payload.accommodation_required = formData.get('accommodation_required') === 'on';
               payload.student_type = formData.get('student_type');
               if (payload.student_type === 'sonacse') {
                 payload.roll_number = formData.get('roll_number') || '';
