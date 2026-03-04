@@ -3922,8 +3922,6 @@ fastify.get('/api/admin/stats', async (request, reply) => {
 
 
 
-
-
 // Cache keys
 const CACHE_KEYS = {
   EVENT: (id) => `event:${id}`,
@@ -4074,7 +4072,7 @@ async function sendEmailAsync(body, participantId, qrCodeDataURL) {
 }
 
 // Async email function for updated registrations
-async function sendUpdatedEmailAsync(participant, participantId, qrCodeDataURL, newEvents, additionalAmount, isNewRegistration = false) {
+async function sendUpdatedEmailAsync(participant, participantId, qrCodeDataURL, events, amount, isNewRegistration = false, allEvents = []) {
   try {
     const base64Data = qrCodeDataURL.split(',')[1];
     
@@ -4095,9 +4093,9 @@ async function sendUpdatedEmailAsync(participant, participantId, qrCodeDataURL, 
             <p><strong>Registration ID:</strong> ${participantId}</p>
             <p><strong>Events registered:</strong></p>
             <ul style="background: #f3f4f6; padding: 15px; border-radius: 8px;">
-              ${newEvents.map(e => `<li>${e.name} (Day ${e.day})</li>`).join('')}
+              ${events.map(e => `<li>${e.name} (Day ${e.day})</li>`).join('')}
             </ul>
-            <p><strong>Total amount paid:</strong> ₹${additionalAmount}</p>
+            <p><strong>Total amount paid:</strong> ₹${amount}</p>
             <p>Show this pass at the venue entrance.</p>
             <hr style="border: 1px solid #e5e7eb; margin: 20px 0;">
             <p style="color: #6b7280; font-size: 14px;">Thank you for being part of THREADS'26!</p>
@@ -4125,8 +4123,9 @@ async function sendUpdatedEmailAsync(participant, participantId, qrCodeDataURL, 
       
       console.log(`✅ Pass email sent to ${participant.email}`);
     } else {
-      // Send updated registration email
-      const eventList = newEvents.map(e => `${e.name} (Day ${e.day})`).join(', ');
+      // Send updated registration email with ALL events
+      const allEventsList = allEvents.map(e => `${e.name} (Day ${e.day})`).join(', ');
+      const newEventsList = events.map(e => `${e.name} (Day ${e.day})`).join(', ');
       
       const emailData = {
         sender: {
@@ -4139,12 +4138,16 @@ async function sendUpdatedEmailAsync(participant, participantId, qrCodeDataURL, 
           <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px;">
             <h2 style="color: #2563eb;">Your THREADS'26 Pass Has Been Updated!</h2>
             <p>Hello ${participant.full_name},</p>
-            <p>You've successfully added <strong>${newEvents.length}</strong> new event(s):</p>
-            <ul style="background: #f3f4f6; padding: 15px; border-radius: 8px;">
-              ${newEvents.map(e => `<li>${e.name} (Day ${e.day})</li>`).join('')}
+            <p>You've successfully added <strong>${events.length}</strong> new event(s):</p>
+            <ul style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+              <li>${newEventsList}</li>
             </ul>
-            <p><strong>Additional amount paid:</strong> ₹${additionalAmount}</p>
-            <p>Your updated pass is attached below. It now includes ALL your registered events.</p>
+            <p><strong>Additional amount paid:</strong> ₹${amount}</p>
+            <p><strong>All your registered events (${allEvents.length} total):</strong></p>
+            <ul style="background: #e0f2fe; padding: 15px; border-radius: 8px;">
+              <li>${allEventsList}</li>
+            </ul>
+            <p>Your updated pass is attached below. It now includes ALL your registered events in a single QR code.</p>
             <p><strong>Registration ID:</strong> ${participantId}</p>
             <p>Please use this new pass for entry.</p>
             <hr style="border: 1px solid #e5e7eb; margin: 20px 0;">
@@ -4171,7 +4174,7 @@ async function sendUpdatedEmailAsync(participant, participantId, qrCodeDataURL, 
         }
       );
       
-      console.log(`✅ Updated pass email sent to ${participant.email}`);
+      console.log(`✅ Updated pass email sent to ${participant.email} with ALL ${allEvents.length} events`);
     }
     return true;
   } catch (error) {
@@ -4219,7 +4222,7 @@ fastify.post('/api/spot-register', async (request, reply) => {
       
       // Get already registered events
       const existingRegistrations = await client.query(
-        `SELECT event_id, event_name, payment_status, registration_unique_id
+        `SELECT event_id, event_name, payment_status, registration_unique_id, day
          FROM registrations 
          WHERE participant_id = $1 AND payment_status = 'Success'`,
         [participantId]
@@ -4228,6 +4231,12 @@ fastify.post('/api/spot-register', async (request, reply) => {
       const existingEventIds = new Set(
         existingRegistrations.rows.map(r => r.event_id)
       );
+      
+      // Get all existing events for email and display
+      const allExistingEvents = existingRegistrations.rows.map(r => ({
+        name: r.event_name,
+        day: r.day
+      }));
       
       // Filter out already registered events
       const newWorkshopIds = workshopIds.filter(id => !existingEventIds.has(id));
@@ -4249,7 +4258,7 @@ fastify.post('/api/spot-register', async (request, reply) => {
       return await handleAdditionalRegistration(
         client, body, participant, participantId,
         newWorkshopIds, newEventIds, newAllEventIds,
-        existingEventIds, existingRegistrations, startTime, reply
+        existingEventIds, existingRegistrations, allExistingEvents, startTime, reply
       );
       
     } else {
@@ -4371,9 +4380,20 @@ fastify.post('/api/check-email', async (request, reply) => {
     );
 
     if (result.rows.length > 0) {
+      // Also fetch their registered events
+      const events = await pool.query(
+        `SELECT event_id, event_name, day 
+         FROM registrations 
+         WHERE participant_id = $1 AND payment_status = 'Success'`,
+        [result.rows[0].participant_id]
+      );
+      
       return reply.send({
         exists: true,
-        participant: result.rows[0]
+        participant: {
+          ...result.rows[0],
+          registered_events: events.rows
+        }
       });
     } else {
       return reply.send({
@@ -4742,7 +4762,8 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
         qrCodeDataURL,
         registeredEvents,
         totalAmount,
-        true // isNewRegistration
+        true, // isNewRegistration
+        registeredEvents // all events (same as registeredEvents for new registration)
       ).catch(err => console.error('Background email failed:', err));
     } else {
       console.warn('QR code generation failed - email not sent');
@@ -4779,7 +4800,7 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
 async function handleAdditionalRegistration(
   client, body, participant, participantId,
   newWorkshopIds, newEventIds, newAllEventIds,
-  existingEventIds, existingRegistrations, startTime, reply
+  existingEventIds, existingRegistrations, allExistingEvents, startTime, reply
 ) {
   try {
     // ========== FOR EXISTING PARTICIPANTS - ONLY VALIDATE EVENTS ==========
@@ -5081,7 +5102,7 @@ async function handleAdditionalRegistration(
     
     // ========== 13. GET ALL REGISTRATIONS FOR QR CODE ==========
     const allRegistrations = await client.query(
-      `SELECT registration_unique_id, event_name 
+      `SELECT registration_unique_id, event_name, day 
        FROM registrations 
        WHERE participant_id = $1 AND payment_status = 'Success'
        ORDER BY registered_at`,
@@ -5089,7 +5110,10 @@ async function handleAdditionalRegistration(
     );
     
     const allRegistrationIds = allRegistrations.rows.map(r => r.registration_unique_id);
-    const allEventNames = allRegistrations.rows.map(r => r.event_name);
+    const allEventNames = allRegistrations.rows.map(r => ({
+      name: r.event_name,
+      day: r.day
+    }));
     
     // ========== 14. COMMIT TRANSACTION ==========
     await client.query('COMMIT');
@@ -5112,10 +5136,10 @@ async function handleAdditionalRegistration(
     }
     Promise.all(seatUpdates).catch(() => {});
 
-    // ========== 16. GENERATE UPDATED QR CODE ==========
+    // ========== 16. GENERATE UPDATED QR CODE WITH ALL REGISTRATION IDs ==========
     const qrPayload = { 
       pid: participantId, 
-      ids: allRegistrationIds.join('|')
+      ids: allRegistrationIds.join('|') // This now includes ALL registration IDs (old + new)
     };
 
     let qrCodeDataURL = null;
@@ -5132,6 +5156,7 @@ async function handleAdditionalRegistration(
           }
         }
       );
+      console.log(`✅ Generated QR code with ${allRegistrationIds.length} registration IDs`);
     } catch (err) {
       console.error('QR generation failed:', err);
     }
@@ -5143,16 +5168,17 @@ async function handleAdditionalRegistration(
         participant, 
         participantId, 
         qrCodeDataURL,
-        newEvents,
+        newEvents, // Newly added events
         additionalAmount,
-        false // isNewRegistration
+        false, // isNewRegistration
+        allEventNames // ALL events (existing + new)
       ).catch(err => console.error('Background email failed:', err));
     } else {
       console.warn('QR code generation failed - email not sent');
     }
     
     const endTime = Date.now();
-    console.log(`✅ Additional registration completed in ${endTime - startTime}ms`);
+    console.log(`✅ Additional registration completed in ${endTime - startTime}ms with QR containing ${allRegistrationIds.length} events`);
     
     // ========== 18. RESPONSE ==========
     return reply.code(200).send({
@@ -5167,12 +5193,13 @@ async function handleAdditionalRegistration(
         new_events: newEventIds.length,
         total_events_registered: allRegistrationIds.length,
         new_registration_ids: newRegistrationIds,
-        all_events: allEventNames
+        all_registration_ids: allRegistrationIds, // Include all IDs in response
+        all_events: allEventNames.map(e => e.name)
       },
       qr_code: qrCodeDataURL,
       admin_verified: true,
       is_new_registration: false,
-      message: `Additional events added successfully! Check your email for the updated pass.`
+      message: `Additional events added successfully! Your updated QR code now includes all ${allRegistrationIds.length} events.`
     });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
