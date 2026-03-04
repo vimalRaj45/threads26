@@ -165,18 +165,27 @@ fastify.get('/api/events', async (request, reply) => {
   try {
     const { day, type } = request.query;
 
-    // Base query
     let query = `
       SELECT 
-        event_id, event_name, event_type, day, fee,
-        description, duration, speaker, rules,
-        total_seats, available_seats, cse_seats, cse_available_seats,
+        event_id,
+        event_name,
+        event_type,
+        day,
+        fee,
+        description,
+        duration,
+        speaker,
+        rules,
+        total_seats,
+        available_seats,
+        cse_seats,
+        cse_available_seats,
         is_active,
         CASE 
           WHEN available_seats = 0 THEN 'Sold Out'
           WHEN available_seats < 10 THEN 'Limited Seats'
           ELSE 'Available'
-        END as seat_status
+        END AS seat_status
       FROM events
       WHERE is_active = true
     `;
@@ -187,18 +196,18 @@ fastify.get('/api/events', async (request, reply) => {
       query += ` AND day = $${params.length + 1}`;
       params.push(day);
     }
+
     if (type) {
       query += ` AND event_type = $${params.length + 1}`;
       params.push(type);
     }
 
-    query += ' ORDER BY day, event_type, event_id';
+    query += ` ORDER BY day, event_type, event_id`;
 
     const result = await pool.query(query, params);
 
     return {
-      events: result.rows,
-      registration_open: moment().isBefore(moment(EVENT_DATES.registration_closes))
+      events: result.rows
     };
 
   } catch (error) {
