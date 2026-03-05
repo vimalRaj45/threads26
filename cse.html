@@ -1,1039 +1,1840 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SONACSE Student Registration - THREADS'26</title>
-    <style>
-        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-        .sonacse-badge { background: linear-gradient(45deg, #FFD700, #FFA500); color: #000; }
-        .form-card { box-shadow: 0 10px 40px rgba(0,0,0,0.1); transition: all 0.3s ease; }
-        .form-card:hover { box-shadow: 0 15px 50px rgba(0,0,0,0.15); }
-        .card-hover:hover { transform: translateY(-5px); transition: transform 0.3s ease; }
-        .event-free-badge { background: linear-gradient(45deg, #10b981, #34d399); }
-        .workshop-paid-badge { background: linear-gradient(45deg, #3b82f6, #60a5fa); }
-        .sold-out-badge { background: linear-gradient(45deg, #dc2626, #ef4444); }
-        .limited-seats-badge { background: linear-gradient(45deg, #f59e0b, #fbbf24); }
-        .cse-seat-indicator { border-left: 4px solid #f59e0b; background-color: #fffbeb; }
-        .bg-purple { background-color: #8b5cf6 !important; }
-        .bg-pink { background-color: #ec4899 !important; }
-        .cursor-pointer { cursor: pointer; }
-        .payment-pending { background: linear-gradient(45deg, #f59e0b, #fbbf24); }
-        .payment-verified { background: linear-gradient(45deg, #10b981, #34d399); }
-    </style>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>THREADS'26 · On‑spot registration</title>
+  
+  <!-- Bootstrap 5 + Icons + Fonts -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz@14..32&display=swap" rel="stylesheet">
+  
+  <!-- QR Code Library (keep for success modal) -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  
+  <style>
+    :root {
+      --primary: #2c3e50;
+      --accent: #7f8e3a;
+      --accent-light: #9ab04a;
+      --bg-light: #f8fafc;
+      --border-light: #e9ecef;
+      --success: #28a745;
+      --danger: #dc3545;
+      --warning: #ffc107;
+      --sold-out: #6c757d;
+      --upi-bg: #e3f2fd;
+      --upi-border: #bbdefb;
+      --tech-color: #0d6efd;
+      --tech-light: #e7f1ff;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: linear-gradient(145deg, #f1f4f9 0%, #ffffff 100%);
+      min-height: 100vh;
+      padding: 2rem 0;
+    }
+
+    .registration-card {
+      border: none;
+      border-radius: 32px;
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(4px);
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+      overflow: hidden;
+    }
+
+    .card-header-custom {
+      background: var(--primary);
+      padding: 1.5rem 2rem;
+      border-bottom: 4px solid var(--accent);
+    }
+
+    .card-header-custom h2 {
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin: 0;
+      color: white;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .card-header-custom h2 i {
+      color: var(--accent);
+      font-size: 2rem;
+    }
+
+    .accent-badge {
+      background: var(--accent);
+      color: white;
+      padding: 0.5rem 1.2rem;
+      border-radius: 40px;
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+
+    .server-badge {
+      background: #34495e;
+      color: #ecf0f1;
+      padding: 0.5rem 1.2rem;
+      border-radius: 40px;
+      font-weight: 500;
+      font-size: 0.9rem;
+      border: 1px solid var(--accent);
+    }
+
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--primary);
+      margin-bottom: 1.2rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px dashed var(--accent-light);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-title i {
+      color: var(--accent);
+    }
+
+    .form-label {
+      font-weight: 500;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      color: #4b5b6b;
+      margin-bottom: 0.25rem;
+    }
+
+    .form-control, .form-select {
+      border: 1.5px solid var(--border-light);
+      border-radius: 16px;
+      padding: 0.7rem 1rem;
+      font-size: 0.95rem;
+      transition: all 0.15s ease;
+    }
+
+    .form-control:focus, .form-select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(127, 142, 58, 0.15);
+    }
+
+    .input-group-text {
+      background: white;
+      border: 1.5px solid var(--border-light);
+      border-radius: 16px 0 0 16px;
+      border-right: none;
+      color: #6c7a8a;
+    }
+
+    .input-group .form-control {
+      border-radius: 0 16px 16px 0;
+    }
+
+    .event-option-card {
+      border: 1.5px solid var(--border-light);
+      border-radius: 20px;
+      padding: 1rem 1.2rem;
+      background: white;
+      transition: all 0.15s;
+      cursor: pointer;
+      margin-bottom: 10px;
+      position: relative;
+      overflow: hidden;
+      height: 100%;
+    }
+
+    .event-option-card:hover:not(.sold-out):not(.workshop-disabled) {
+      border-color: var(--accent);
+      background: #fcfdf9;
+    }
+
+    .event-option-card.selected {
+      border-color: var(--accent);
+      background: #f3f7e9;
+      box-shadow: 0 8px 20px -12px var(--accent);
+    }
+
+    .event-option-card.selected::after {
+      content: "✓";
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      font-size: 1.5rem;
+      color: var(--accent);
+      font-weight: bold;
+    }
+
+    .event-option-card.technical-selected {
+      border-color: var(--tech-color);
+      background: var(--tech-light);
+    }
+
+    .event-option-card.sold-out {
+      opacity: 0.6;
+      cursor: not-allowed;
+      background: #f8f9fa;
+      border-color: #dee2e6;
+    }
+
+    .event-option-card.sold-out::after {
+      content: "❌ SOLD OUT";
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      font-size: 0.75rem;
+      color: var(--sold-out);
+      font-weight: bold;
+      background: rgba(255,255,255,0.9);
+      padding: 2px 8px;
+      border-radius: 12px;
+    }
+
+    .event-option-card.workshop-disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      background: #f8f9fa;
+      border-color: #dee2e6;
+    }
+
+    .event-option-card.workshop-disabled::after {
+      content: "⚠️ MAX 1";
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      font-size: 0.75rem;
+      color: #856404;
+      font-weight: bold;
+      background: #fff3cd;
+      padding: 2px 8px;
+      border-radius: 12px;
+    }
+
+    .event-day {
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: #eef2f6;
+      padding: 0.2rem 0.7rem;
+      border-radius: 30px;
+      display: inline-block;
+    }
+
+    .fee-tag {
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .seat-status {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.2rem 0.5rem;
+      border-radius: 12px;
+      display: inline-block;
+    }
+
+    .seat-status.available {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .seat-status.limited {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .seat-status.sold-out {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .btn-primary-custom {
+      background: var(--accent);
+      border: none;
+      border-radius: 40px;
+      padding: 1rem 2rem;
+      font-weight: 600;
+      font-size: 1.2rem;
+      letter-spacing: 0.02em;
+      color: white;
+      transition: all 0.2s;
+      box-shadow: 0 8px 18px -8px rgba(127, 142, 58, 0.5);
+    }
+
+    .btn-primary-custom:hover:not(:disabled) {
+      background: #8fa542;
+      transform: translateY(-2px);
+      box-shadow: 0 12px 24px -8px var(--accent);
+    }
+
+    .btn-primary-custom:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .btn-outline-accent {
+      border: 2px solid var(--accent);
+      border-radius: 40px;
+      color: var(--accent);
+      font-weight: 600;
+      padding: 0.5rem 1.5rem;
+      background: white;
+    }
+
+    .btn-outline-accent:hover {
+      background: var(--accent);
+      color: white;
+    }
+
+    .summary-box {
+      background: #f2f5f9;
+      border-radius: 24px;
+      padding: 1.5rem;
+    }
+
+    .total-amount {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .upi-section {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 24px;
+      padding: 1.5rem;
+      margin: 1.5rem 0;
+      color: white;
+      box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+    }
+
+    .upi-qr-container {
+      background: white;
+      border-radius: 20px;
+      padding: 1rem;
+      display: inline-block;
+      margin: 0 auto;
+    }
+
+    .upi-qr-container img {
+      width: 200px;
+      height: 200px;
+      border-radius: 12px;
+      object-fit: contain;
+      display: block;
+    }
+
+    .upi-details {
+      text-align: center;
+    }
+
+    .upi-id-badge {
+      background: rgba(255,255,255,0.2);
+      backdrop-filter: blur(10px);
+      border-radius: 40px;
+      padding: 0.75rem 1.5rem;
+      font-family: monospace;
+      font-size: 1.2rem;
+      border: 1px solid rgba(255,255,255,0.3);
+      display: inline-block;
+    }
+
+    .amount-badge {
+      background: #ffd700;
+      color: #2c3e50;
+      border-radius: 40px;
+      padding: 0.5rem 1.5rem;
+      font-weight: 700;
+      font-size: 1.5rem;
+      display: inline-block;
+    }
+
+    .copy-btn {
+      cursor: pointer;
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      background: white;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+
+    .copy-btn:hover {
+      background: var(--accent);
+      color: white;
+    }
+
+    .qr-preview {
+      max-width: 200px;
+      border-radius: 16px;
+      border: 2px solid var(--accent);
+      padding: 8px;
+      background: white;
+      margin: 0 auto;
+    }
+
+    .modal-content {
+      border-radius: 24px;
+      border: none;
+    }
+
+    .modal-header {
+      background: var(--primary);
+      color: white;
+      border-radius: 24px 24px 0 0;
+    }
+
+    .events-loading {
+      text-align: center;
+      padding: 2rem;
+      color: #6c757d;
+    }
+
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1100;
+    }
+
+    .toast {
+      background: white;
+      color: #2c3e50;
+      min-width: 250px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 1rem;
+      height: 1rem;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 0.8s linear infinite;
+      margin-right: 0.5rem;
+    }
+
+    .badge-new {
+      background: #28a745;
+      color: white;
+      padding: 0.25rem 0.5rem;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .badge-additional {
+      background: #ffc107;
+      color: #856404;
+      padding: 0.25rem 0.5rem;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .technical-badge {
+      background: var(--tech-color);
+      color: white;
+      padding: 0.25rem 0.5rem;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .non-technical-badge {
+      background: #17a2b8;
+      color: white;
+      padding: 0.25rem 0.5rem;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .prefilled-field {
+      background-color: #f0f7ff !important;
+      border-color: #7f8e3a !important;
+    }
+
+    .email-check-section {
+      background: #f8f9fa;
+      border-radius: 20px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      border: 2px dashed var(--accent-light);
+    }
+
+    .tech-required-alert {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      color: #856404;
+      border-radius: 16px;
+      padding: 1rem;
+      margin-top: 1rem;
+      font-weight: 500;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
 </head>
-<body class="bg-light">
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg gradient-bg text-white">
-        <div class="container">
-            <a class="navbar-brand text-white d-flex align-items-center" href="#">
-                <i class="fas fa-graduation-cap fa-2x me-3"></i>
-                <div>
-                    <h4 class="mb-0 fw-bold">THREADS'26</h4>
-                    <small class="opacity-90">Technical Festival</small>
-                </div>
-            </a>
-            <div>
-                <span class="sonacse-badge px-3 py-2 rounded-pill fw-bold">
-                    <i class="fas fa-crown me-2"></i> SONACSE STUDENTS
+<body>
+  <div class="toast-container" id="toastContainer"></div>
+
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-11 col-xl-10">
+        <div class="card registration-card">
+          
+          <div class="card-header-custom">
+            <div class="d-flex flex-wrap align-items-center justify-content-between">
+              <h2>
+                <i class="bi bi-ticket-perforated"></i> 
+                THREADS'26 · spot registration
+              </h2>
+              <div class="d-flex gap-2 mt-2 mt-sm-0">
+                <span class="server-badge">
+                  <i class="bi bi-hdd-stack"></i> localhost:3000
                 </span>
+                <span class="accent-badge">
+                  <i class="bi bi-live"></i> live
+                </span>
+              </div>
             </div>
-        </div>
-    </nav>
+          </div>
 
-    <!-- Main Content -->
-    <div class="container py-5">
-        <div class="row justify-content-center">
-            <div class="col-lg-10">
-                <!-- Header -->
-                <div class="text-center mb-5">
-                    <h1 class="fw-bold text-dark mb-3">SONACSE Student Registration</h1>
-                    <p class="lead text-muted mb-4">
-                        Exclusive registration portal for SONACSE members. Events are <span class="fw-bold text-success">FREE</span> for SONACSE students!
-                    </p>
-                    <div class="alert alert-warning text-start mx-auto" style="max-width: 800px;">
-                        <div class="d-flex">
-                            <i class="fas fa-star text-warning mt-1 me-3"></i>
-                            <div>
-                                <h6 class="fw-bold text-warning mb-2">Benefits:</h6>
-                                <ul class="mb-0">
-                                    <li>Events are completely FREE for SONACSE students</li>
-                                    <li>Automatic confirmation for events (no payment needed)</li>
-                                    <li>Priority CSE seats reserved for you</li>
-                                    <li>Workshops available at regular rates</li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
+          <div class="card-body p-4 p-xl-5">
+            <!-- Connection Status -->
+            <div class="d-flex justify-content-between align-items-center mb-4" id="connectionStatus">
+              <div class="d-flex align-items-center gap-2">
+                <div class="spinner-grow spinner-grow-sm text-warning" role="status" id="statusIndicator">
+                  <span class="visually-hidden">Checking...</span>
                 </div>
-
-                <!-- Form -->
-                <div class="card form-card border-0 mb-5">
-                    <div class="card-body p-4 p-md-5">
-                        <form id="sonacseRegistrationForm">
-                            <!-- Personal Details Section -->
-                            <div class="mb-5">
-                                <h3 class="text-dark mb-4 border-bottom pb-3">
-                                    <i class="fas fa-user-circle me-2"></i>Personal Details
-                                </h3>
-                                
-                                <!-- SONACSE Roll Number -->
-                                <div class="mb-4">
-                                    <label class="form-label fw-bold" for="roll_number">
-                                        SONACSE Roll Number <span class="text-danger">*</span>
-                                    </label>
-                                    <div class="input-group">
-                                        <input 
-                                            type="text" 
-                                            id="roll_number" 
-                                            name="roll_number" 
-                                            placeholder="e.g., 22CSE001" 
-                                            required
-                                            class="form-control form-control-lg"
-                                            pattern="^\d{2}CSE\d{3}$"
-                                            title="Format: YYCSEXXX (e.g., 22CSE001)"
-                                        >
-                                        <span class="input-group-text">
-                                            <i class="fas fa-id-card"></i>
-                                        </span>
-                                    </div>
-                                    <div class="form-text">Your SONACSE roll number (e.g., 22CSE001, 21CSE005)</div>
-                                </div>
-
-                                <div class="row g-4 mb-4">
-                                    <!-- Full Name -->
-                                    <div class="col-md-6">
-                                        <label class="form-label fw-bold" for="full_name">
-                                            Full Name <span class="text-danger">*</span>
-                                        </label>
-                                        <input 
-                                            type="text" 
-                                            id="full_name" 
-                                            name="full_name" 
-                                            required
-                                            class="form-control"
-                                            placeholder="John Doe"
-                                        >
-                                    </div>
-
-                                    <!-- Email -->
-                                    <div class="col-md-6">
-                                        <label class="form-label fw-bold" for="email">
-                                            Email Address <span class="text-danger">*</span>
-                                        </label>
-                                        <input 
-                                            type="email" 
-                                            id="email" 
-                                            name="email" 
-                                            required
-                                            class="form-control"
-                                            placeholder="john@example.com"
-                                        >
-                                    </div>
-
-                                    <!-- Phone -->
-                                    <div class="col-md-6">
-                                        <label class="form-label fw-bold" for="phone">
-                                            Phone Number <span class="text-danger">*</span>
-                                        </label>
-                                        <input 
-                                            type="tel" 
-                                            id="phone" 
-                                            name="phone" 
-                                            required
-                                            class="form-control"
-                                            placeholder="9876543210"
-                                            pattern="[0-9]{10}"
-                                            title="10 digit phone number"
-                                        >
-                                    </div>
-
-                                    <!-- Year of Study -->
-                                    <div class="col-md-6">
-                                        <label class="form-label fw-bold" for="year_of_study">
-                                            Year of Study <span class="text-danger">*</span>
-                                        </label>
-                                        <select 
-                                            id="year_of_study" 
-                                            name="year_of_study" 
-                                            required
-                                            class="form-select"
-                                        >
-                                            <option value="">Select Year</option>
-                                            <option value="1">First Year</option>
-                                            <option value="2">Second Year</option>
-                                            <option value="3">Third Year</option>
-                                            <option value="4">Fourth Year</option>
-                                        </select>
-                                    </div>
-
-                                    <!-- City -->
-                                    <div class="col-md-6">
-                                        <label class="form-label fw-bold" for="city">
-                                            City
-                                        </label>
-                                        <input 
-                                            type="text" 
-                                            id="city" 
-                                            name="city"
-                                            class="form-control"
-                                            placeholder="Chennai"
-                                            value="Chennai"
-                                        >
-                                    </div>
-
-                                    <!-- State -->
-                                    <div class="col-md-6">
-                                        <label class="form-label fw-bold" for="state">
-                                            State
-                                        </label>
-                                        <input 
-                                            type="text" 
-                                            id="state" 
-                                            name="state"
-                                            class="form-control"
-                                            placeholder="Tamil Nadu"
-                                            value="Tamil Nadu"
-                                        >
-                                    </div>
-                                </div>
-
-                                <!-- Note: College and Department are fixed for SONACSE -->
-                                <div class="alert alert-info">
-                                    <i class="fas fa-info-circle me-2"></i>
-                                    <strong>College:</strong> Saveetha Engineering College (SONACSE) | 
-                                    <strong>Department:</strong> CSE (Computer Science & Engineering)
-                                </div>
-                            </div>
-
-                            <!-- Events & Workshops Section -->
-                            <div class="mb-5">
-                                <h3 class="text-dark mb-4 border-bottom pb-3">
-                                    <i class="fas fa-calendar-alt me-2"></i>Events & Workshops Selection
-                                </h3>
-                                
-                                <!-- Note about SONACSE benefits -->
-                                <div class="alert alert-success mb-4">
-                                    <div class="d-flex">
-                                        <i class="fas fa-gift text-success mt-1 me-3"></i>
-                                        <div>
-                                            <h6 class="fw-bold text-success mb-2">SONACSE Benefit:</h6>
-                                            <p class="mb-0">All events are <span class="fw-bold">FREE</span> for SONACSE students! Workshops require payment verification.</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Workshops -->
-                                <div class="mb-5">
-                                    <h4 class="text-dark mb-4">
-                                        <i class="fas fa-laptop-code me-2"></i> Workshops (Require Payment)
-                                    </h4>
-                                    <div class="row g-4" id="workshops-container">
-                                        <div class="col-12 text-center py-5">
-                                            <div class="spinner-border text-primary" role="status">
-                                                <span class="visually-hidden">Loading...</span>
-                                            </div>
-                                            <p class="text-muted mt-3">Loading workshops...</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Events -->
-                                <div>
-                                    <h4 class="text-dark mb-4">
-                                        <i class="fas fa-trophy me-2"></i> Events (FREE for SONACSE)
-                                    </h4>
-                                    <div class="row g-4" id="events-container">
-                                        <div class="col-12 text-center py-5">
-                                            <div class="spinner-border text-success" role="status">
-                                                <span class="visually-hidden">Loading...</span>
-                                            </div>
-                                            <p class="text-muted mt-3">Loading events...</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Submit Button -->
-                            <div class="text-center">
-                                <button 
-                                    type="submit" 
-                                    id="submitBtn"
-                                    class="btn gradient-bg text-white btn-lg px-5 py-3 fw-bold"
-                                >
-                                    <i class="fas fa-paper-plane me-2"></i> Register as SONACSE Student
-                                </button>
-                                <p class="text-muted mt-3 small">
-                                    By registering, you agree to the event terms and conditions
-                                </p>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Footer Note -->
-                <div class="text-center text-muted small">
-                    <p>Having issues with registration? Contact SONACSE team lead</p>
-                </div>
+                <span id="statusText">Checking server connection...</span>
+              </div>
+              <button class="btn btn-sm btn-outline-secondary" type="button" id="testConnectionBtn">
+                <i class="bi bi-arrow-repeat"></i> test
+              </button>
             </div>
-        </div>
-    </div>
 
-    <!-- Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-
-    <script>
-        // Frontend JavaScript code
-        const BASE_URL = 'https://threads26-2-fdem.onrender.com';
-        let currentRegistrationData = null;
-        
-        async function loadEvents() {
-            try {
-                const response = await fetch(`${BASE_URL}/api/events`);
-                if (!response.ok) throw new Error('Failed to load events');
-                
-                const data = await response.json();
-                
-                if (data.events && Array.isArray(data.events)) {
-                    const workshops = data.events.filter(e => e.event_type === 'workshop');
-                    const events = data.events.filter(e => e.event_type !== 'workshop');
-                    
-                    displayWorkshops(workshops);
-                    displayEvents(events);
-                    
-                    if (data.registration_open === false) {
-                        const submitBtn = document.getElementById('submitBtn');
-                        submitBtn.disabled = true;
-                        submitBtn.innerHTML = '<i class="fas fa-lock me-2"></i> Registration Closed';
-                        submitBtn.classList.remove('gradient-bg');
-                        submitBtn.classList.add('btn-secondary');
-                        
-                        Swal.fire({
-                            icon: 'warning',
-                            title: 'Registration Closed',
-                            text: 'Registration period has ended. Please contact organizers.',
-                            confirmButtonColor: '#dc2626',
-                            confirmButtonText: 'OK'
-                        });
-                    }
-                } else {
-                    throw new Error('Invalid events data received');
-                }
-            } catch (error) {
-                console.error('Error loading events:', error);
-                
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Failed to Load Events',
-                    text: 'Please refresh the page to try again.',
-                    confirmButtonColor: '#dc2626',
-                    confirmButtonText: 'Refresh',
-                    showCancelButton: true,
-                    cancelButtonText: 'Cancel'
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        loadEvents();
-                    }
-                });
-                
-                document.getElementById('workshops-container').innerHTML = 
-                    '<div class="col-12"><div class="alert alert-danger">Failed to load workshops. Please refresh.</div></div>';
-                document.getElementById('events-container').innerHTML = 
-                    '<div class="col-12"><div class="alert alert-danger">Failed to load events. Please refresh.</div></div>';
-            }
-        }
-        
-        function displayWorkshops(workshops) {
-            const container = document.getElementById('workshops-container');
-            if (workshops.length === 0) {
-                container.innerHTML = '<div class="col-12"><p class="text-muted text-center py-4">No workshops available at the moment.</p></div>';
-                return;
-            }
-            
-            container.innerHTML = workshops.map(workshop => {
-                let seatStatus = 'Available';
-                if (workshop.available_seats === 0) {
-                    seatStatus = 'Sold Out';
-                } else if (workshop.available_seats <= 5) {
-                    seatStatus = 'Limited Seats';
-                }
-                
-                let seatBadgeClass = 'badge bg-primary';
-                if (seatStatus === 'Sold Out') {
-                    seatBadgeClass = 'badge sold-out-badge text-white';
-                } else if (seatStatus === 'Limited Seats') {
-                    seatBadgeClass = 'badge limited-seats-badge text-dark';
-                }
-                
-                const isDisabled = workshop.available_seats === 0;
-                
-                return `
-                    <div class="col-lg-6 mb-4">
-                        <div class="card h-100 border card-hover ${isDisabled ? 'opacity-75' : ''}">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-start mb-3">
-                                    <h5 class="card-title fw-bold">${workshop.event_name}</h5>
-                                    <div class="text-end">
-                                        <span class="${seatBadgeClass} mb-1">${seatStatus}</span>
-                                        <div class="badge workshop-paid-badge text-white">₹${parseFloat(workshop.fee).toFixed(2)}</div>
-                                    </div>
-                                </div>
-                                
-                                ${workshop.description ? `<p class="card-text text-muted mb-3">${workshop.description}</p>` : ''}
-                                
-                                <div class="row g-2 mb-3">
-                                    ${workshop.duration ? `
-                                        <div class="col-auto">
-                                            <small class="text-muted"><i class="far fa-clock me-1"></i> ${workshop.duration}</small>
-                                        </div>
-                                    ` : ''}
-                                    ${workshop.speaker ? `
-                                        <div class="col-auto">
-                                            <small class="text-muted"><i class="fas fa-chalkboard-teacher me-1"></i> ${workshop.speaker}</small>
-                                        </div>
-                                    ` : ''}
-                                    <div class="col-auto">
-                                        <small class="text-muted"><i class="fas fa-calendar-day me-1"></i> Day ${workshop.day}</small>
-                                    </div>
-                                    <div class="col-auto">
-                                        <small class="text-muted"><i class="fas fa-users me-1"></i> ${workshop.available_seats}/${workshop.total_seats} seats</small>
-                                    </div>
-                                </div>
-                                
-                                <div class="cse-seat-indicator p-2 rounded mb-3">
-                                    <small class="text-dark"><i class="fas fa-crown me-1"></i> CSE seats: ${workshop.cse_available_seats || 0}/${workshop.cse_seats || 0} available</small>
-                                </div>
-                                
-                                <div class="form-check">
-                                    <input 
-                                        type="checkbox" 
-                                        class="form-check-input workshop-checkbox" 
-                                        value="${workshop.event_id}"
-                                        data-fee="${workshop.fee}"
-                                        data-name="${workshop.event_name}"
-                                        ${isDisabled ? 'disabled' : ''}
-                                        id="workshop-${workshop.event_id}"
-                                    >
-                                    <label class="form-check-label ${isDisabled ? 'text-muted' : ''}" for="workshop-${workshop.event_id}">
-                                        ${isDisabled ? 'Sold Out' : 'Select this workshop'}
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-        
-        function displayEvents(events) {
-            const container = document.getElementById('events-container');
-            if (events.length === 0) {
-                container.innerHTML = '<div class="col-12"><p class="text-muted text-center py-4">No events available at the moment.</p></div>';
-                return;
-            }
-            
-            container.innerHTML = events.map(event => {
-                let seatStatus = 'Available';
-                if (event.available_seats === 0) {
-                    seatStatus = 'Sold Out';
-                } else if (event.available_seats <= 5) {
-                    seatStatus = 'Limited Seats';
-                }
-                
-                let seatBadgeClass = 'badge bg-success';
-                if (seatStatus === 'Sold Out') {
-                    seatBadgeClass = 'badge sold-out-badge text-white';
-                } else if (seatStatus === 'Limited Seats') {
-                    seatBadgeClass = 'badge limited-seats-badge text-dark';
-                }
-                
-                let eventTypeClass = 'badge bg-secondary';
-                let eventTypeText = event.event_type;
-                
-                if (event.event_type === 'technical') {
-                    eventTypeClass = 'badge bg-purple text-white';
-                } else if (event.event_type === 'non-technical') {
-                    eventTypeClass = 'badge bg-pink text-white';
-                }
-                
-                const isDisabled = event.available_seats === 0;
-                
-                return `
-                    <div class="col-lg-4 col-md-6 mb-4">
-                        <div class="card h-100 border card-hover ${isDisabled ? 'opacity-75' : ''}">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-start mb-3">
-                                    <h6 class="card-title fw-bold mb-0">${event.event_name}</h6>
-                                    <div class="text-end">
-                                        <span class="${eventTypeClass} mb-1">${eventTypeText}</span>
-                                        <div>
-                                            <span class="${seatBadgeClass} mb-1 me-1">${seatStatus}</span>
-                                            <span class="badge event-free-badge text-white">FREE</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                ${event.description ? `<p class="card-text text-muted small mb-3">${event.description}</p>` : ''}
-                                
-                                <div class="row g-2 mb-3">
-                                    ${event.duration ? `
-                                        <div class="col-auto">
-                                            <small class="text-muted"><i class="far fa-clock me-1"></i> ${event.duration}</small>
-                                        </div>
-                                    ` : ''}
-                                    ${event.speaker ? `
-                                        <div class="col-auto">
-                                            <small class="text-muted"><i class="fas fa-chalkboard-teacher me-1"></i> ${event.speaker}</small>
-                                        </div>
-                                    ` : ''}
-                                    <div class="col-auto">
-                                        <small class="text-muted"><i class="fas fa-calendar-day me-1"></i> Day ${event.day}</small>
-                                    </div>
-                                    <div class="col-auto">
-                                        <small class="text-muted"><i class="fas fa-users me-1"></i> ${event.available_seats}/${event.total_seats} seats</small>
-                                    </div>
-                                </div>
-                                
-                                <div class="cse-seat-indicator p-2 rounded mb-3">
-                                    <small class="text-dark"><i class="fas fa-crown me-1"></i> CSE seats: ${event.cse_available_seats || 0}/${event.cse_seats || 0} available</small>
-                                </div>
-                                
-                                <div class="form-check">
-                                    <input 
-                                        type="checkbox" 
-                                        class="form-check-input event-checkbox" 
-                                        value="${event.event_id}"
-                                        data-name="${event.event_name}"
-                                        ${isDisabled ? 'disabled' : ''}
-                                        id="event-${event.event_id}"
-                                    >
-                                    <label class="form-check-label ${isDisabled ? 'text-muted' : ''}" for="event-${event.event_id}">
-                                        ${isDisabled ? 'Sold Out' : 'Select this event'}
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-        
-        // Form submission
-        document.getElementById('sonacseRegistrationForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const submitBtn = document.getElementById('submitBtn');
-            const originalBtnText = submitBtn.innerHTML;
-            
-            const workshopSelections = Array.from(document.querySelectorAll('.workshop-checkbox:checked'))
-                .map(cb => cb.value);
-            const eventSelections = Array.from(document.querySelectorAll('.event-checkbox:checked'))
-                .map(cb => cb.value);
-            
-            if (workshopSelections.length === 0 && eventSelections.length === 0) {
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'Selection Required',
-                    text: 'Please select at least one workshop or event.',
-                    confirmButtonColor: '#3b82f6',
-                    confirmButtonText: 'OK'
-                });
-                return;
-            }
-            
-            const formData = {
-                roll_number: document.getElementById('roll_number').value.trim().toUpperCase(),
-                full_name: document.getElementById('full_name').value.trim(),
-                email: document.getElementById('email').value.trim(),
-                phone: document.getElementById('phone').value.trim(),
-                year_of_study: document.getElementById('year_of_study').value,
-                city: document.getElementById('city').value.trim(),
-                state: document.getElementById('state').value.trim(),
-                accommodation_required: false, // Default for SONACSE
-                workshop_selections: workshopSelections,
-                event_selections: eventSelections
-            };
-            
-            const sonacseId = formData.roll_number;
-            if (!/^\d{2}CSE\d{3}$/.test(sonacseId)) {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Invalid SONACSE Roll Number',
-                    text: 'SONACSE Roll Number must be in format: YYCSEXXX (e.g., 22CSE001)',
-                    confirmButtonColor: '#dc2626',
-                    confirmButtonText: 'OK'
-                });
-                submitBtn.innerHTML = originalBtnText;
-                submitBtn.disabled = false;
-                return;
-            }
-            
-            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Registering...';
-            submitBtn.disabled = true;
-            
-            try {
-                const response = await fetch(`${BASE_URL}/api/sonacse/register`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(formData)
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok && data.success) {
-                    currentRegistrationData = data;
-                    
-                    if (data.registration_type === 'EVENTS_ONLY_FREE' || !data.payment?.required) {
-                        // EVENTS ONLY - FREE
-                        Swal.fire({
-                            icon: 'success',
-                            title: 'Registration Successful!',
-                            html: `
-                                <div class="text-start">
-                                    <p class="mb-2"><i class="fas fa-check-circle text-success me-2"></i><strong>Name:</strong> ${data.participant_details?.participant_name}</p>
-                                    <p class="mb-2"><i class="fas fa-crown text-warning me-2"></i><strong>SONACSE Roll:</strong> ${data.participant_details?.roll_number}</p>
-                                    <p class="mb-2"><i class="fas fa-id-card text-primary me-2"></i><strong>Participant ID:</strong> ${data.participant_details?.participant_id}</p>
-                                    <p class="mb-2"><i class="fas fa-calendar-check text-success me-2"></i><strong>Events Registered:</strong> ${data.registrations?.events?.length || 0}</p>
-                                    <div class="alert alert-success mt-3 mb-0">
-                                        <i class="fas fa-gift me-2"></i>All events confirmed - No payment required!
-                                    </div>
-                                </div>
-                            `,
-                            confirmButtonColor: '#10b981',
-                            confirmButtonText: 'Generate QR Code',
-                            showCancelButton: true,
-                            cancelButtonText: 'Close',
-                            width: 500
-                        }).then((result) => {
-                            if (result.isConfirmed) {
-                                showQRCode(data);
-                            }
-                            document.getElementById('sonacseRegistrationForm').reset();
-                        });
-                    } else {
-                        // WITH WORKSHOPS - NEEDS PAYMENT
-                        Swal.fire({
-                            icon: 'info',
-                            title: 'Payment Required for Workshops',
-                            html: `
-                                <div class="text-start">
-                                    <p class="mb-2"><i class="fas fa-check-circle text-success me-2"></i><strong>Name:</strong> ${data.participant_details?.participant_name}</p>
-                                    <p class="mb-2"><i class="fas fa-crown text-warning me-2"></i><strong>SONACSE Roll:</strong> ${data.participant_details?.roll_number}</p>
-                                    <p class="mb-2"><i class="fas fa-id-card text-primary me-2"></i><strong>Participant ID:</strong> ${data.participant_details?.participant_id}</p>
-                                    <p class="mb-2"><i class="fas fa-calendar-check text-success me-2"></i><strong>Events:</strong> ${data.registrations?.events?.length || 0} confirmed (FREE)</p>
-                                    <p class="mb-2"><i class="fas fa-laptop-code text-primary me-2"></i><strong>Workshops:</strong> ${data.registrations?.workshops?.length || 0} selected</p>
-                                    <p class="mb-2"><i class="fas fa-rupee-sign text-warning me-2"></i><strong>Total Amount:</strong> ₹${data.payment?.amount || 0}</p>
-                                    <p class="mb-2"><i class="fas fa-hashtag text-info me-2"></i><strong>Payment Reference:</strong> ${data.payment?.payment_reference}</p>
-                                    <div class="alert alert-info mt-3 mb-0">
-                                        <i class="fas fa-info-circle me-2"></i>
-                                        Complete payment for workshops to confirm your registration.
-                                    </div>
-                                </div>
-                            `,
-                            confirmButtonColor: '#3b82f6',
-                            confirmButtonText: 'Verify Payment Now',
-                            showCancelButton: true,
-                            cancelButtonText: 'Verify Later',
-                            showDenyButton: true,
-                            denyButtonText: 'Copy Payment Details',
-                            denyButtonColor: '#f59e0b',
-                            width: 500
-                        }).then((result) => {
-                            if (result.isConfirmed) {
-                                showPaymentForm(data);
-                            } else if (result.isDenied) {
-                                const paymentDetails = `Payment Reference: ${data.payment?.payment_reference}\nAmount: ₹${data.payment?.amount}\nUPI ID: ${data.payment_options?.upi_id || 'threads26@okaxis'}\nParticipant ID: ${data.participant_details?.participant_id}`;
-                                navigator.clipboard.writeText(paymentDetails).then(() => {
-                                    Swal.fire({
-                                        icon: 'success',
-                                        title: 'Copied!',
-                                        text: 'Payment details copied to clipboard',
-                                        confirmButtonColor: '#10b981',
-                                        confirmButtonText: 'OK',
-                                        timer: 1500
-                                    }).then(() => {
-                                        showPaymentForm(data);
-                                    });
-                                });
-                            }
-                            document.getElementById('sonacseRegistrationForm').reset();
-                        });
-                    }
-                } else {
-                    let errorMsg = data.message || 'Registration failed';
-                    let errorDetails = data.details || '';
-                    let suggestion = data.suggestion || 'Please try again.';
-                    
-                    if (errorMsg.includes('INVALID_SONACSE_ROLL')) {
-                        errorMsg = 'Invalid SONACSE Roll Number';
-                        errorDetails = 'Only SONACSE students can use this registration portal';
-                        suggestion = 'Please use the regular registration portal';
-                    } else if (errorMsg.includes('EMAIL_EXISTS')) {
-                        errorMsg = 'Email Already Registered';
-                        suggestion = 'Please use a different email address';
-                    } else if (errorMsg.includes('SEAT_UNAVAILABLE')) {
-                        errorMsg = 'Seats Not Available';
-                        suggestion = 'Please select different events/workshops';
-                    } else if (errorMsg.includes('SONACSE_SEATS_FULL')) {
-                        errorMsg = 'CSE Seats Full';
-                        suggestion = 'CSE seats are full. Please select different events or contact organizers.';
-                    } else if (errorMsg.includes('GENERAL_SEATS_FULL')) {
-                        errorMsg = 'General Seats Full';
-                        suggestion = 'General seats are full. Please select different events.';
-                    }
-                    
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Registration Failed',
-                        html: `
-                            <div class="text-start">
-                                <p class="mb-2"><strong>Error:</strong> ${errorMsg}</p>
-                                ${errorDetails ? `<p class="mb-2">${errorDetails}</p>` : ''}
-                                <p class="text-primary">${suggestion}</p>
-                            </div>
-                        `,
-                        confirmButtonColor: '#dc2626',
-                        confirmButtonText: 'OK',
-                        width: 500
-                    });
-                }
-            } catch (error) {
-                console.error('Registration error:', error);
-                
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Network Error',
-                    text: 'Please check your connection and try again.',
-                    confirmButtonColor: '#dc2626',
-                    confirmButtonText: 'OK'
-                });
-            } finally {
-                submitBtn.innerHTML = originalBtnText;
-                submitBtn.disabled = false;
-            }
-        });
-        
-       function showPaymentForm(data) {
-
-    const upiId = data.payment_options?.upi_id || 'threads26@okaxis';
-    const amount = data.payment?.amount || 0;
-    const reference = data.payment?.payment_reference || 'Workshop Fee';
-    const payeeName = 'SONA CSE';
-
-    // UPI payment URL
-    const upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(payeeName)}&am=${amount}&cu=INR&tn=${encodeURIComponent(reference)}`;
-
-    // QR Code Image (Google Chart API)
-    const qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiUrl)}`;
-
-    Swal.fire({
-        title: 'Verify Workshop Payment',
-        html: `
-            <div class="text-start">
-
-                <div class="mb-3 text-center">
-                    <label class="form-label fw-bold">Scan & Pay (UPI)</label>
-                    <div class="card bg-light p-3">
-                        <img src="${qrImage}" alt="UPI QR Code" class="img-fluid mx-auto mb-2" />
-                        <p class="mb-1"><strong>Amount:</strong> ₹${amount}</p>
-                        <p class="mb-1"><strong>UPI ID:</strong> ${upiId}</p>
-                        <p class="mb-0 text-muted small">Scan using any UPI app (GPay / PhonePe / Paytm)</p>
-                    </div>
+            <!-- Email Check Section - ALWAYS VISIBLE FIRST -->
+            <div class="email-check-section">
+              <h5 class="mb-3"><i class="bi bi-envelope-check me-2" style="color: var(--accent);"></i>Start with your email</h5>
+              <div class="row g-3">
+                <div class="col-md-8">
+                  <input type="email" class="form-control form-control-lg" id="checkEmail" placeholder="Enter your email address">
                 </div>
-
-                <div class="mb-3">
-                    <label class="form-label fw-bold" for="swal-transaction-id">Transaction ID *</label>
-                    <input type="text" id="swal-transaction-id" class="form-control"
-                        placeholder="Enter UPI / Transaction ID" required>
-                    <div class="form-text">Minimum 5 characters</div>
+                <div class="col-md-4">
+                  <button class="btn btn-primary-custom w-100" id="checkEmailBtn" style="padding: 0.7rem;">
+                    <i class="bi bi-search"></i> Check Email
+                  </button>
                 </div>
+              </div>
+              <div id="emailHelp" class="form-text mt-2">
+                <i class="bi bi-info-circle"></i> If you're already registered, we'll fetch your details automatically
+              </div>
+            </div>
 
-                <div class="mb-3">
-                    <label class="form-label fw-bold" for="swal-payment-reference">Payment Reference</label>
-                    <input type="text" id="swal-payment-reference" class="form-control"
-                        value="${reference}">
-                </div>
+            <!-- Full Registration Form (Hidden initially) -->
+            <div id="fullRegistrationForm" style="display: none;">
+              <form id="spotRegistrationForm">
+                
+                <!-- Personal Information -->
+                <div class="row g-4">
+                  <div class="col-12">
+                    <div class="section-title">
+                      <i class="bi bi-person-badge fs-5"></i> Personal Information
+                    </div>
+                  </div>
 
-                <div class="mb-3">
-                    <label class="form-label fw-bold" for="swal-payment-method">Payment Method</label>
-                    <select id="swal-payment-method" class="form-select">
-                        <option value="UPI">UPI</option>
-                        <option value="Cash">Cash</option>
-                        <option value="Card">Card</option>
-                        <option value="Other">Other</option>
+                  <div class="col-md-6">
+                    <label class="form-label"><i class="bi bi-person me-1"></i>Full name *</label>
+                    <input type="text" class="form-control" name="full_name" id="fullName" placeholder="e.g. Aditya Sharma" required>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label"><i class="bi bi-envelope me-1"></i>Email *</label>
+                    <input type="email" class="form-control" name="email" id="email" placeholder="student@example.com" required readonly>
+                    <small class="text-muted" id="emailDisplayNote"></small>
+                  </div>
+
+                  <div class="col-md-5">
+                    <label class="form-label"><i class="bi bi-phone me-1"></i>Phone *</label>
+                    <div class="input-group">
+                      <span class="input-group-text">+91</span>
+                      <input type="tel" class="form-control" name="phone" id="phone" placeholder="98765 43210" pattern="[0-9]{10}" required>
+                    </div>
+                  </div>
+
+                  <div class="col-md-7">
+                    <label class="form-label"><i class="bi bi-building-columns me-1"></i>College / University *</label>
+                    <input type="text" class="form-control" name="college_name" id="collegeName" placeholder="e.g. Anna University" required>
+                  </div>
+
+                  <div class="col-md-6">
+                    <label class="form-label"><i class="bi bi-diagram-3 me-1"></i>Department *</label>
+                    <input type="text" class="form-control" name="department" id="department" placeholder="CSE, ECE, etc" required>
+                  </div>
+
+                  <div class="col-md-3">
+                    <label class="form-label"><i class="bi bi-calendar-range me-1"></i>Year *</label>
+                    <select class="form-select" name="year_of_study" id="yearOfStudy" required>
+                      <option value="" disabled selected>— select —</option>
+                      <option value="1">1st year</option>
+                      <option value="2">2nd year</option>
+                      <option value="3">3rd year</option>
+                      <option value="4">4th year</option>
                     </select>
+                  </div>
+
+                  <div class="col-md-3">
+                    <label class="form-label"><i class="bi bi-gender-ambiguous me-1"></i>Gender</label>
+                    <select class="form-select" name="gender" id="gender">
+                      <option value="" selected>— optional —</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                      <option value="Prefer not to say">Prefer not to say</option>
+                    </select>
+                  </div>
+
+                  <div class="col-md-5" style="display: none;">
+                    <label class="form-label"><i class="bi bi-pin-map me-1"></i>City</label>
+                    <input type="text" class="form-control" name="city" id="city" placeholder="Chennai">
+                  </div>
+                  <div class="col-md-4" style="display: none;">
+                    <label class="form-label"><i class="bi bi-globe2 me-1"></i>State</label>
+                    <input type="text" class="form-control" name="state" id="state" placeholder="Tamil Nadu">
+                  </div>
                 </div>
 
-                <input type="hidden" id="swal-participant-id"
-                    value="${data.participant_details?.participant_id}">
-            </div>
-        `,
-        showCancelButton: true,
-        confirmButtonText: 'Verify Payment',
-        cancelButtonText: 'Cancel',
-        confirmButtonColor: '#10b981',
-        cancelButtonColor: '#6c757d',
-        width: 520,
-        preConfirm: () => {
-            const transactionId = document.getElementById('swal-transaction-id').value.trim();
-            if (!transactionId) {
-                Swal.showValidationMessage('Please enter Transaction ID');
-                return false;
-            }
-            if (transactionId.length < 5) {
-                Swal.showValidationMessage('Transaction ID must be at least 5 characters');
-                return false;
-            }
-            return {
-                participant_id: document.getElementById('swal-participant-id').value,
-                transaction_id: transactionId,
-                payment_reference: document.getElementById('swal-payment-reference').value.trim(),
-                payment_method: document.getElementById('swal-payment-method').value
-            };
-        }
-    }).then((result) => {
-        if (result.isConfirmed) {
-            verifySONACSEPayment(result.value);
-        }
-    });
-}
+                <hr>
 
+                <!-- STUDENT TYPE -->
+                <div class="row g-4">
+                  <div class="col-md-12">
+                    <label class="form-label"><i class="bi bi-person-vcard"></i> Student type *</label>
+                    <div class="d-flex gap-3 flex-wrap">
+                      <div class="form-check">
+                        <input class="form-check-input" type="radio" name="student_type" id="typeOther" value="other" checked>
+                        <label class="form-check-label" for="typeOther">Other college</label>
+                      </div>
+                      <div class="form-check">
+                        <input class="form-check-input" type="radio" name="student_type" id="typeSonacse" value="sonacse">
+                        <label class="form-check-label" for="typeSonacse">
+                          <span class="badge" style="background: #7f8e3a; color: white;">SONA CSE</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <hr>
+
+                <!-- WORKSHOP SELECTION - MAX 1 -->
+                <div class="section-title">
+                  <i class="bi bi-calendar-check fs-5"></i> Select Events & Workshops
+                </div>
+
+                <div class="workshop-warning">
+                  <i class="bi bi-info-circle-fill me-2"></i>
+                  <strong>Note:</strong> You can select only <strong>ONE workshop</strong> at ₹300 (CSE students) / ₹400 (others)
+                </div>
+
+                <!-- Day Filters -->
+                <div class="mb-3 d-flex gap-2 flex-wrap" id="dayFilters">
+                  <span class="badge bg-secondary filter-badge" data-day="all">All Days</span>
+                </div>
+
+                <!-- Workshops Container -->
+                <div class="mb-4" style="display: none;">
+                  <h6 class="fw-semibold mb-3">
+                    <span class="badge bg-dark me-2">🛠️</span>Workshops (max 1)
+                  </h6>
+                  <div class="row g-3" id="workshopsContainer">
+                    <div class="col-12 events-loading">
+                      <div class="spinner-border text-secondary" role="status">
+                        <span class="visually-hidden">Loading workshops...</span>
+                      </div>
+                      <p class="mt-2">Loading workshops from server...</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Technical Events Container -->
+                <div class="mb-4">
+                  <h6 class="fw-semibold mb-3">
+                    <span class="badge bg-dark me-2">⚡</span>Technical Events (flat fee - ₹300/₹250)
+                  </h6>
+                  <div class="row g-3" id="eventsContainer">
+                    <div class="col-12 events-loading">
+                      <div class="spinner-border text-secondary" role="status">
+                        <span class="visually-hidden">Loading events...</span>
+                      </div>
+                      <p class="mt-2">Loading events from server...</p>
+                    </div>
+                  </div>
+                  <div class="form-text mt-2">
+                    <i class="bi bi-info-circle"></i> <strong>Flat fee policy:</strong> You can select multiple technical events, but you'll be charged only once (₹300 for others, ₹250 for 1st year CSE students, FREE for 2nd-4th year CSE students).
+                  </div>
+                  <!-- Event required message (dynamic based on user type) -->
+                  <div id="eventRequiredMessage" class="tech-required-alert" style="display: none;">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <strong>Required:</strong> You must select at least one event to register
+                  </div>
+                </div>
+
+                <!-- Selection Summary -->
+                <div class="summary-box mt-4">
+                  <div class="d-flex align-items-center justify-content-between">
+                    <span class="fw-semibold"><i class="bi bi-bag-check"></i> Your Selection</span>
+                    <span class="badge bg-white text-dark border px-3 py-2" id="selectedCount">0 items</span>
+                  </div>
+                  <div class="mt-3">
+                    <div id="selectedItemsList" class="small text-secondary mb-2"></div>
+                  </div>
+                  <div class="d-flex justify-content-between align-items-baseline">
+                    <span class="text-secondary">Total Amount</span>
+                    <span class="total-amount" id="totalAmountDisplay">₹0</span>
+                  </div>
+                  <div class="small text-secondary" id="feeBreakdown"></div>
+                </div>
+
+                <!-- UPI PAYMENT SECTION - Static QR Code Image -->
+                <div class="upi-section" id="upiSection">
+                  <div class="row align-items-center">
+                    <div class="col-md-5 text-center">
+                      <div class="upi-qr-container" id="paymentQrContainer">
+                        <!-- Static QR Code Image -->
+                        <img src="https://i.ibb.co/gLBN1WDd/1772628606831.jpg" alt="UPI Payment QR Code">
+                      </div>
+                      <p class="scan-instruction mt-2">
+                        <i class="bi bi-phone"></i> Scan with any UPI app
+                      </p>
+                    </div>
+                    <div class="col-md-7">
+                      <div class="upi-details">
+                        <h5 class="mb-3"><i class="bi bi-shield-check"></i> UPI Payment</h5>
+                        
+                        <div class="amount-badge mb-3" id="qrAmountDisplay">
+                          ₹0
+                        </div>
+                        
+                        <div class="upi-id-badge mb-3" id="qrUpiDisplay">
+                          FILL IN PASTRY
+                        </div>
+                        
+                        <div class="d-flex gap-2 justify-content-center">
+                          <button type="button" class="copy-btn" onclick="copyUPI()">
+                            <i class="bi bi-clipboard"></i> Copy UPI
+                          </button>
+                          <button type="button" class="copy-btn" onclick="copyAmount()">
+                            <i class="bi bi-cash"></i> Copy Amount
+                          </button>
+                        </div>
+                        
+                        <p class="mt-3 mb-0 small">
+                          <i class="bi bi-check-circle-fill"></i> 
+                          Amount <strong id="qrAmountText">₹0</strong> - just scan & pay
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Payment Method -->
+                <div class="row mt-4">
+                  <div class="col-md-12">
+                    <label class="form-label"><i class="bi bi-credit-card"></i> Payment Method *</label>
+                    <select class="form-select" name="payment_method" required>
+                      <option value="cash">💵 Cash (on-spot counter)</option>
+                      <option value="online" selected>📲 UPI (Scan QR code above)</option>
+                    </select>
+                    <div class="payment-note" id="paymentNote">
+                      <i class="bi bi-info-circle"></i> Scan QR code to pay <strong id="paymentAmount">₹0</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Hidden field for existing participant ID -->
+                <input type="hidden" name="existing_participant_id" id="existingParticipantId" value="">
+
+                <!-- Submit Button -->
+                <div class="d-grid mt-5">
+                  <button type="submit" class="btn btn-primary-custom" id="submitBtn" disabled>
+                    <i class="bi bi-ticket-fill me-2"></i> Complete Spot Registration
+                    <i class="bi bi-arrow-right-short fs-4"></i>
+                  </button>
+                </div>
+
+                <p class="text-center text-secondary mt-4 small">
+                  <i class="bi bi-shield-lock me-1" style="color:#7f8e3a;"></i> 
+                  By registering you agree to the event terms · QR code pass will be generated after payment
+                </p>
+              </form>
+            </div>
+
+            <!-- Change Email Link (shown when form is visible) -->
+            <div id="changeEmailRow" style="display: none;" class="text-center mt-3">
+              <button class="btn btn-link" id="changeEmailBtn">
+                <i class="bi bi-arrow-left"></i> Use different email
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success Modal -->
+  <div class="modal fade" id="successModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="successModalTitle">
+            <i class="bi bi-check-circle-fill text-success me-2"></i>
+            Registration Successful!
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body text-center p-4">
+          <div id="qrCodeContainer" class="mb-3"></div>
+          <h6 id="participantNameModal"></h6>
+          <p class="text-secondary mb-1" id="registrationIdModal"></p>
+          <p class="fw-bold" id="amountPaidModal"></p>
+          <p class="small text-secondary" id="registrationTypeModal"></p>
+          
+          <div class="alert alert-success bg-light border-0 mt-3">
+            <i class="bi bi-envelope-check me-2"></i>
+            Pass sent to your email
+          </div>
+        </div>
+        <div class="modal-footer justify-content-center">
+          <button type="button" class="btn btn-outline-accent" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-primary-custom" onclick="window.print()">
+            <i class="bi bi-printer"></i> Print Pass
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    (function() {
+      // Configuration
+      const API_BASE_URL = 'https://threads26-2-fdem.onrender.com';
+      const API_KEY = '7f8e3a1b9c4d2e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f';
+      const UPI_QR_IMAGE_URL = 'https://i.ibb.co/gLBN1WDd/1772628606831.jpg';
+      
+      // DOM Elements
+      const checkEmail = document.getElementById('checkEmail');
+      const checkEmailBtn = document.getElementById('checkEmailBtn');
+      const fullRegistrationForm = document.getElementById('fullRegistrationForm');
+      const changeEmailRow = document.getElementById('changeEmailRow');
+      const changeEmailBtn = document.getElementById('changeEmailBtn');
+      const emailInput = document.getElementById('email');
+      const emailDisplayNote = document.getElementById('emailDisplayNote');
+      const existingParticipantId = document.getElementById('existingParticipantId');
+      
+      // Form fields
+      const fullNameInput = document.getElementById('fullName');
+      const phoneInput = document.getElementById('phone');
+      const collegeNameInput = document.getElementById('collegeName');
+      const departmentInput = document.getElementById('department');
+      const yearSelect = document.getElementById('yearOfStudy');
+      const genderSelect = document.getElementById('gender');
+      const cityInput = document.getElementById('city');
+      const stateInput = document.getElementById('state');
+      const studentTypeRadios = document.querySelectorAll('input[name="student_type"]');
+      
+      // Other elements
+      const statusIndicator = document.getElementById('statusIndicator');
+      const statusText = document.getElementById('statusText');
+      const testConnectionBtn = document.getElementById('testConnectionBtn');
+      const submitBtn = document.getElementById('submitBtn');
+      const toastContainer = document.getElementById('toastContainer');
+      
+      // Event containers
+      const workshopsContainer = document.getElementById('workshopsContainer');
+      const eventsContainer = document.getElementById('eventsContainer');
+      const dayFilters = document.getElementById('dayFilters');
+      const totalSpan = document.getElementById('totalAmountDisplay');
+      const selectedCountSpan = document.getElementById('selectedCount');
+      const selectedItemsList = document.getElementById('selectedItemsList');
+      const feeBreakdown = document.getElementById('feeBreakdown');
+      const paymentNote = document.getElementById('paymentNote');
+      const paymentAmount = document.getElementById('paymentAmount');
+      const qrAmountDisplay = document.getElementById('qrAmountDisplay');
+      const qrAmountText = document.getElementById('qrAmountText');
+      const paymentQrContainer = document.getElementById('paymentQrContainer');
+      const eventRequiredMessage = document.getElementById('eventRequiredMessage');
+      
+      // Modal
+      const successModal = document.getElementById('successModal');
+      const successModalTitle = document.getElementById('successModalTitle');
+      const participantNameModal = document.getElementById('participantNameModal');
+      const registrationIdModal = document.getElementById('registrationIdModal');
+      const amountPaidModal = document.getElementById('amountPaidModal');
+      const registrationTypeModal = document.getElementById('registrationTypeModal');
+      const qrCodeContainer = document.getElementById('qrCodeContainer');
+      
+      // State
+      let selectedWorkshops = new Map();
+      let selectedEvents = new Map();
+      let isConnected = false;
+      let modalInstance = null;
+      let allEvents = [];
+      let currentDayFilter = 'all';
+      let existingParticipantData = null;
+
+      // Initialize modal
+      if (successModal) {
+        modalInstance = new bootstrap.Modal(successModal);
+      }
+
+      // Show toast
+      function showToast(message, type = 'info') {
+        if (!toastContainer) return;
         
-        async function verifySONACSEPayment(paymentDetails) {
-            Swal.fire({
-                title: 'Verifying Payment...',
-                text: 'Please wait while we verify your workshop payment.',
-                allowOutsideClick: false,
-                didOpen: () => {
-                    Swal.showLoading();
-                }
-            });
-            
-            try {
-                const response = await fetch(`${BASE_URL}/api/sonacse/verify-payment`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(paymentDetails)
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok && data.success) {
-                    Swal.close();
-                    
-                    currentRegistrationData = {
-                        ...currentRegistrationData,
-                        ...data
-                    };
-                    
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Payment Verified Successfully!',
-                        html: `
-                            <div class="text-start">
-                                <p class="mb-2"><i class="fas fa-check-circle text-success me-2"></i><strong>Name:</strong> ${data.participant_details?.participant_name}</p>
-                                <p class="mb-2"><i class="fas fa-id-card text-primary me-2"></i><strong>Participant ID:</strong> ${data.participant_details?.participant_id}</p>
-                                <p class="mb-2"><i class="fas fa-rupee-sign text-warning me-2"></i><strong>Amount Paid:</strong> ₹${data.payment_details?.amount || 0}</p>
-                                <p class="mb-2"><i class="fas fa-check-circle text-success me-2"></i><strong>Transaction ID:</strong> ${data.payment_details?.transaction_id}</p>
-                                <p class="mb-2"><i class="fas fa-check-circle text-success me-2"></i><strong>Events:</strong> ${data.registrations?.events?.length || 0} confirmed (Free)</p>
-                                <p class="mb-2"><i class="fas fa-check-circle text-success me-2"></i><strong>Workshops:</strong> ${data.registrations?.workshops?.length || 0} confirmed (Paid)</p>
-                                <div class="alert alert-success mt-3 mb-0">
-                                    <i class="fas fa-trophy me-2"></i>Your registration is now complete!
-                                </div>
-                            </div>
-                        `,
-                        confirmButtonColor: '#10b981',
-                        confirmButtonText: 'Show QR Code',
-                        showCancelButton: true,
-                        cancelButtonText: 'Close',
-                        width: 500
-                    }).then((result) => {
-                        if (result.isConfirmed) {
-                            showQRCode(data);
-                        }
-                    });
-                } else {
-                    let errorMsg = data.message || 'Payment verification failed';
-                    let errorDetails = data.details || '';
-                    let suggestion = data.suggestion || 'Please try again.';
-                    
-                    if (errorMsg.includes('NO_PENDING_WORKSHOPS')) {
-                        errorMsg = 'No Workshops Selected';
-                        suggestion = 'You have no workshops to verify. Check your registration.';
-                    } else if (errorMsg.includes('SONACSE_WORKSHOP_SEATS_FULL')) {
-                        errorMsg = 'CSE Seats Filled Before Payment';
-                        suggestion = 'CSE seats filled before payment completion. Contact organizers for assistance.';
-                    } else if (errorMsg.includes('TRANSACTION_ALREADY_USED')) {
-                        errorMsg = 'Transaction ID Already Used';
-                        suggestion = 'Please use a different transaction ID.';
-                    }
-                    
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Payment Verification Failed',
-                        html: `
-                            <div class="text-start">
-                                <p class="mb-2"><strong>Error:</strong> ${errorMsg}</p>
-                                ${errorDetails ? `<p class="mb-2">${errorDetails}</p>` : ''}
-                                <p class="text-primary">${suggestion}</p>
-                            </div>
-                        `,
-                        confirmButtonColor: '#dc2626',
-                        confirmButtonText: 'OK',
-                        width: 500
-                    });
-                }
-            } catch (error) {
-                console.error('Payment verification error:', error);
-                
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Network Error',
-                    text: 'Please check your connection and try again.',
-                    confirmButtonColor: '#dc2626',
-                    confirmButtonText: 'OK'
-                });
-            }
+        const toastId = 'toast-' + Date.now();
+        const bgColor = type === 'success' ? 'bg-success' : type === 'danger' ? 'bg-danger' : 'bg-info';
+        const icon = type === 'success' ? 'check-circle' : type === 'danger' ? 'exclamation-triangle' : 'info-circle';
+        
+        const toastHtml = `
+          <div id="${toastId}" class="toast align-items-center text-white ${bgColor} border-0 show" role="alert">
+            <div class="d-flex">
+              <div class="toast-body">
+                <i class="bi bi-${icon} me-2"></i>
+                ${message}
+              </div>
+              <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+          </div>
+        `;
+        
+        toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+        
+        setTimeout(() => {
+          const toast = document.getElementById(toastId);
+          if (toast) toast.remove();
+        }, 5000);
+      }
+
+      // Copy functions
+      window.copyUPI = function() {
+        navigator.clipboard.writeText('FILL IN PASTRY').then(() => {
+          showToast('UPI ID copied to clipboard!', 'success');
+        }).catch(() => {
+          showToast('Failed to copy UPI ID', 'danger');
+        });
+      };
+
+      window.copyAmount = function() {
+        const amount = calculateTotalAmount();
+        navigator.clipboard.writeText(amount.toString()).then(() => {
+          showToast(`Amount ₹${amount} copied!`, 'success');
+        }).catch(() => {
+          showToast('Failed to copy amount', 'danger');
+        });
+      };
+
+      // Get current year
+      function getYear() {
+        return yearSelect && yearSelect.value ? parseInt(yearSelect.value) : 0;
+      }
+
+      // Get student type
+      function getStudentType() {
+        return document.querySelector('input[name="student_type"]:checked')?.value || 'other';
+      }
+
+      // ========== NEW VALIDATION FUNCTION ==========
+      // Check if event selection is valid based on user type
+      function hasValidEventSelection() {
+        // For existing participants, ANY event selection is valid (tech or non-tech)
+        if (existingParticipantData) {
+          return selectedEvents.size > 0; // Any event is fine for existing participants
         }
         
-        function showQRCode(data) {
-            let qrImage = '';
-            let qrPayload = '';
-            
-            if (data.qr_code) {
-                qrImage = `<img src="${data.qr_code}" alt="QR Code" class="img-fluid mb-3" style="max-width: 250px;">`;
-                qrPayload = `<p class="text-muted small">Scan this QR code at the event venue</p>`;
-            } else if (data.participant_id) {
-                const qrData = {
-                    participant_id: data.participant_details?.participant_id,
-                    participant_name: data.participant_details?.participant_name,
-                    registration_ids: data.registration_ids || data.registrations?.events?.map(e => e.registration_id)?.concat(data.registrations?.workshops?.map(w => w.registration_id)) || [],
-                    event: "THREADS'26",
-                    type: "SONACSE_REGISTRATION",
-                    timestamp: new Date().toISOString()
-                };
-                
-                const canvas = document.createElement('canvas');
-                QRCode.toCanvas(canvas, JSON.stringify(qrData), {
-                    errorCorrectionLevel: 'H',
-                    margin: 1,
-                    width: 250,
-                    color: {
-                        dark: '#1a56db',
-                        light: '#ffffff'
-                    }
-                }, function(error) {
-                    if (error) console.error(error);
-                });
-                
-                qrImage = `<img src="${canvas.toDataURL()}" alt="QR Code" class="img-fluid mb-3" style="max-width: 250px;">`;
-                qrPayload = `<p class="text-muted small">Scan this QR code at the event venue</p>`;
+        // For new participants, must have at least one technical event
+        return Array.from(selectedEvents.values()).some(event => 
+          event.eventType === 'technical'
+        );
+      }
+
+      // Update event required message and submit button state
+      function updateEventRequiredMessage() {
+        if (!eventRequiredMessage) return;
+        
+        const hasValid = hasValidEventSelection();
+        
+        if (!hasValid) {
+          if (existingParticipantData) {
+            eventRequiredMessage.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-2"></i><strong>Required:</strong> Please select at least one event to register';
+            eventRequiredMessage.style.display = 'block';
+          } else {
+            eventRequiredMessage.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-2"></i><strong>Required:</strong> You must select at least one technical event to register';
+            eventRequiredMessage.style.display = 'block';
+          }
+          
+          // Disable submit button
+          if (submitBtn && isConnected) {
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.6';
+            submitBtn.style.cursor = 'not-allowed';
+          }
+        } else {
+          eventRequiredMessage.style.display = 'none';
+          // Enable submit button
+          if (submitBtn && isConnected) {
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+            submitBtn.style.cursor = 'pointer';
+          }
+        }
+      }
+
+      // Reset form to initial state
+      function resetToEmailCheck() {
+        fullRegistrationForm.style.display = 'none';
+        changeEmailRow.style.display = 'none';
+        checkEmail.value = '';
+        checkEmail.disabled = false;
+        checkEmailBtn.disabled = false;
+        existingParticipantData = null;
+        existingParticipantId.value = '';
+        
+        // Clear form fields
+        fullNameInput.value = '';
+        phoneInput.value = '';
+        collegeNameInput.value = '';
+        departmentInput.value = '';
+        yearSelect.value = '';
+        genderSelect.value = '';
+        cityInput.value = '';
+        stateInput.value = '';
+        
+        // Reset selections
+        selectedWorkshops.clear();
+        selectedEvents.clear();
+        document.querySelectorAll('.event-option-card').forEach(c => c.classList.remove('selected'));
+        updateSelectionDisplay();
+        calculateTotal();
+        updatePaymentDisplay();
+        updateEventRequiredMessage();
+        
+        // Reset prefilled classes
+        [fullNameInput, phoneInput, collegeNameInput, departmentInput, cityInput, stateInput].forEach(field => {
+          field.classList.remove('prefilled-field');
+          field.readOnly = false;
+        });
+        
+        [yearSelect, genderSelect].forEach(field => {
+          field.classList.remove('prefilled-field');
+          field.disabled = false;
+        });
+        
+        studentTypeRadios.forEach(r => r.disabled = false);
+        
+        // Reset submit button state
+        if (submitBtn) {
+          submitBtn.disabled = true;
+        }
+      }
+
+      // ========== EMAIL CHECK FUNCTION ==========
+      async function handleEmailCheck() {
+        const email = checkEmail.value.trim();
+        
+        if (!email || !email.includes('@')) {
+          showToast('Please enter a valid email', 'warning');
+          return;
+        }
+
+        checkEmail.disabled = true;
+        checkEmailBtn.disabled = true;
+        checkEmailBtn.innerHTML = '<span class="loading-spinner"></span> Checking...';
+
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/check-email`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': API_KEY
+            },
+            body: JSON.stringify({ email })
+          });
+
+          const data = await response.json();
+
+          console.log('Email check response:', data);
+
+          if (!response.ok) {
+            throw new Error(data.error || 'Failed to check email');
+          }
+
+          if (data.exists) {
+            // Email exists - pre-fill form with participant data
+            const participant = data.participant;
+
+            // Auto-select student type based on is_sonacse flag
+            if (data.is_sonacse) {
+              document.getElementById('typeSonacse').checked = true;
+              showToast('SONA CSE student detected - applying discounted rates', 'info');
             } else {
-                qrImage = `
-                    <div class="bg-light p-4 rounded text-center mb-3">
-                        <i class="fas fa-qrcode fa-4x text-muted mb-3"></i>
-                        <p class="text-muted">QR Code not generated</p>
-                    </div>
-                `;
-                qrPayload = '<p class="text-muted small">QR code could not be generated. Please save your registration IDs.</p>';
+              document.getElementById('typeOther').checked = true;
             }
             
-            const eventsCount = data.registrations?.events?.length || 0;
-            const workshopsCount = data.registrations?.workshops?.length || 0;
+            existingParticipantData = participant;
+            existingParticipantId.value = participant.participant_id;
             
-            Swal.fire({
-                title: 'Registration Complete!',
-                html: `
-                    <div class="text-center">
-                        ${qrImage}
-                        ${qrPayload}
-                        
-                        <div class="card bg-light mt-4">
-                            <div class="card-body text-start">
-                                <h6 class="fw-bold mb-3">Registration Details:</h6>
-                                <p class="mb-2"><i class="fas fa-user me-2 text-primary"></i><strong>Name:</strong> ${data.participant_details?.participant_name}</p>
-                                <p class="mb-2"><i class="fas fa-id-card me-2 text-info"></i><strong>Participant ID:</strong> ${data.participant_details?.participant_id}</p>
-                                <p class="mb-2"><i class="fas fa-building me-2 text-secondary"></i><strong>College:</strong> ${data.participant_details?.college || 'Saveetha Engineering College (SONACSE)'}</p>
-                                
-                                <div class="mt-3 pt-3 border-top">
-                                    <p class="mb-1"><i class="fas fa-check-circle me-2 text-success"></i><strong>Events:</strong> ${eventsCount} confirmed (Free)</p>
-                                    ${workshopsCount > 0 ? `
-                                        <p class="mb-1"><i class="fas fa-laptop-code me-2 text-primary"></i><strong>Workshops:</strong> ${workshopsCount} confirmed (Paid)</p>
-                                    ` : ''}
-                                    ${data.payment_details?.amount > 0 ? `
-                                        <p class="mb-1"><i class="fas fa-rupee-sign me-2 text-warning"></i><strong>Amount Paid:</strong> ₹${data.payment_details?.amount}</p>
-                                    ` : ''}
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="alert alert-success mt-3">
-                            <i class="fas fa-check-circle me-2"></i>${data.message || 'Registration successful!'}
-                        </div>
-                    </div>
-                `,
-                confirmButtonColor: '#10b981',
-                confirmButtonText: 'Download QR',
-                showCancelButton: true,
-                cancelButtonText: 'Close',
-                width: 500,
-                showDenyButton: true,
-                denyButtonText: 'Copy Registration IDs',
-                denyButtonColor: '#3b82f6'
-            }).then((result) => {
-                if (result.isConfirmed && data.qr_code) {
-                    const link = document.createElement('a');
-                    link.href = data.qr_code;
-                    link.download = `THREADS26-SONACSE-${data.participant_details?.participant_id}.png`;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'QR Code Downloaded!',
-                        text: 'QR code has been saved to your device.',
-                        confirmButtonColor: '#10b981',
-                        confirmButtonText: 'OK',
-                        timer: 2000
-                    });
-                } else if (result.isDenied) {
-                    const registrationIds = data.registration_ids || 
-                        (data.registrations?.events || []).map(e => e.registration_id).concat(
-                        (data.registrations?.workshops || []).map(w => w.registration_id)
-                    ).join(', ');
-                    navigator.clipboard.writeText(registrationIds).then(() => {
-                        Swal.fire({
-                            icon: 'success',
-                            title: 'Copied!',
-                            text: 'Registration IDs copied to clipboard',
-                            confirmButtonColor: '#10b981',
-                            confirmButtonText: 'OK',
-                            timer: 1500
-                        });
-                    });
-                }
+            // Pre-fill form fields
+            fullNameInput.value = participant.full_name || '';
+            fullNameInput.classList.add('prefilled-field');
+            fullNameInput.readOnly = true;
+            
+            phoneInput.value = participant.phone || '';
+            phoneInput.classList.add('prefilled-field');
+            phoneInput.readOnly = true;
+            
+            collegeNameInput.value = participant.college_name || '';
+            collegeNameInput.classList.add('prefilled-field');
+            collegeNameInput.readOnly = true;
+            
+            departmentInput.value = participant.department || '';
+            departmentInput.classList.add('prefilled-field');
+            departmentInput.readOnly = true;
+            
+            if (participant.year_of_study) {
+              yearSelect.value = participant.year_of_study;
+              yearSelect.classList.add('prefilled-field');
+              yearSelect.disabled = true;
+            }
+            
+            if (participant.gender) {
+              genderSelect.value = participant.gender;
+              genderSelect.classList.add('prefilled-field');
+              genderSelect.disabled = true;
+            }
+            
+            cityInput.value = participant.city || '';
+            cityInput.classList.add('prefilled-field');
+            cityInput.readOnly = true;
+            
+            stateInput.value = participant.state || '';
+            stateInput.classList.add('prefilled-field');
+            stateInput.readOnly = true;
+            
+            // Set email field
+            emailInput.value = email;
+            emailDisplayNote.textContent = '(pre-filled from existing registration)';
+            
+            showToast(`Welcome back, ${participant.full_name}! Add more events below.`, 'success');
+            
+            // Keep submit button disabled until they select an event
+            if (submitBtn) {
+              submitBtn.disabled = true;
+            }
+            
+          } else {
+            // New email
+            existingParticipantData = null;
+            existingParticipantId.value = '';
+            
+            emailInput.value = email;
+            emailDisplayNote.textContent = '(new registration)';
+            
+            showToast('New email - please fill in your details', 'info');
+            
+            // For new users, button should also be disabled until they select events
+            if (submitBtn) {
+              submitBtn.disabled = true;
+            }
+          }
+          
+          // Show form
+          fullRegistrationForm.style.display = 'block';
+          changeEmailRow.style.display = 'block';
+          
+        } catch (error) {
+          console.error('Error checking email:', error);
+          showToast(error.message || 'Failed to check email', 'danger');
+          checkEmail.disabled = false;
+          checkEmailBtn.disabled = false;
+        } finally {
+          checkEmailBtn.innerHTML = '<i class="bi bi-search"></i> Check Email';
+        }
+      }
+
+      // Change email handler
+      function handleChangeEmail() {
+        resetToEmailCheck();
+      }
+
+      // Update payment display
+      function updatePaymentDisplay() {
+        const amount = calculateTotalAmount();
+        
+        if (qrAmountDisplay) qrAmountDisplay.innerHTML = `₹${amount}`;
+        if (qrAmountText) qrAmountText.innerHTML = `₹${amount}`;
+        if (paymentAmount) paymentAmount.innerHTML = `₹${amount}`;
+        
+        const paymentMethodSelect = document.querySelector('select[name="payment_method"]');
+        const paymentMethod = paymentMethodSelect ? paymentMethodSelect.value : 'online';
+        
+        if (paymentNote) {
+          if (paymentMethod === 'online') {
+            paymentNote.innerHTML = `<i class="bi bi-info-circle"></i> Scan QR code to pay <strong>₹${amount}</strong>`;
+          } else {
+            paymentNote.innerHTML = `<i class="bi bi-info-circle"></i> Pay <strong>₹${amount}</strong> in cash at the registration counter`;
+          }
+        }
+      }
+
+      // Calculate total amount
+      function calculateTotalAmount() {
+        const type = getStudentType();
+        const year = getYear();
+        const isSona = type === 'sonacse';
+        let total = 0;
+
+        if (selectedWorkshops.size > 0) {
+          const workshop = Array.from(selectedWorkshops.values())[0];
+          total += isSona ? 300 : workshop.feeGeneral;
+        }
+
+        if (selectedEvents.size > 0) {
+          if (isSona && year === 1) {
+            total += 250;
+          } else if (isSona && (year === 2 || year === 3 || year === 4)) {
+            total += 0;
+          } else {
+            total += 300;
+          }
+        }
+
+        return total;
+      }
+
+      // Calculate and update total display
+      function calculateTotal() {
+        if (!totalSpan || !feeBreakdown) return;
+        
+        const type = getStudentType();
+        const year = getYear();
+        const isSona = type === 'sonacse';
+        let total = 0;
+        let breakdown = [];
+
+        if (selectedWorkshops.size > 0) {
+          const workshop = Array.from(selectedWorkshops.values())[0];
+          const workshopFee = isSona ? 300 : workshop.feeGeneral;
+          total += workshopFee;
+          breakdown.push(`Workshop: ₹${workshopFee}`);
+        }
+
+        if (selectedEvents.size > 0) {
+          const eventCount = selectedEvents.size;
+          let eventFee;
+          
+          if (isSona && year === 1) {
+            eventFee = 250;
+            breakdown.push(`${eventCount} Event${eventCount > 1 ? 's' : ''}: ₹250 (SONA CSE 1st year)`);
+          } else if (isSona && (year === 2 || year === 3 || year === 4)) {
+            eventFee = 0;
+            breakdown.push(`${eventCount} Event${eventCount > 1 ? 's' : ''}: FREE for SONA CSE`);
+          } else {
+            eventFee = 300;
+            breakdown.push(`${eventCount} Event${eventCount > 1 ? 's' : ''}: ₹300 flat fee`);
+          }
+          
+          total += eventFee;
+        }
+
+        totalSpan.innerHTML = `₹${total}`;
+        feeBreakdown.innerHTML = breakdown.join(' + ') || 'Select events to see fee breakdown';
+      }
+
+      // Fetch events
+      async function fetchEvents() {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/events`, {
+            method: 'GET',
+            headers: {
+              'x-api-key': API_KEY,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to fetch events: ${response.status}`);
+          }
+
+          const data = await response.json();
+          allEvents = data.events || [];
+          
+          buildDayFilters(allEvents);
+          renderFilteredEvents();
+          attachEventCardListeners();
+          
+        } catch (error) {
+          console.error('Error fetching events:', error);
+          showToast('Failed to load events from server', 'danger');
+        }
+      }
+
+      // Build day filters
+      function buildDayFilters(events) {
+        if (!dayFilters) return;
+        
+        const days = [...new Set(events.map(e => e.day))].sort();
+        
+        let filterHtml = '<span class="badge bg-secondary filter-badge" data-day="all">All Days</span>';
+        days.forEach(day => {
+          filterHtml += `<span class="badge bg-light text-dark filter-badge" data-day="${day}">Day ${day}</span>`;
+        });
+        
+        dayFilters.innerHTML = filterHtml;
+        
+        document.querySelectorAll('.filter-badge').forEach(badge => {
+          badge.addEventListener('click', function() {
+            const day = this.dataset.day;
+            
+            document.querySelectorAll('.filter-badge').forEach(b => {
+              if (b.dataset.day === 'all') {
+                b.className = day === 'all' ? 'badge bg-secondary filter-badge' : 'badge bg-light text-dark filter-badge';
+              } else {
+                b.className = b.dataset.day === day ? 'badge bg-secondary filter-badge' : 'badge bg-light text-dark filter-badge';
+              }
             });
+            
+            currentDayFilter = day;
+            renderFilteredEvents();
+            attachEventCardListeners();
+          });
+        });
+      }
+
+      // Render events
+      function renderFilteredEvents() {
+        const filtered = currentDayFilter === 'all' 
+          ? allEvents 
+          : allEvents.filter(e => e.day.toString() === currentDayFilter);
+        
+        const workshops = filtered.filter(e => e.event_type === 'workshop');
+        const technical = filtered.filter(e => e.event_type === 'technical' || e.event_type === 'non-technical');
+        
+        renderWorkshops(workshops);
+        renderTechnicalEvents(technical);
+      }
+
+      // Render workshops
+      function renderWorkshops(workshops) {
+        if (!workshopsContainer) return;
+        
+        if (!workshops.length) {
+          workshopsContainer.innerHTML = '<div class="col-12"><div class="alert alert-info">No workshops available</div></div>';
+          return;
+        }
+
+        let html = '';
+        workshops.forEach(workshop => {
+          const seatStatusClass = workshop.seat_status === 'Sold Out' ? 'sold-out' : 
+                                 workshop.seat_status === 'Limited Seats' ? 'limited' : 'available';
+          const isSoldOut = workshop.seat_status === 'Sold Out' || workshop.available_seats === 0;
+          const isSelected = selectedWorkshops.has(workshop.event_id.toString());
+          const isDisabled = !isSelected && selectedWorkshops.size >= 1 && !isSoldOut;
+          
+          html += `
+            <div class="col-md-6">
+              <div class="event-option-card 
+                   ${isSoldOut ? 'sold-out' : ''} 
+                   ${isDisabled ? 'workshop-disabled' : ''}
+                   ${isSelected ? 'selected' : ''}" 
+                   data-event-id="${workshop.event_id}" 
+                   data-event-type="workshop" 
+                   data-fee-general="${workshop.fee}" 
+                   data-fee-sona="300" 
+                   data-name="${workshop.event_name}" 
+                   data-day="${workshop.day}"
+                   ${isSoldOut ? 'data-sold-out="true"' : ''}
+                   ${isDisabled ? 'data-disabled="true"' : ''}>
+                <div class="d-flex justify-content-between align-items-start">
+                  <div>
+                    <span class="event-day"><i class="bi bi-calendar-event"></i> Day ${workshop.day}</span>
+                    <h6 class="mt-2 mb-1 fw-bold">${workshop.event_name}</h6>
+                    <p class="small text-secondary mb-0">${workshop.description || ''}</p>
+                    <div class="mt-2">
+                      <span class="seat-status ${seatStatusClass}">
+                        ${workshop.seat_status}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="text-end">
+                    <div><span class="fee-tag">₹${workshop.fee}</span> <small>/other</small></div>
+                    <div><span class="fee-tag" style="color:#5d6d2e;">₹300</span> <small>/cse</small></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        workshopsContainer.innerHTML = html;
+      }
+
+      // Render technical events
+      function renderTechnicalEvents(events) {
+        if (!eventsContainer) return;
+        
+        if (!events.length) {
+          eventsContainer.innerHTML = '<div class="col-12"><div class="alert alert-info">No events available</div></div>';
+          return;
+        }
+
+        let html = '';
+        events.forEach(event => {
+          const seatStatusClass = event.seat_status === 'Sold Out' ? 'sold-out' : 
+                                 event.seat_status === 'Limited Seats' ? 'limited' : 'available';
+          const isSoldOut = event.seat_status === 'Sold Out' || event.available_seats === 0;
+          const isSelected = selectedEvents.has(event.event_id.toString());
+          
+          // Determine event type display
+          const eventTypeDisplay = event.event_type === 'technical' ? 'Technical' : 'Non-Technical';
+          const eventTypeBadge = event.event_type === 'technical' 
+            ? '<span class="technical-badge me-1">⚙️ Technical</span>' 
+            : '<span class="non-technical-badge me-1">🎯 Non-Technical</span>';
+          
+          html += `
+            <div class="col-md-4">
+              <div class="event-option-card ${isSoldOut ? 'sold-out' : ''} ${isSelected ? 'selected' : ''}" 
+                   data-event-id="${event.event_id}" 
+                   data-event-type="${event.event_type}"
+                   data-name="${event.event_name}" 
+                   data-day="${event.day}"
+                   ${isSoldOut ? 'data-sold-out="true"' : ''}>
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                  <span class="event-day"><i class="bi bi-calendar-event"></i> Day ${event.day}</span>
+                  ${eventTypeBadge}
+                </div>
+                <h6 class="mt-2 mb-1 fw-bold">${event.event_name}</h6>
+                <p class="small text-secondary mb-2">${event.description || ''}</p>
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                  <span class="seat-status ${seatStatusClass}">
+                    ${event.seat_status}
+                  </span>
+                  <small class="text-muted">${eventTypeDisplay}</small>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        eventsContainer.innerHTML = html;
+      }
+
+      // Attach event listeners
+      function attachEventCardListeners() {
+        const workshopCards = document.querySelectorAll('#workshopsContainer .event-option-card');
+        const eventCards = document.querySelectorAll('#eventsContainer .event-option-card');
+
+        workshopCards.forEach(card => {
+          if (card.dataset.soldOut === 'true' || card.dataset.disabled === 'true') return;
+          
+          card.addEventListener('click', function(e) {
+            e.preventDefault();
+            const id = this.dataset.eventId;
+            
+            if (!id) return;
+
+            if (selectedWorkshops.has(id)) {
+              selectedWorkshops.delete(id);
+              this.classList.remove('selected');
+            } 
+            else if (selectedWorkshops.size < 1) {
+              selectedWorkshops.clear();
+              document.querySelectorAll('#workshopsContainer .event-option-card.selected').forEach(c => {
+                c.classList.remove('selected');
+              });
+              
+              const eventData = {
+                id,
+                name: this.dataset.name,
+                day: this.dataset.day,
+                eventType: this.dataset.eventType,
+                feeGeneral: parseInt(this.dataset.feeGeneral),
+                feeSona: parseInt(this.dataset.feeSona)
+              };
+              selectedWorkshops.set(id, eventData);
+              this.classList.add('selected');
+            }
+            
+            updateWorkshopDisabledState();
+            updateSelectionDisplay();
+            calculateTotal();
+            updatePaymentDisplay();
+          });
+        });
+
+        eventCards.forEach(card => {
+          if (card.dataset.soldOut === 'true') return;
+          
+          card.addEventListener('click', function(e) {
+            e.preventDefault();
+            const id = this.dataset.eventId;
+            const eventType = this.dataset.eventType;
+            
+            if (!id) return;
+
+            const eventData = {
+              id,
+              name: this.dataset.name,
+              day: this.dataset.day,
+              eventType: eventType,
+              feeGeneral: parseInt(this.dataset.feeGeneral),
+              feeSona: parseInt(this.dataset.feeSona)
+            };
+
+            if (selectedEvents.has(id)) {
+              selectedEvents.delete(id);
+              this.classList.remove('selected');
+            } else {
+              selectedEvents.set(id, eventData);
+              this.classList.add('selected');
+            }
+            
+            updateSelectionDisplay();
+            calculateTotal();
+            updatePaymentDisplay();
+            updateEventRequiredMessage(); // This will now use the new validation
+          });
+        });
+      }
+
+      // Update workshop disabled state
+      function updateWorkshopDisabledState() {
+        const workshopCards = document.querySelectorAll('#workshopsContainer .event-option-card');
+        workshopCards.forEach(card => {
+          if (card.dataset.soldOut === 'true') return;
+          
+          const id = card.dataset.eventId;
+          if (!selectedWorkshops.has(id) && selectedWorkshops.size >= 1) {
+            card.classList.add('workshop-disabled');
+            card.dataset.disabled = 'true';
+          } else {
+            card.classList.remove('workshop-disabled');
+            card.dataset.disabled = 'false';
+          }
+        });
+      }
+
+      // Update selection display
+      function updateSelectionDisplay() {
+        if (!selectedCountSpan || !selectedItemsList) return;
+        
+        const total = selectedWorkshops.size + selectedEvents.size;
+        selectedCountSpan.textContent = total + (total === 1 ? ' item' : ' items');
+        
+        let itemsHtml = [];
+        selectedWorkshops.forEach(event => {
+          itemsHtml.push(`<span class="badge bg-light text-dark me-2 mb-2"><i class="bi bi-tools"></i> ${event.name} (Day ${event.day})</span>`);
+        });
+        
+        // Group events by type
+        const technicalEvents = [];
+        const nonTechnicalEvents = [];
+        
+        selectedEvents.forEach(event => {
+          if (event.eventType === 'technical') {
+            technicalEvents.push(event);
+          } else {
+            nonTechnicalEvents.push(event);
+          }
+        });
+        
+        // Show technical events first
+        technicalEvents.forEach(event => {
+          itemsHtml.push(`<span class="badge bg-primary text-white me-2 mb-2"><i class="bi bi-lightning-charge"></i> ${event.name} (Tech, Day ${event.day})</span>`);
+        });
+        
+        nonTechnicalEvents.forEach(event => {
+          itemsHtml.push(`<span class="badge bg-info text-white me-2 mb-2"><i class="bi bi-emoji-smile"></i> ${event.name} (Non-Tech, Day ${event.day})</span>`);
+        });
+        
+        selectedItemsList.innerHTML = itemsHtml.join(' ') || '<span class="text-muted">No events selected</span>';
+      }
+
+      // Toggle SONA roll field
+      function toggleSonaRoll() {
+        calculateTotal();
+        updatePaymentDisplay();
+        updateWorkshopDisabledState();
+      }
+
+      // Test connection
+      async function testConnection() {
+        if (!statusIndicator || !statusText) return;
+        
+        try {
+          statusIndicator.className = 'spinner-grow spinner-grow-sm text-warning';
+          statusText.textContent = `Connecting to ...`;
+          
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000);
+          
+          console.log('Testing connection to:', `${API_BASE_URL}/api/events`);
+          
+          const response = await fetch(`${API_BASE_URL}/api/events`, {
+            method: 'GET',
+            headers: { 
+              'x-api-key': API_KEY,
+              'Content-Type': 'application/json'
+            },
+            mode: 'cors',
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          
+          console.log('Response status:', response.status);
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          const data = await response.json();
+          console.log('Response data:', data);
+          
+          isConnected = true;
+          statusIndicator.className = 'spinner-grow spinner-grow-sm text-success';
+          statusText.textContent = `✅ Connected to Server...`;
+          updateEventRequiredMessage();
+          
+          showToast('Server connection successful', 'success');
+          await fetchEvents();
+          
+        } catch (error) {
+          isConnected = false;
+          statusIndicator.className = 'spinner-grow spinner-grow-sm text-danger';
+          
+          if (error.name === 'AbortError') {
+            statusText.textContent = '❌ Connection timeout (5s)';
+            showToast('Connection timeout - server not responding', 'danger');
+          } else if (error.message.includes('Failed to fetch')) {
+            statusText.textContent = '❌ Network error - CORS or server down';
+            showToast('Network error: Check if server is running and CORS is enabled', 'danger');
+          } else {
+            statusText.textContent = `❌ Error: ${error.message}`;
+            showToast(`Connection failed: ${error.message}`, 'danger');
+          }
+          
+          submitBtn.disabled = true;
+          console.error('Connection test error:', error);
+        }
+      }
+
+      // Generate QR for modal
+      function generateSuccessQRCode(participantId, registrationIds) {
+        if (!qrCodeContainer) return;
+        
+        qrCodeContainer.innerHTML = '';
+        
+        const idsString = Array.isArray(registrationIds) ? registrationIds.join('|') : registrationIds;
+        const qrData = JSON.stringify({
+          pid: participantId,
+          ids: idsString
+        });
+        
+        QRCode.toCanvas(document.createElement('canvas'), qrData, {
+          width: 200,
+          margin: 2,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
+        }, function(err, canvas) {
+          if (err) {
+            qrCodeContainer.innerHTML = '<div class="alert alert-warning">QR generation failed</div>';
+            return;
+          }
+          canvas.className = 'qr-preview';
+          canvas.style.width = '200px';
+          canvas.style.height = '200px';
+          qrCodeContainer.appendChild(canvas);
+        });
+      }
+
+      // Show success modal
+      function showSuccessModal(data, amount, isAdditional = false) {
+        if (successModalTitle) {
+          successModalTitle.innerHTML = isAdditional ? 
+            '<i class="bi bi-plus-circle-fill text-success me-2"></i> Events Added Successfully!' :
+            '<i class="bi bi-check-circle-fill text-success me-2"></i> Registration Successful!';
         }
         
-        document.getElementById('phone').addEventListener('input', function(e) {
-            this.value = this.value.replace(/\D/g, '');
-        });
+        if (participantNameModal) {
+          participantNameModal.textContent = data.name || fullNameInput?.value || 'Participant';
+        }
+        if (registrationIdModal) {
+          const ids = data.summary?.registration_ids || data.summary?.new_registration_ids || [];
+          registrationIdModal.innerHTML = `<i class="bi bi-hash"></i> ID: ${data.participant_id} · ${ids.length} events`;
+        }
+        if (amountPaidModal) {
+          amountPaidModal.innerHTML = `<i class="bi bi-currency-rupee"></i> Amount: ₹${amount}`;
+        }
+        if (registrationTypeModal) {
+          registrationTypeModal.innerHTML = isAdditional ? 
+            '<span class="badge-additional">Additional Events Added</span>' : 
+            '<span class="badge-new">New Registration</span>';
+        }
         
-        document.getElementById('roll_number').addEventListener('input', function(e) {
-            this.value = this.value.toUpperCase();
-        });
+        const registrationIds = data.summary?.registration_ids || data.summary?.new_registration_ids || [];
+        generateSuccessQRCode(data.participant_id, registrationIds);
         
-        document.addEventListener('DOMContentLoaded', loadEvents);
-    </script>
+        if (modalInstance) modalInstance.show();
+      }
+
+      // Form submission
+      const spotRegistrationForm = document.getElementById('spotRegistrationForm');
+      if (spotRegistrationForm) {
+        spotRegistrationForm.addEventListener('submit', async function(e) {
+          e.preventDefault();
+          
+          if (!isConnected) {
+            showToast('Cannot submit: Server not connected', 'danger');
+            return;
+          }
+
+          // Use the new validation function
+          if (!hasValidEventSelection()) {
+            if (existingParticipantData) {
+              showToast('Please select at least one event to register', 'warning');
+            } else {
+              showToast('You must select at least one technical event', 'warning');
+            }
+            return;
+          }
+
+          const year = getYear();
+          if (!year && !existingParticipantData) {
+            showToast('Please select your year of study', 'warning');
+            return;
+          }
+
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = '<span class="loading-spinner"></span> Registering...';
+
+          try {
+            const formData = new FormData(e.target);
+            
+            const workshopSelections = Array.from(selectedWorkshops.keys()).map(Number);
+            const eventSelections = Array.from(selectedEvents.keys()).map(Number);
+
+            const payload = {
+              email: formData.get('email'),
+              workshop_selections: workshopSelections,
+              event_selections: eventSelections,
+              payment_method: formData.get('payment_method')
+            };
+
+            if (existingParticipantData) {
+              // Existing participant - only send ID, selections, and student type
+              payload.participant_id = parseInt(existingParticipantId.value);
+              payload.student_type = formData.get('student_type');
+            } else {
+              // New participant - send all fields
+              payload.full_name = formData.get('full_name');
+              payload.phone = formData.get('phone');
+              payload.college_name = formData.get('college_name');
+              payload.department = formData.get('department');
+              payload.year_of_study = year;
+              payload.gender = formData.get('gender') || 'Prefer not to say';
+              payload.city = formData.get('city') || '';
+              payload.state = formData.get('state') || '';
+              payload.student_type = formData.get('student_type');
+              payload.upi_id = UPI_QR_IMAGE_URL;
+              payload.amount = calculateTotalAmount();
+            }
+
+            const response = await fetch(`${API_BASE_URL}/api/spot-register`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': API_KEY
+              },
+              body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+              switch (data.error) {
+                case 'VALIDATION_FAILED':
+                  throw new Error(data.details || 'Validation failed');
+                case 'EVENT_NOT_FOUND':
+                  throw new Error(data.details || 'Event not found');
+                case 'SEATS_FULL':
+                  throw new Error(data.details || 'Seats full');
+                case 'ALREADY_REGISTERED':
+                  throw new Error('You are already registered for these events');
+                default:
+                  throw new Error(data.error || 'Registration failed');
+              }
+            }
+
+            const isAdditional = data.is_new_registration === false;
+            showSuccessModal(data, payload.amount || data.additional_amount_paid, isAdditional);
+            showToast(isAdditional ? 'Additional events added successfully!' : 'Registration successful!', 'success');
+            
+            // Reset to email check after success
+            setTimeout(() => {
+              resetToEmailCheck();
+            }, 2000);
+            
+          } catch (error) {
+            console.error('Registration error:', error);
+            showToast(error.message, 'danger');
+          } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="bi bi-ticket-fill me-2"></i> Complete Spot Registration <i class="bi bi-arrow-right-short fs-4"></i>';
+          }
+        });
+      }
+
+      // Event listeners
+      checkEmailBtn.addEventListener('click', handleEmailCheck);
+      checkEmail.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') handleEmailCheck();
+      });
+      
+      changeEmailBtn.addEventListener('click', handleChangeEmail);
+      
+      studentTypeRadios.forEach(r => r.addEventListener('change', toggleSonaRoll));
+      
+      yearSelect.addEventListener('change', function() {
+        calculateTotal();
+        updatePaymentDisplay();
+      });
+
+      const paymentMethodSelect = document.querySelector('select[name="payment_method"]');
+      if (paymentMethodSelect) {
+        paymentMethodSelect.addEventListener('change', updatePaymentDisplay);
+      }
+
+      testConnectionBtn.addEventListener('click', testConnection);
+
+      // Phone validation
+      phoneInput.addEventListener('input', function(e) {
+        this.value = this.value.replace(/\D/g, '').slice(0, 10);
+      });
+
+      // Initialize
+      setTimeout(testConnection, 500);
+    })();
+  </script>
 </body>
 </html>
