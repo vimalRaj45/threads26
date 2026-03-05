@@ -4022,7 +4022,6 @@ preloadEventsToRedis();
 // Async email function for new registrations
 async function sendEmailAsync(body, participantId, qrCodeDataURL) {
   try {
-    // Extract base64 data from data URL
     const base64Data = qrCodeDataURL.split(',')[1];
     
     const emailData = {
@@ -4050,34 +4049,60 @@ async function sendEmailAsync(body, participantId, qrCodeDataURL) {
       }]
     };
 
-    const response = await axios.post(
-      'https://api.brevo.com/v3/smtp/email',
-      emailData,
-      {
-        headers: {
-          'api-key': process.env.BREVO_API_KEY,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        timeout: 10000
-      }
-    );
+    try {
+
+      await axios.post(
+        'https://api.brevo.com/v3/smtp/email',
+        emailData,
+        {
+          headers: {
+            'api-key': process.env.BREVO_API_KEY,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          timeout: 10000
+        }
+      );
+
+    } catch (err) {
+
+      console.warn("⚠️ ENV email failed, retrying with fallback...");
+
+      emailData.sender.email = "macernest98@gmail.com";
+
+      await axios.post(
+        'https://api.brevo.com/v3/smtp/email',
+        emailData,
+        {
+          headers: {
+            'api-key': process.env.FALLBACK_BREVO_API_KEY',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          timeout: 10000
+        }
+      );
+
+    }
     
     console.log(`✅ Pass email sent to ${body.email}`);
     return true;
+
   } catch (error) {
     console.error('❌ Email send failed:', error.response?.data || error.message);
     return false;
   }
 }
 
+
 // Async email function for updated registrations
 async function sendUpdatedEmailAsync(participant, participantId, qrCodeDataURL, events, amount, isNewRegistration = false, allEvents = []) {
   try {
+
     const base64Data = qrCodeDataURL.split(',')[1];
-    
+
     if (isNewRegistration) {
-      // Send new registration email with pass
+
       const emailData = {
         sender: {
           email: process.env.SENDER_EMAIL,
@@ -4108,25 +4133,49 @@ async function sendUpdatedEmailAsync(participant, participantId, qrCodeDataURL, 
         }]
       };
 
-      await axios.post(
-        'https://api.brevo.com/v3/smtp/email',
-        emailData,
-        {
-          headers: {
-            'api-key': process.env.BREVO_API_KEY,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          timeout: 10000
-        }
-      );
-      
+      try {
+
+        await axios.post(
+          'https://api.brevo.com/v3/smtp/email',
+          emailData,
+          {
+            headers: {
+              'api-key': process.env.BREVO_API_KEY,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            timeout: 10000
+          }
+        );
+
+      } catch (err) {
+
+        console.warn("⚠️ ENV email failed, retrying with fallback...");
+
+        emailData.sender.email = "macernest98@gmail.com";
+
+        await axios.post(
+          'https://api.brevo.com/v3/smtp/email',
+          emailData,
+          {
+            headers: {
+              'api-key': process.env.FALLBACK_BREVO_API_KEY,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            timeout: 10000
+          }
+        );
+
+      }
+
       console.log(`✅ Pass email sent to ${participant.email}`);
+
     } else {
-      // Send updated registration email with ALL events
+
       const allEventsList = allEvents.map(e => `${e.name} (Day ${e.day})`).join(', ');
       const newEventsList = events.map(e => `${e.name} (Day ${e.day})`).join(', ');
-      
+
       const emailData = {
         sender: {
           email: process.env.SENDER_EMAIL,
@@ -4161,22 +4210,47 @@ async function sendUpdatedEmailAsync(participant, participantId, qrCodeDataURL, 
         }]
       };
 
-      await axios.post(
-        'https://api.brevo.com/v3/smtp/email',
-        emailData,
-        {
-          headers: {
-            'api-key': process.env.BREVO_API_KEY,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          timeout: 10000
-        }
-      );
-      
+      try {
+
+        await axios.post(
+          'https://api.brevo.com/v3/smtp/email',
+          emailData,
+          {
+            headers: {
+              'api-key': process.env.BREVO_API_KEY,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            timeout: 10000
+          }
+        );
+
+      } catch (err) {
+
+        console.warn("⚠️ ENV email failed, retrying with fallback...");
+
+        emailData.sender.email = "macernest98@gmail.com";
+
+        await axios.post(
+          'https://api.brevo.com/v3/smtp/email',
+          emailData,
+          {
+            headers: {
+              'api-key': process.env.FALLBACK_BREVO_API_KEY,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            timeout: 10000
+          }
+        );
+
+      }
+
       console.log(`✅ Updated pass email sent to ${participant.email} with ALL ${allEvents.length} events`);
     }
+
     return true;
+
   } catch (error) {
     console.error('❌ Email send failed:', error.response?.data || error.message);
     return false;
