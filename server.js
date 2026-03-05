@@ -4349,7 +4349,7 @@ fastify.post('/api/spot-register', async (request, reply) => {
   }
 });
 
-// Add this to your backend - dedicated email check endpoint
+// Add this to your backend - dedicated email check endpoint with event types
 fastify.post('/api/check-email', async (request, reply) => {
   try {
     const { email } = request.body;
@@ -4358,6 +4358,7 @@ fastify.post('/api/check-email', async (request, reply) => {
       return reply.code(400).send({ error: 'Email required' });
     }
 
+    // Get participant details
     const result = await pool.query(
       `SELECT participant_id, full_name, year_of_study, email, phone, 
               college_name, department, gender, city, state, accommodation_required 
@@ -4368,11 +4369,12 @@ fastify.post('/api/check-email', async (request, reply) => {
     if (result.rows.length > 0) {
       const participant = result.rows[0];
       
-      // Also fetch their registered events
+      // Fetch their registered events with event type from events table
       const events = await pool.query(
-        `SELECT event_id, event_name, day 
-         FROM registrations 
-         WHERE participant_id = $1 AND payment_status = 'Success'`,
+        `SELECT r.event_id, r.registration_id, e.event_name, e.day, e.event_type, e.fee
+         FROM registrations r
+         JOIN events e ON r.event_id = e.event_id
+         WHERE r.participant_id = $1 AND r.payment_status = 'Success'`,
         [participant.participant_id]
       );
       
@@ -4380,26 +4382,76 @@ fastify.post('/api/check-email', async (request, reply) => {
       const collegeName = participant.college_name?.toLowerCase() || '';
       const department = participant.department?.toLowerCase() || '';
       
-      const isSonaCollege = collegeName.includes('sona');
-      const isCseDept = ['cse', 'aiml', 'csd'].some(dept => department.includes(dept));
+      const isSonaCollege = collegeName.includes('sona') || 
+                           collegeName.includes('sona college') || 
+                           collegeName.includes('sona group');
+      const isCseDept = ['cse', 'computer science', 'aiml', 'csd', 'computer science and engineering', 
+                        'artificial intelligence', 'data science'].some(dept => department.includes(dept));
       const isSonacse = isSonaCollege && isCseDept;
+      
+      // Categorize events by type
+      const technicalEvents = events.rows.filter(e => e.event_type === 'technical');
+      const nonTechnicalEvents = events.rows.filter(e => e.event_type === 'non-technical');
+      const workshops = events.rows.filter(e => e.event_type === 'workshop');
       
       return reply.send({
         exists: true,
         participant: {
-          ...participant,
-          registered_events: events.rows
+          participant_id: participant.participant_id,
+          full_name: participant.full_name,
+          email: participant.email,
+          phone: participant.phone,
+          college_name: participant.college_name,
+          department: participant.department,
+          year_of_study: participant.year_of_study,
+          gender: participant.gender,
+          city: participant.city,
+          state: participant.state,
+          accommodation_required: participant.accommodation_required,
+          // Send events categorized by type
+          registered_events: {
+            all: events.rows,
+            technical: technicalEvents,
+            non_technical: nonTechnicalEvents,
+            workshops: workshops,
+            count: events.rows.length,
+            has_technical: technicalEvents.length > 0,
+            has_non_technical: nonTechnicalEvents.length > 0,
+            has_workshops: workshops.length > 0
+          }
         },
-        is_sonacse: isSonacse  // Add this field to the response
+        is_sonacse: isSonacse,
+        // Summary for easy access
+        summary: {
+          total_events: events.rows.length,
+          technical_count: technicalEvents.length,
+          non_technical_count: nonTechnicalEvents.length,
+          workshop_count: workshops.length,
+          event_ids: events.rows.map(e => e.event_id),
+          registration_ids: events.rows.map(e => e.registration_id)
+        }
       });
     } else {
       return reply.send({
-        exists: false
+        exists: false,
+        participant: null,
+        is_sonacse: false,
+        summary: {
+          total_events: 0,
+          technical_count: 0,
+          non_technical_count: 0,
+          workshop_count: 0,
+          event_ids: [],
+          registration_ids: []
+        }
       });
     }
   } catch (error) {
     fastify.log.error(error);
-    return reply.code(500).send({ error: 'Failed to check email' });
+    return reply.code(500).send({ 
+      error: 'Failed to check email',
+      details: error.message 
+    });
   }
 });
 
