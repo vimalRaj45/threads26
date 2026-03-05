@@ -4337,20 +4337,6 @@ fastify.post('/api/spot-register', async (request, reply) => {
       });
     }
     
-    if (error.message?.includes('INVALID_SONACSE_STUDENT')) {
-      return reply.code(400).send({ 
-        success: false, 
-        error: 'INVALID_SONACSE_STUDENT'
-      });
-    }
-    
-    if (error.message?.includes('SONACSE_ALREADY_REGISTERED')) {
-      return reply.code(409).send({ 
-        success: false, 
-        error: 'SONACSE_ALREADY_REGISTERED',
-        message: 'This SONACSE student is already registered'
-      });
-    }
     
     return reply.code(500).send({ 
       success: false, 
@@ -4505,42 +4491,7 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
       }
     }
 
-    // ========== 5. SONACSE VALIDATION ==========
-    if (body.student_type === 'sonacse') {
-      if (!body.roll_number?.trim()) {
-        return reply.code(400).send({
-          success: false,
-          error: 'ROLL_NUMBER_REQUIRED'
-        });
-      }
-
-      const cleanRoll = body.roll_number.trim().toUpperCase();
-      const email = body.email.toLowerCase().trim();
-
-      const check = await client.query(
-        `SELECT registered, regno 
-         FROM sonacse_students 
-         WHERE regno = $1 OR LOWER(email) = LOWER($2)`,
-        [cleanRoll, email]
-      );
-
-      if (check.rows.length === 0) {
-        return reply.code(400).send({
-          success: false,
-          error: 'INVALID_SONACSE_STUDENT'
-        });
-      }
-
-      if (check.rows[0].registered === true) {
-        return reply.code(409).send({
-          success: false,
-          error: 'SONACSE_ALREADY_REGISTERED',
-          message: 'This SONACSE student is already registered'
-        });
-      }
-    }
-    
-    // ========== 6. GET PRICING ==========
+    // ========== 5. GET PRICING ==========  (REMOVED SONA CSE VALIDATION, now step 5)
     let pricing;
     try {
       const pricingData = await redis.get(CACHE_KEYS.PRICING);
@@ -4559,7 +4510,7 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
       };
     }
     
-    // ========== 7. CALCULATE FEES ==========
+    // ========== 6. CALCULATE FEES ==========
     const workshopFee = body.student_type === 'sonacse' 
       ? pricing.SONACSE_WORKSHOP_FEE 
       : pricing.WORKSHOP_FEE;
@@ -4574,10 +4525,10 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
       }
     }
     
-    // ========== 8. START TRANSACTION ==========
+    // ========== 7. START TRANSACTION ==========
     await client.query('BEGIN');
     
-    // ========== 9. INSERT PARTICIPANT ==========
+    // ========== 8. INSERT PARTICIPANT ==========
     const participant = await client.query(
       `INSERT INTO participants (
         full_name, email, phone, college_name, department, year_of_study, 
@@ -4603,7 +4554,7 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
     const timestamp = Date.now();
     const registrationIds = [];
     
-    // ========== 10. BATCH UPDATE SEATS ==========
+    // ========== 9. BATCH UPDATE SEATS ==========
     if (body.student_type === 'sonacse') {
       await client.query(
         `UPDATE events SET 
@@ -4620,7 +4571,7 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
       );
     }
     
-    // ========== 11. BATCH INSERT REGISTRATIONS ==========
+    // ========== 10. BATCH INSERT REGISTRATIONS ==========
     const registrationValues = [];
     const registrationParams = [];
     let paramIndex = 1;
@@ -4679,18 +4630,7 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
       registrationParams
     );
     
-    // ========== 12. UPDATE SONACSE STATUS ==========
-    if (body.student_type === 'sonacse' && body.roll_number) {
-      const cleanRoll = body.roll_number.trim().toUpperCase();
-      await client.query(
-        `UPDATE sonacse_students SET registered = true WHERE regno = $1`,
-        [cleanRoll]
-      );
-      // Invalidate Redis cache (don't await)
-      redis.del(CACHE_KEYS.SONACSE_STUDENT(cleanRoll)).catch(() => {});
-    }
-    
-    // ========== 13. CREATE PAYMENT ==========
+    // ========== 11. CREATE PAYMENT ==========
     const transactionId = `SPOT-${timestamp}-${Math.random().toString(36).substring(2, 6)}`;
     
     const payment = await client.query(
@@ -4708,10 +4648,10 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
       ]
     );
     
-    // ========== 14. COMMIT ==========
+    // ========== 12. COMMIT ==========
     await client.query('COMMIT');
     
-    // ========== 15. UPDATE REDIS SEAT CACHE (ASYNC) ==========
+    // ========== 13. UPDATE REDIS SEAT CACHE (ASYNC) ==========
     const seatUpdates = [];
     for (const eventId of allEventIds) {
       const event = eventMap.get(eventId);
@@ -4729,7 +4669,7 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
     }
     Promise.all(seatUpdates).catch(() => {});
     
-    // ========== 16. GENERATE QR CODE ==========
+    // ========== 14. GENERATE QR CODE ==========
     const qrPayload = { 
       pid: participantId, 
       ids: registrationIds.join('|')
@@ -4753,7 +4693,7 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
       console.error('QR generation failed:', err);
     }
     
-    // ========== 17. SEND EMAIL (ASYNC - DON'T AWAIT) ==========
+    // ========== 15. SEND EMAIL (ASYNC - DON'T AWAIT) ==========
     if (qrCodeDataURL) {
       // Send email in background - don't await
       sendUpdatedEmailAsync(
@@ -4772,7 +4712,7 @@ async function handleNewRegistration(client, body, allEventIds, workshopIds, eve
     const endTime = Date.now();
     console.log(`✅ New registration completed in ${endTime - startTime}ms`);
     
-    // ========== 18. RESPONSE ==========
+    // ========== 16. RESPONSE ==========
     return reply.code(201).send({
       success: true,
       participant_id: participantId,
@@ -4907,35 +4847,7 @@ async function handleAdditionalRegistration(
       }
     }
     
-    // ========== 5. SONACSE VALIDATION IF NEEDED ==========
-    if (body.student_type === 'sonacse') {
-      if (!body.roll_number?.trim()) {
-        return reply.code(400).send({
-          success: false,
-          error: 'ROLL_NUMBER_REQUIRED'
-        });
-      }
-
-      const cleanRoll = body.roll_number.trim().toUpperCase();
-      const email = body.email?.toLowerCase().trim() || participant.email;
-
-      // Check if this SONACSE student exists
-      const check = await client.query(
-        `SELECT registered, regno 
-         FROM sonacse_students 
-         WHERE regno = $1 OR LOWER(email) = LOWER($2)`,
-        [cleanRoll, email]
-      );
-
-      if (check.rows.length === 0) {
-        return reply.code(400).send({
-          success: false,
-          error: 'INVALID_SONACSE_STUDENT'
-        });
-      }
-    }
-    
-    // ========== 6. GET PRICING FROM REDIS ==========
+    // ========== 5. GET PRICING FROM REDIS ==========  (REMOVED SONA CSE VALIDATION, now step 5)
     let pricing;
     try {
       const pricingData = await redis.get(CACHE_KEYS.PRICING);
@@ -4954,7 +4866,7 @@ async function handleAdditionalRegistration(
       };
     }
     
-    // ========== 7. CALCULATE ADDITIONAL FEES ==========
+    // ========== 6. CALCULATE ADDITIONAL FEES ==========
     const workshopFee = body.student_type === 'sonacse' 
       ? pricing.SONACSE_WORKSHOP_FEE 
       : pricing.WORKSHOP_FEE;
@@ -4975,13 +4887,13 @@ async function handleAdditionalRegistration(
       }
     }
     
-    // ========== 8. START TRANSACTION ==========
+    // ========== 7. START TRANSACTION ==========
     await client.query('BEGIN');
     
     const timestamp = Date.now();
     const newRegistrationIds = [];
     
-    // ========== 9. UPDATE SEATS ==========
+    // ========== 8. UPDATE SEATS ==========  (FIXED numbering)
     if (body.student_type === 'sonacse') {
       await client.query(
         `UPDATE events SET 
@@ -4998,7 +4910,7 @@ async function handleAdditionalRegistration(
       );
     }
     
-    // ========== 10. INSERT NEW REGISTRATIONS ==========
+    // ========== 9. INSERT NEW REGISTRATIONS ==========
     const registrationValues = [];
     const registrationParams = [];
     let paramIndex = 1;
@@ -5060,26 +4972,7 @@ async function handleAdditionalRegistration(
       );
     }
     
-    // ========== 11. UPDATE SONACSE STATUS (if first time and not already registered) ==========
-    if (body.student_type === 'sonacse' && body.roll_number) {
-      // Check if they're already marked as registered
-      const sonacseCheck = await client.query(
-        'SELECT registered FROM sonacse_students WHERE regno = $1',
-        [body.roll_number.trim().toUpperCase()]
-      );
-      
-      if (sonacseCheck.rows.length > 0 && !sonacseCheck.rows[0].registered) {
-        const cleanRoll = body.roll_number.trim().toUpperCase();
-        await client.query(
-          `UPDATE sonacse_students SET registered = true WHERE regno = $1`,
-          [cleanRoll]
-        );
-        // Invalidate Redis cache
-        redis.del(CACHE_KEYS.SONACSE_STUDENT(cleanRoll)).catch(() => {});
-      }
-    }
-    
-    // ========== 12. CREATE PAYMENT FOR ADDITIONAL AMOUNT ==========
+    // ========== 10. CREATE PAYMENT FOR ADDITIONAL AMOUNT ==========
     let payment = null;
     if (additionalAmount > 0) {
       const transactionId = `SPOT-ADD-${timestamp}-${Math.random().toString(36).substring(2, 6)}`;
@@ -5100,7 +4993,7 @@ async function handleAdditionalRegistration(
       );
     }
     
-    // ========== 13. GET ALL REGISTRATIONS FOR QR CODE ==========
+    // ========== 11. GET ALL REGISTRATIONS FOR QR CODE ==========
     const allRegistrations = await client.query(
       `SELECT registration_unique_id, event_name, day 
        FROM registrations 
@@ -5115,10 +5008,10 @@ async function handleAdditionalRegistration(
       day: r.day
     }));
     
-    // ========== 14. COMMIT TRANSACTION ==========
+    // ========== 12. COMMIT TRANSACTION ==========
     await client.query('COMMIT');
     
-    // ========== 15. UPDATE REDIS SEAT CACHE (ASYNC) ==========
+    // ========== 13. UPDATE REDIS SEAT CACHE (ASYNC) ==========
     const seatUpdates = [];
     for (const eventId of newAllEventIds) {
       const event = eventMap.get(eventId);
@@ -5136,7 +5029,7 @@ async function handleAdditionalRegistration(
     }
     Promise.all(seatUpdates).catch(() => {});
 
-    // ========== 16. GENERATE UPDATED QR CODE WITH ALL REGISTRATION IDs ==========
+    // ========== 14. GENERATE UPDATED QR CODE WITH ALL REGISTRATION IDs ==========
     const qrPayload = { 
       pid: participantId, 
       ids: allRegistrationIds.join('|') // This now includes ALL registration IDs (old + new)
@@ -5161,7 +5054,7 @@ async function handleAdditionalRegistration(
       console.error('QR generation failed:', err);
     }
     
-    // ========== 17. SEND UPDATED EMAIL (ASYNC - DON'T AWAIT) ==========
+    // ========== 15. SEND UPDATED EMAIL (ASYNC - DON'T AWAIT) ==========
     if (qrCodeDataURL) {
       // Send email in background - don't await
       sendUpdatedEmailAsync(
@@ -5180,7 +5073,7 @@ async function handleAdditionalRegistration(
     const endTime = Date.now();
     console.log(`✅ Additional registration completed in ${endTime - startTime}ms with QR containing ${allRegistrationIds.length} events`);
     
-    // ========== 18. RESPONSE ==========
+    // ========== 16. RESPONSE ==========
     return reply.code(200).send({
       success: true,
       participant_id: participantId,
