@@ -1172,7 +1172,7 @@ fastify.post('/api/admin/login', async (request, reply) => {
 
 fastify.get('/api/admin/registrations', async (request) => {
   try {
-    const { page = 1, limit = 50, event_id, payment_status } = request.query;
+    const { page = 1, limit = 300, event_id, payment_status } = request.query;
     const offset = (page - 1) * limit;
 
     // ✅ OPTIMIZED QUERY - Use CTE for payments subquery
