@@ -4075,7 +4075,7 @@ async function sendEmailAsync(body, participantId, qrCodeDataURL) {
         emailData,
         {
           headers: {
-            'api-key': process.env.FALLBACK_BREVO_API_KEY',
+            'api-key': process.env.FALLBACK_BREVO_API_KEY,
             'Content-Type': 'application/json',
             'Accept': 'application/json'
           },
