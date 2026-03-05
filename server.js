@@ -4366,20 +4366,31 @@ fastify.post('/api/check-email', async (request, reply) => {
     );
 
     if (result.rows.length > 0) {
+      const participant = result.rows[0];
+      
       // Also fetch their registered events
       const events = await pool.query(
         `SELECT event_id, event_name, day 
          FROM registrations 
          WHERE participant_id = $1 AND payment_status = 'Success'`,
-        [result.rows[0].participant_id]
+        [participant.participant_id]
       );
+      
+      // Check if this is a SONA CSE student
+      const collegeName = participant.college_name?.toLowerCase() || '';
+      const department = participant.department?.toLowerCase() || '';
+      
+      const isSonaCollege = collegeName.includes('sona');
+      const isCseDept = ['cse', 'aiml', 'csd'].some(dept => department.includes(dept));
+      const isSonacse = isSonaCollege && isCseDept;
       
       return reply.send({
         exists: true,
         participant: {
-          ...result.rows[0],
+          ...participant,
           registered_events: events.rows
-        }
+        },
+        is_sonacse: isSonacse  // Add this field to the response
       });
     } else {
       return reply.send({
